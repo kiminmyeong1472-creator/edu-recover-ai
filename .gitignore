@@ -1,0 +1,133 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.pyright/
+
+# Virtual environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs / runtime
+*.log
+logs/
+tmp/
+temp/
+*.pid
+*.pid.lock
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Secrets / credentials
+secrets/
+credentials/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Application-generated artifacts
+artifacts/
+output/
+outputs/
+exports/
+reports/generated/
+receipts/local/
+quarantine/local/
+
+# Model / cache assets
+.cache/
+models/cache/
+huggingface/
+transformers_cache/
+
+# Celery / task queue
+celerybeat-schedule
+celerybeat.pid
+
+# Ruff
+.ruff_cache/
+
+# uv
+.uv/
+uv.lock.local
+
+# Local overrides
+config.local.*
+settings.local.*
