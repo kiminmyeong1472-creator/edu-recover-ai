@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,23 @@ class Settings(BaseSettings):
     api_version: str = "v1"
     environment: str = "development"
     debug: bool = False
+
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="OPENAI_API_KEY",
+    )
+    anthropic_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="ANTHROPIC_API_KEY",
+    )
+    openai_model: str = Field(
+        default="gpt-5.6-luna",
+        validation_alias="OPENAI_MODEL",
+    )
+    anthropic_model: str = Field(
+        default="claude-sonnet-5",
+        validation_alias="ANTHROPIC_MODEL",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
