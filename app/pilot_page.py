@@ -357,21 +357,17 @@ async function generateQuestions(){
     if(!r.ok){out.textContent="자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
     workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;persist();
     out.textContent=d.provider+" / "+d.model+" · "+d.count+"문항 생성 완료. 문항 작업실에서 교사가 확인·수정하십시오.";
-    if(Number(d.count)===1){
-      await showCrossVerifyPrompt(d.provider);
-    }else{
-      showView("workspace");
-    }
+    await showCrossVerifyPrompt(d.provider, Number(d.count)||workspace.items.length);
   }catch(e){out.textContent="자동출제 요청 실패: "+e.message;}
 }
 
 function providerLabel(provider){
   return {openai:"ChatGPT / OpenAI",gemini:"Gemini",claude:"Claude"}[provider]||provider;
 }
-async function showCrossVerifyPrompt(originProvider){
+async function showCrossVerifyPrompt(originProvider, generatedCount){
   const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
   result.hidden=true;result.textContent="";workspaceBtn.hidden=true;no.hidden=false;yes.hidden=false;yes.disabled=false;
-  message.textContent="1문항 출제가 완료되었습니다. 현재 출제 AI는 "+providerLabel(originProvider)+"입니다. 다른 AI 1개로 교차검증하시겠습니까?";
+  message.textContent=providerLabel(originProvider)+" 1개 AI가 "+generatedCount+"문항 출제를 완료했습니다. 다른 AI 1개로 전체 문항을 교차검증하시겠습니까?";
   select.innerHTML="";
   try{
     const r=await fetch("/ai-status");const status=await r.json();
@@ -394,7 +390,7 @@ async function showCrossVerifyPrompt(originProvider){
 async function runCrossVerification(){
   const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
   const provider=select.value;if(!provider)return;
-  yes.disabled=true;no.hidden=true;message.textContent=providerLabel(provider)+"가 출제된 1문항을 검증 중입니다...";
+  yes.disabled=true;no.hidden=true;message.textContent=providerLabel(provider)+" 1개 AI가 출제된 전체 문항을 검증 중입니다...";
   try{
     const r=await fetch("/verify-with-provider",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,problems:workspace.items})});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
