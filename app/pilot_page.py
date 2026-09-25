@@ -290,8 +290,8 @@ async function refreshAiStatus(){
     const ready=[];
     if(d.openai?.configured) ready.push("OpenAI");
     if(d.gemini?.configured) ready.push("Gemini");
-    if(cell) cell.innerHTML=ready.length?"<span class='badge good'>"+ready.join(" · ")+" 사용 가능</span>":"<span class='badge warn'>API Secret 설정 필요</span>";
-    if(badge){badge.className=ready.length?"badge good":"badge warn";badge.textContent=ready.length?ready.join(" · ")+" 연결됨":"API Secret 설정 필요";}
+    if(cell) cell.innerHTML=ready.length?"<span class='badge good'>"+ready.join(" · ")+" 사용 가능</span>":"<span class='badge warn'>Gemini 연동 준비중</span>";
+    if(badge){badge.className=ready.length?"badge good":"badge warn";badge.textContent=ready.length?ready.join(" · ")+" 연결됨":"Gemini 연동 준비중";}
   }catch(e){
     if(cell) cell.innerHTML="<span class='badge warn'>상태 확인 실패</span>";
     if(badge){badge.className="badge warn";badge.textContent="상태 확인 실패";}
