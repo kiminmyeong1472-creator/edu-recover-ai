@@ -1,7 +1,7 @@
 """Trust Chain cross-validation using real OpenAI and Anthropic APIs.
 
 The protocol is fail-closed and deliberately rejects majority voting.
-A 28-item problem set is approved only when both independent providers return
+A teacher-selected problem set is approved only when both independent providers return
 PASS. Any disagreement, malformed response, configuration failure, or provider
 error moves the set to revalidation pending.
 """
@@ -18,9 +18,6 @@ from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 
 from app.core.config import settings
-
-
-EXPECTED_BATCH_SIZE = 28
 
 
 class WorkerVerdict(StrEnum):
@@ -64,7 +61,7 @@ class TrustChainResult:
 
 
 VALIDATION_INSTRUCTIONS = """You are an independent EduRecover AI Trust Chain validator.
-Review exactly 28 English reading-comprehension problem/explanation objects.
+Review the supplied English reading-comprehension problem/explanation objects.
 
 Validate conservatively. Return PASS only if the full batch has no material
 defect. Check at least:
@@ -233,11 +230,8 @@ async def run_trust_chain(
 ) -> TrustChainResult:
     """Run both providers concurrently and approve only unanimous PASS."""
 
-    if len(problems) != EXPECTED_BATCH_SIZE:
-        reason = (
-            f"Trust Chain requires exactly {EXPECTED_BATCH_SIZE} problems; "
-            f"received {len(problems)}."
-        )
+    if not problems:
+        reason = "Trust Chain requires at least one problem."
         worker_results = (
             WorkerResult(
                 worker="OpenAI-validator",

@@ -35,7 +35,7 @@ PILOT_HTML = r"""
 <body>
 <header>
   <h1>EduRecover AI · 교사 파일럿</h1>
-  <p>28문항 단위 검증 · Trust Chain · Socratic Trap · 상태 확인</p>
+  <p>교사용 문항 출제·검증 파일럿 · Trust Chain · Socratic Trap · 상태 확인</p>
 </header>
 
 <main>
@@ -48,23 +48,22 @@ PILOT_HTML = r"""
     </div>
     <div class="card">
       <h2>검증 원칙</h2>
-      <span class="badge">28문항 단위</span>
       <span class="badge">다수결 배척</span>
       <span class="badge">Fail-Closed</span>
       <p class="muted">필수 검증이 충족되지 않으면 승인하지 않고 재검증 대기 상태로 보냅니다.</p>
     </div>
     <div class="card">
-      <h2>파일럿 주의사항</h2>
-      <p class="muted">현재 파일럿에는 학생 개인정보를 넣지 마십시오. 문항·해설·지문 등 교육 콘텐츠만 사용하십시오.</p>
+      <h2>교사 파일럿</h2>
+      <p class="muted">문항 수는 교사가 자유롭게 정합니다. 현재 화면은 출제된 문항 데이터의 검증 흐름을 확인하는 파일럿입니다.</p>
     </div>
   </section>
 
   <section class="card" style="margin-top:14px">
-    <h2>28문항 JSON 테스트</h2>
-    <p class="muted">형식 예: {"problems":[{"question":"...","answer":"...","explanation":"...","passage":"..."} ... 28개]}</p>
+    <h2>문항 데이터 검증</h2>
+    <p class="muted">형식 예: {"problems":[{"question":"...","answer":"...","explanation":"...","passage":"..."}]} · 문항 수 제한 없음</p>
     <textarea id="payload" placeholder='{"problems":[...]}'></textarea>
     <div>
-      <button class="secondary" onclick="fillDemo()">28문항 데모 채우기</button>
+      <button class="secondary" onclick="fillDemo()">샘플 문항 채우기</button>
       <button class="primary" onclick="callApi('/verify-problem')">Trust Chain 검증</button>
       <button class="primary" onclick="callApi('/apply-trap')">Socratic Trap 적용</button>
     </div>
@@ -77,7 +76,7 @@ PILOT_HTML = r"""
 </main>
 
 <footer>
-  EduRecover AI Teacher Pilot · 검증 결과는 파일럿 테스트용이며 실제 학생 배포 전 별도 검토가 필요합니다.
+  EduRecover AI Teacher Pilot · 교사가 출제·검토하는 문항 제작 지원용 파일럿입니다.
 </footer>
 
 <script>
@@ -95,7 +94,7 @@ async function refreshHealth() {
 }
 
 function fillDemo() {
-  const problems = Array.from({length:28}, (_,i)=>({
+  const problems = Array.from({length:3}, (_,i)=>({
     problem_id:i+1,
     question:"Demo question " + (i+1),
     answer:"A",

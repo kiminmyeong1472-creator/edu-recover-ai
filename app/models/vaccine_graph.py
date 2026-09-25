@@ -50,8 +50,7 @@ class VaccineGraphEvent(BaseModel):
     event_id: UUID = Field(default_factory=uuid4)
     target_problem_id: int = Field(
         ge=1,
-        le=28,
-        description="Target item number within the 28-problem batch.",
+        description="Target problem identifier within the teacher-selected set.",
     )
     previous_state_hash: str = Field(
         description=(

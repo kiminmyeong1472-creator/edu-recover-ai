@@ -1,6 +1,6 @@
 """Prototype Socratic Trap service for reasoning-risk detection.
 
-The service examines a 28-item English reading-comprehension explanation batch
+The service examines a teacher-selected English reading-comprehension explanation batch
 for common hallucination and logic-risk signals. It never rewrites or reveals a
 replacement answer. Instead, it returns Socratic counter-questions that force
 the worker to re-check source evidence, scope, causality, and inference.
@@ -11,9 +11,6 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
-
-
-SOCRATIC_EXPECTED_BATCH_SIZE = 28
 
 ABSOLUTE_TERMS = {
     "always",
@@ -122,11 +119,8 @@ def detect_socratic_traps(
     answer. The worker must revisit the source and reason again.
     """
 
-    if len(problems) != SOCRATIC_EXPECTED_BATCH_SIZE:
-        raise ValueError(
-            "Socratic Trap requires exactly "
-            f"{SOCRATIC_EXPECTED_BATCH_SIZE} problems; received {len(problems)}."
-        )
+    if not problems:
+        raise ValueError("Socratic Trap requires at least one problem.")
 
     findings: list[TrapFinding] = []
 
@@ -151,7 +145,7 @@ def detect_socratic_traps(
         except (TypeError, ValueError):
             problem_id = index
 
-        if not 1 <= problem_id <= SOCRATIC_EXPECTED_BATCH_SIZE:
+        if problem_id < 1:
             problem_id = index
 
         question = _normalize_text(problem.get("question"))
