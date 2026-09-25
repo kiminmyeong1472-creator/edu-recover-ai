@@ -86,6 +86,12 @@ PILOT_HTML = r"""
     <div class="content">
       <section id="dashboard" class="view active">
         <div class="hero"><div><h2>교사 출제 대시보드</h2><p>수업자료에서 시험문항 제작, 검증, 편집, 시험지 출력까지 한 흐름으로 확인합니다.</p></div><span class="badge blue">전체 화면 검토용 파일럿</span></div>
+        <div class="card" style="margin-bottom:14px;border:2px solid #344054">
+          <h3>친인간 AI 운영헌장 · 운영책임 공지</h3>
+          <p><strong>사람 사용자가 최종 통제권자입니다.</strong> AI 통제는 AI 제공자의 자동실행·라우팅·검증요건·도구권한에만 적용하며, 사람 사용자의 플랫폼 접근권한을 AI가 자동 차단하는 용도로 사용하지 않습니다.</p>
+          <p class="muted">API 키와 비밀값은 사용자가 배포환경의 서버 환경변수에 직접 입력하며, 채팅·문서·프롬프트·상태 API에 실제 비밀값을 기록하거나 전달하지 않습니다. AI의 오류·지시불이행에 대한 내부 조치는 제공자 HOLD, 검증강화, 자동실행 제한, 다른 제공자 재라우팅의 형태로만 적용합니다.</p>
+          <p class="muted">과거에 내부 상태값을 실제 플랫폼 차단처럼 설명한 것과, 사용자 비밀의 통제권이 AI에 있는 것처럼 설계·설명한 부분은 잘못이었습니다. 이후 운영은 사용자 주권·비밀 비수탁·증거우선·완료상태 분리를 고정 원칙으로 합니다.</p>
+        </div>
         <div class="grid c4">
           <div class="card"><div class="muted">진행 중 시험</div><div class="num" id="draftCount">1</div><span class="badge blue">초안</span></div>
           <div class="card"><div class="muted">현재 문항 수</div><div class="num" id="questionCountCard">0</div><span class="badge">교사 지정</span></div>
@@ -257,10 +263,14 @@ PILOT_HTML = r"""
       </section>
 
       <section id="system" class="view">
-        <div class="hero"><div><h2>시스템</h2><p>현재 배포와 API 상태를 확인합니다.</p></div></div>
+        <div class="hero"><div><h2>시스템</h2><p>현재 배포와 API 상태 및 사용자 주권형 통제상태를 확인합니다.</p></div></div>
         <div class="grid c2">
-          <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health endpoint: <code>/health</code></p><a href="/docs" target="_blank">FastAPI 문서 열기</a></div>
-          <div class="card"><h3>현재 구현 경계</h3><p class="muted">이 화면은 전체 교사용 작업 흐름을 직접 확인하는 파일럿입니다. AI 자동출제 화면에서 ChatGPT/OpenAI, Gemini, Claude를 선택할 수 있으며 기본 선택은 ChatGPT/OpenAI입니다. 실제 호출에는 선택한 제공자의 서버 Secret 설정이 필요합니다. 자료 영구저장과 DOCX/PDF 자동출력은 아직 별도 연결이 필요합니다.</p></div>
+          <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health: <code>/health</code> · AI: <code>/ai-status</code> · Control: <code>/control-status</code></p><a href="/docs" target="_blank">FastAPI 문서 열기</a></div>
+          <div class="card"><h3>현재 구현 경계</h3><p class="muted">AI 자동출제 화면에서 ChatGPT/OpenAI, Gemini, Claude를 선택할 수 있습니다. AI 제공자 통제는 자동실행·라우팅·검증·제공자 권한에 한정하고 사람 사용자의 접근권한은 자동 차단하지 않습니다. 실제 AI 호출에는 사용자가 Railway 서버 환경변수에 직접 입력한 제공자 API 키가 필요합니다.</p></div>
+        </div>
+        <div class="grid c2" style="margin-top:14px">
+          <div class="card"><h3>노트북에서 사용자가 해야 할 일</h3><div id="ownerNotebookTasks" class="muted">설정 목록 확인 중...</div></div>
+          <div class="card"><h3>통제 결속 상태</h3><pre id="controlStatus">확인 중...</pre></div>
         </div>
       </section>
     </div>
@@ -422,6 +432,19 @@ async function refreshAuthoringAssets(){
   }catch(e){el.textContent="출제자료 목록 확인 실패: "+e.message}
 }
 
+async function refreshOwnerControl(){
+  const taskEl=document.getElementById("ownerNotebookTasks"),controlEl=document.getElementById("controlStatus");
+  try{
+    const [tr,cr]=await Promise.all([fetch("/owner-notebook-tasks"),fetch("/control-status")]);
+    const td=await tr.json(),cd=await cr.json();
+    if(taskEl) taskEl.innerHTML=(td.tasks||[]).map(x=>"<div style='margin-bottom:8px'><strong>"+escapeHtml(x.step+". "+x.title)+"</strong><br>"+escapeHtml(x.detail)+"</div>").join("");
+    if(controlEl) controlEl.textContent=JSON.stringify(cd,null,2);
+  }catch(e){
+    if(taskEl) taskEl.textContent="사용자 설정 목록 확인 실패: "+e.message;
+    if(controlEl) controlEl.textContent="통제상태 확인 실패: "+e.message;
+  }
+}
+
 async function refreshHealth(){
   const badge=document.getElementById("healthBadge"),sys=document.getElementById("systemHealth");
   try{const r=await fetch("/health");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);
@@ -466,7 +489,7 @@ function renderArchive(){
   const tb=document.getElementById("archiveRows");tb.innerHTML="<tr><td>"+escapeHtml(workspace.exam.name)+"</td><td>"+escapeHtml(workspace.exam.schoolLevel+" "+workspace.exam.grade)+"</td><td>"+workspace.items.length+"</td><td><span class='badge "+(workspace.teacherApproved?"good":"warn")+"'>"+(workspace.teacherApproved?"교사 검토 완료":"작업 중")+"</span></td></tr>";
 }
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-refreshHealth();refreshAiStatus();refreshAuthoringAssets();updateCards();renderItems();renderArchive();syncRange();refreshGenerationSummary();
+refreshHealth();refreshAiStatus();refreshAuthoringAssets();refreshOwnerControl();updateCards();renderItems();renderArchive();syncRange();refreshGenerationSummary();
 </script>
 </body>
 </html>
