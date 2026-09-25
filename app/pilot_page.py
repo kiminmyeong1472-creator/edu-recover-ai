@@ -188,7 +188,7 @@ PILOT_HTML = r"""
           <div class="card">
             <h3>출제 원문</h3>
             <label>AI 제공자</label>
-            <select id="genProvider"><option value="openai">ChatGPT / OpenAI</option><option value="gemini">Gemini</option></select>
+            <select id="genProvider"><option value="openai" selected>ChatGPT / OpenAI</option><option value="gemini">Gemini</option><option value="claude">Claude</option></select>
             <label>원문·교과서 본문·수업자료</label>
             <textarea id="generationSource" style="min-height:320px" placeholder="출제할 원문을 여기에 붙여 넣으십시오."></textarea>
             <label>추가 출제 지시</label>
@@ -252,7 +252,7 @@ PILOT_HTML = r"""
         <div class="hero"><div><h2>시스템</h2><p>현재 배포와 API 상태를 확인합니다.</p></div></div>
         <div class="grid c2">
           <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health endpoint: <code>/health</code></p><a href="/docs" target="_blank">FastAPI 문서 열기</a></div>
-          <div class="card"><h3>현재 구현 경계</h3><p class="muted">이 화면은 전체 교사용 작업 흐름을 직접 확인하는 파일럿입니다. AI 자동출제 API는 OpenAI/Gemini 제공자 선택 방식으로 연결되어 있으며 실제 호출에는 해당 제공자의 서버 Secret 설정이 필요합니다. 자료 영구저장과 DOCX/PDF 자동출력은 아직 별도 연결이 필요합니다.</p></div>
+          <div class="card"><h3>현재 구현 경계</h3><p class="muted">이 화면은 전체 교사용 작업 흐름을 직접 확인하는 파일럿입니다. AI 자동출제 화면에서 ChatGPT/OpenAI, Gemini, Claude를 선택할 수 있으며 기본 선택은 ChatGPT/OpenAI입니다. 실제 호출에는 선택한 제공자의 서버 Secret 설정이 필요합니다. 자료 영구저장과 DOCX/PDF 자동출력은 아직 별도 연결이 필요합니다.</p></div>
         </div>
       </section>
     </div>
@@ -287,11 +287,17 @@ async function refreshAiStatus(){
   const cell=document.getElementById("autoGenStatus"),badge=document.getElementById("providerBadge");
   try{
     const r=await fetch("/ai-status");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);
-    const ready=[];
-    if(d.openai?.configured) ready.push("OpenAI");
-    if(d.gemini?.configured) ready.push("Gemini");
-    if(cell) cell.innerHTML=ready.length?"<span class='badge good'>"+ready.join(" · ")+" 사용 가능</span>":"<span class='badge warn'>Gemini 연동 준비중</span>";
-    if(badge){badge.className=ready.length?"badge good":"badge warn";badge.textContent=ready.length?ready.join(" · ")+" 연결됨":"Gemini 연동 준비중";}
+    const parts=[
+      "OpenAI "+(d.openai?.configured?"연결됨":"준비중"),
+      "Gemini "+(d.gemini?.configured?"연결됨":"준비중"),
+      "Claude "+(d.claude?.configured?"연결됨":"준비중")
+    ];
+    const anyReady=Boolean(d.openai?.configured||d.gemini?.configured||d.claude?.configured);
+    if(cell) cell.innerHTML="<span class='badge "+(anyReady?"good":"warn")+"'>"+parts.join(" · ")+"</span>";
+    if(badge){
+      badge.className=d.openai?.configured?"badge good":"badge warn";
+      badge.textContent=d.openai?.configured?"ChatGPT / OpenAI 연결됨":"ChatGPT / OpenAI 연동 준비중";
+    }
   }catch(e){
     if(cell) cell.innerHTML="<span class='badge warn'>상태 확인 실패</span>";
     if(badge){badge.className="badge warn";badge.textContent="상태 확인 실패";}

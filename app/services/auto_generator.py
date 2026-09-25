@@ -1,7 +1,6 @@
 """AI automatic question generation for the teacher pilot.
 
-OpenAI and Gemini are supported as generation providers. Claude/Anthropic is
-intentionally not used by this module.
+OpenAI, Gemini, and Claude/Anthropic are supported as selectable generation providers. OpenAI is the default provider for the teacher pilot.
 """
 
 from __future__ import annotations
@@ -11,6 +10,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from anthropic import AsyncAnthropic
 from google import genai
 from openai import AsyncOpenAI
 
@@ -20,6 +20,7 @@ from app.core.config import settings
 class GenerationProvider(StrEnum):
     OPENAI = "openai"
     GEMINI = "gemini"
+    CLAUDE = "claude"
 
 
 class GeneratorNotConfigured(RuntimeError):
@@ -230,6 +231,45 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
         ) from exc
 
 
+async def _generate_with_anthropic(prompt: str, count: int) -> GenerationResult:
+    if settings.anthropic_api_key is None:
+        raise GeneratorNotConfigured(
+            "ANTHROPIC_API_KEY is not configured in the server secret store."
+        )
+
+    client = AsyncAnthropic(
+        api_key=settings.anthropic_api_key.get_secret_value(),
+    )
+    try:
+        message = await client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=8000,
+            system=SYSTEM_INSTRUCTIONS,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(
+            block.text
+            for block in message.content
+            if getattr(block, "type", None) == "text"
+        )
+        items = _parse_and_validate_items(text, count)
+        return GenerationResult(
+            provider=GenerationProvider.CLAUDE.value,
+            model=settings.anthropic_model,
+            items=items,
+        )
+    except GeneratorNotConfigured:
+        raise
+    except GenerationFailed:
+        raise
+    except Exception as exc:
+        raise GenerationFailed(
+            f"Claude generation failed ({type(exc).__name__})."
+        ) from exc
+    finally:
+        await client.close()
+
+
 async def generate_questions(
     *,
     provider: str,
@@ -270,5 +310,7 @@ async def generate_questions(
         return await _generate_with_openai(prompt, count)
     if normalized_provider == GenerationProvider.GEMINI.value:
         return await _generate_with_gemini(prompt, count)
+    if normalized_provider == GenerationProvider.CLAUDE.value:
+        return await _generate_with_anthropic(prompt, count)
 
     raise GenerationFailed(f"Unsupported generation provider: {provider}")

@@ -33,7 +33,7 @@ class VerifyProblemRequest(BaseModel):
 
 
 class GenerateQuestionsRequest(BaseModel):
-    provider: Literal["openai", "gemini"] = "openai"
+    provider: Literal["openai", "gemini", "claude"] = "openai"
     source_text: str = Field(..., min_length=1)
     count: int = Field(default=20, ge=1, le=50)
     subject: str = "영어"
@@ -88,7 +88,11 @@ async def ai_status() -> dict[str, Any]:
             "configured": settings.gemini_api_key is not None,
             "model": settings.gemini_model,
         },
-        "anthropic_generation": "not_used",
+        "claude": {
+            "configured": settings.anthropic_api_key is not None,
+            "model": settings.anthropic_model,
+        },
+        "default_provider": "openai",
     }
 
 
