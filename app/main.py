@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 from app.services.authoring_assets import get_asset_manifest
+from app.services.human_ai_charter import CHARTER
 from app.services.control_plane import (
     ProviderHeld,
     assert_provider_allowed,
@@ -120,6 +121,12 @@ async def authoring_assets() -> dict[str, Any]:
         "platform_chat_history_forwarded": False,
         "assets": get_asset_manifest(),
     }
+
+
+@app.get("/human-ai-charter", tags=["system"])
+async def human_ai_charter() -> dict[str, Any]:
+    """Publish the full human-sovereignty reflection and pledge."""
+    return CHARTER
 
 
 @app.get("/control-status", tags=["system"])
