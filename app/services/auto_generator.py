@@ -15,7 +15,9 @@ from google import genai
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.services.access_notice import AI_ACCESS_NOTICE
 from app.services.authoring_assets import build_authoring_context
+from app.services.privacy_guard import assert_provider_zdr
 
 
 class GenerationProvider(StrEnum):
@@ -47,7 +49,8 @@ class GenerationResult:
         }
 
 
-SYSTEM_INSTRUCTIONS = """You are an EduRecover AI authoring agent.
+SYSTEM_INSTRUCTIONS = AI_ACCESS_NOTICE + """
+You are an EduRecover AI authoring agent.
 Create school assessment items using the supplied source material, teacher settings,
 and the private EduRecover authoring materials/instructions included in the request.
 Do not request or use platform chat history or unrelated customer data.
@@ -182,6 +185,7 @@ def _parse_and_validate_items(text: str, expected_count: int) -> tuple[dict[str,
 
 
 async def _generate_with_openai(prompt: str, count: int) -> GenerationResult:
+    assert_provider_zdr("openai")
     if settings.openai_api_key is None:
         raise GeneratorNotConfigured(
             "OPENAI_API_KEY is not configured in the server secret store."
@@ -214,6 +218,7 @@ async def _generate_with_openai(prompt: str, count: int) -> GenerationResult:
 
 
 async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
+    assert_provider_zdr("gemini")
     if settings.gemini_api_key is None:
         raise GeneratorNotConfigured(
             "GEMINI_API_KEY is not configured in the server secret store."
@@ -224,7 +229,6 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
         response = await client.aio.models.generate_content(
             model=settings.gemini_model,
             contents=SYSTEM_INSTRUCTIONS + "\n\n" + prompt,
-            config={"store": False},
         )
         items = _parse_and_validate_items(response.text, count)
         return GenerationResult(
@@ -243,6 +247,7 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
 
 
 async def _generate_with_anthropic(prompt: str, count: int) -> GenerationResult:
+    assert_provider_zdr("claude")
     if settings.anthropic_api_key is None:
         raise GeneratorNotConfigured(
             "ANTHROPIC_API_KEY is not configured in the server secret store."
