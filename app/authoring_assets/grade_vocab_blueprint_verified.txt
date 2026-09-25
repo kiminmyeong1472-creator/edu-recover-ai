@@ -1,0 +1,31 @@
+[PRIVATE / SOURCE-DERIVED / NO INFERENCE]
+EduRecover 학년별 구체 어휘 — 300문항 블루프린트에서 직접 회수
+
+원본:
+영어_출제블루프린트_고1고2고3_300문항_통합본.txt
+Google Drive ID: 1L8Xsu26OMpxWj4u4on0rN-uwfPchnoDn
+구성: 고1 100 + 고2 100 + 고3 100 블루프린트
+
+추출 기준:
+- subject = english
+- category = vocabulary
+- unit = "vocabulary: <headword>"
+- 동일 단어의 난도별 반복은 중복 제거
+- 원본에 없는 학년 태그나 단어는 추가하지 않음
+
+[고1 / H1]
+- mitigate
+- scarce
+
+[고2 / H2]
+- robust
+- tentative
+
+[고3 / H3]
+- constrain
+- salient
+
+주의:
+이 파일은 현재 회수한 300문항 블루프린트에 명시된 구체 어휘만 정리한 것이다.
+전체 정규화 어휘 자산(vocab_norm_v1.txt)은 별도로 서버에 탑재되어 있으나,
+그 1,114개 표제어에는 검증된 H1/H2/H3 개별 태그가 없으므로 임의 분류하지 않는다.
