@@ -26,7 +26,7 @@ class Settings(BaseSettings):
         validation_alias="GEMINI_API_KEY",
     )
     openai_model: str = Field(
-        default="gpt-5.6-luna",
+        default="gpt-5.6-sol",
         validation_alias="OPENAI_MODEL",
     )
     anthropic_model: str = Field(

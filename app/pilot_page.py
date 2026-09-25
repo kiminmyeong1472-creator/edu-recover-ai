@@ -188,7 +188,7 @@ PILOT_HTML = r"""
           <div class="card">
             <h3>출제 원문</h3>
             <label>AI 제공자</label>
-            <select id="genProvider"><option value="openai" selected>ChatGPT / OpenAI</option><option value="gemini">Gemini</option><option value="claude">Claude</option></select>
+            <select id="genProvider"><option value="openai" selected>ChatGPT / OpenAI · GPT-5.6 Sol</option><option value="gemini">Gemini</option><option value="claude">Claude</option></select>
             <label>원문·교과서 본문·수업자료</label>
             <textarea id="generationSource" style="min-height:320px" placeholder="출제할 원문을 여기에 붙여 넣으십시오."></textarea>
             <label>추가 출제 지시</label>
@@ -296,7 +296,7 @@ async function refreshAiStatus(){
     if(cell) cell.innerHTML="<span class='badge "+(anyReady?"good":"warn")+"'>"+parts.join(" · ")+"</span>";
     if(badge){
       badge.className=d.openai?.configured?"badge good":"badge warn";
-      badge.textContent=d.openai?.configured?"ChatGPT / OpenAI 연결됨":"ChatGPT / OpenAI 연동 준비중";
+      badge.textContent=d.openai?.configured?"ChatGPT / OpenAI · GPT-5.6 Sol 연결됨":"ChatGPT / OpenAI · GPT-5.6 Sol 연동 준비중";
     }
   }catch(e){
     if(cell) cell.innerHTML="<span class='badge warn'>상태 확인 실패</span>";
