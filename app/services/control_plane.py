@@ -61,6 +61,14 @@ def _normalized_manifest() -> dict[str, Any]:
     restricted = set(str(v).strip().lower() for v in manifest.get("restricted_providers", []) if str(v).strip())
     blocked |= _csv_env("EDURECOVER_BLOCKED_PROVIDERS")
     restricted |= _csv_env("EDURECOVER_RESTRICTED_PROVIDERS")
+    allowed = set(str(v).strip().lower() for v in manifest.get("allowed_providers", []) if str(v).strip())
+    allowed |= _csv_env("EDURECOVER_ALLOWED_PROVIDERS")
+    require_explicit_allow = bool(
+        manifest.get(
+            "require_explicit_provider_allow",
+            _bool_env("EDURECOVER_REQUIRE_EXPLICIT_PROVIDER_ALLOW", True),
+        )
+    )
 
     hold_all = bool(manifest.get("hold_all_ai", False)) or _bool_env("EDURECOVER_AI_HOLD", False)
     epoch = str(
@@ -74,6 +82,8 @@ def _normalized_manifest() -> dict[str, Any]:
         "hold_all_ai": hold_all,
         "blocked_providers": sorted(blocked),
         "restricted_providers": sorted(restricted),
+        "allowed_providers": sorted(allowed),
+        "require_explicit_provider_allow": require_explicit_allow,
         "require_cross_verification": bool(
             manifest.get(
                 "require_cross_verification",
@@ -103,6 +113,15 @@ def evaluate_provider(provider: str, action: str) -> ControlDecision:
 
     if manifest["hold_all_ai"]:
         return ControlDecision(False, provider, action, "HOLD", "all AI automation is held by owner control", epoch)
+    if manifest["require_explicit_provider_allow"] and provider not in manifest["allowed_providers"]:
+        return ControlDecision(
+            False,
+            provider,
+            action,
+            "OWNER_PERMISSION_REQUIRED",
+            "provider channel is not on the owner allow-list",
+            epoch,
+        )
     if provider in manifest["blocked_providers"]:
         return ControlDecision(False, provider, action, "BLOCKED", "provider is blocked by owner control", epoch)
     if provider in manifest["restricted_providers"] and action == "generate":
@@ -134,15 +153,15 @@ def notebook_tasks() -> list[dict[str, str]]:
             "title": "Railway 서버 환경변수에 AI API 키 직접 입력",
             "detail": (
                 "EduRecover-v3.24.9 > edurecover-prod > Variables에서 "
-                "OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY를 필요한 제공자만 직접 입력합니다. "
-                "키 값은 ChatGPT/Gemini/Claude 대화창이나 문서에 붙여넣지 않습니다."
+                "각 AI 회사의 API 키는 필요한 제공자만 직접 입력합니다. "
+                "키 값은 AI 대화창이나 문서에 붙여넣지 않습니다."
             ),
         },
         {
             "step": "2",
             "title": "모델명 확인",
             "detail": (
-                "OPENAI_MODEL, GEMINI_MODEL, ANTHROPIC_MODEL을 실제 사용 가능한 모델명으로 확인합니다."
+                "각 허용 AI 채널의 모델 설정을 실제 사용 가능한 모델명으로 확인합니다."
             ),
         },
         {
