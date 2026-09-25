@@ -1,9 +1,11 @@
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.pilot_page import PILOT_HTML
 from app.services.socratic_trap import (
     SOCRATIC_EXPECTED_BATCH_SIZE,
     detect_socratic_traps,
@@ -36,6 +38,13 @@ class ApplyTrapRequest(BaseModel):
             "objects for Socratic Trap analysis."
         ),
     )
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/pilot", response_class=HTMLResponse, include_in_schema=False)
+async def teacher_pilot() -> HTMLResponse:
+    """Serve the teacher-facing pilot console."""
+    return HTMLResponse(PILOT_HTML)
 
 
 @app.get("/health", tags=["system"])
