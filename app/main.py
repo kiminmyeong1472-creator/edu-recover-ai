@@ -2,9 +2,10 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
+from app.services.authoring_assets import get_asset_manifest
 from app.pilot_page import PILOT_HTML
 from app.services.auto_generator import (
     GenerationFailed,
@@ -34,6 +35,7 @@ class VerifyProblemRequest(BaseModel):
 
 
 class GenerateQuestionsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     provider: Literal["openai", "gemini", "claude"] = "openai"
     source_text: str = Field(..., min_length=1)
     count: int = Field(default=20, ge=1, le=50)
@@ -48,6 +50,7 @@ class GenerateQuestionsRequest(BaseModel):
 
 
 class VerifyWithProviderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     provider: Literal["openai", "gemini", "claude"]
     problems: list[dict[str, Any]] = Field(..., min_length=1)
 
@@ -99,6 +102,33 @@ async def ai_status() -> dict[str, Any]:
             "model": settings.anthropic_model,
         },
         "default_provider": "openai",
+    }
+
+
+@app.get("/authoring-assets", tags=["authoring"])
+async def authoring_assets() -> dict[str, Any]:
+    """List private server-side EduRecover authoring assets without exposing raw internal text."""
+    return {
+        "usage": "generation_and_verification",
+        "sharing": "task-relevant excerpts only",
+        "platform_chat_history_forwarded": False,
+        "assets": get_asset_manifest(),
+    }
+
+
+@app.get("/privacy-status", tags=["system"])
+async def privacy_status() -> dict[str, Any]:
+    """Describe application-level data-minimization controls."""
+    return {
+        "platform_chat_history_forwarded": False,
+        "unknown_request_fields_rejected": True,
+        "openai_store_requested": False,
+        "gemini_store_requested": False,
+        "full_authoring_corpus_location": "private EduRecover server/repository",
+        "provider_zero_data_retention": (
+            "Provider-side ZDR/retention controls must be separately enabled or contracted. "
+            "The application does not claim provider-side zero retention by itself."
+        ),
     }
 
 
