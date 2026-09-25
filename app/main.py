@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 from app.services.authoring_assets import get_asset_manifest
+from app.services.control_plane import (
+    ProviderHeld,
+    assert_provider_allowed,
+    control_status,
+    notebook_tasks,
+)
 from app.pilot_page import PILOT_HTML
 from app.services.auto_generator import (
     GenerationFailed,
@@ -116,6 +122,18 @@ async def authoring_assets() -> dict[str, Any]:
     }
 
 
+@app.get("/control-status", tags=["system"])
+async def platform_control_status() -> dict[str, Any]:
+    """Expose non-secret owner-sovereignty and AI-control state."""
+    return control_status()
+
+
+@app.get("/owner-notebook-tasks", tags=["system"])
+async def owner_notebook_tasks() -> dict[str, Any]:
+    """Return the remaining owner-side setup steps without secret values."""
+    return {"tasks": notebook_tasks()}
+
+
 @app.get("/privacy-status", tags=["system"])
 async def privacy_status() -> dict[str, Any]:
     """Describe application-level data-minimization controls."""
@@ -125,6 +143,8 @@ async def privacy_status() -> dict[str, Any]:
         "openai_store_requested": False,
         "gemini_store_requested": False,
         "full_authoring_corpus_location": "private EduRecover server/repository",
+        "api_key_custody": "deployment environment variables only; secret values are not returned to AI prompts or status APIs",
+        "human_owner_auto_blocking": False,
         "provider_zero_data_retention": (
             "Provider-side ZDR/retention controls must be separately enabled or contracted. "
             "The application does not claim provider-side zero retention by itself."
@@ -138,6 +158,7 @@ async def generate_question_drafts(
 ) -> dict[str, Any]:
     """Generate teacher-editable draft questions from supplied source material."""
     try:
+        assert_provider_allowed(payload.provider, "generate")
         result = await generate_questions(
             provider=payload.provider,
             source_text=payload.source_text,
@@ -151,6 +172,8 @@ async def generate_question_drafts(
             scope_memo=payload.scope_memo,
             extra_instructions=payload.extra_instructions,
         )
+    except ProviderHeld as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
     except GeneratorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except GenerationFailed as exc:
@@ -165,7 +188,10 @@ async def verify_generated_item_with_provider(
 ) -> dict[str, Any]:
     """Cross-check generated item(s) with one explicitly selected AI provider."""
     try:
+        assert_provider_allowed(payload.provider, "verify")
         return await verify_with_provider(payload.provider, payload.problems)
+    except ProviderHeld as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
     except GeneratorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except GenerationFailed as exc:
