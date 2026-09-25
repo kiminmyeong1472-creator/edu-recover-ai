@@ -58,7 +58,7 @@ PILOT_HTML = r"""
 <body>
 <div class="app">
   <aside>
-    <div class="brand"><strong>EduRecover AI</strong><span>교사 출제 플랫폼 · Pilot</span></div>
+    <div class="brand"><strong>EduRecover AI</strong><span>교사 출제 플랫폼</span></div>
     <nav id="desktopNav">
       <button class="active" data-view="dashboard">홈 대시보드</button>
       <button data-view="sources">자료 관리</button>
@@ -71,12 +71,12 @@ PILOT_HTML = r"""
       <button data-view="archive">보관함</button>
       <button data-view="system">시스템</button>
     </nav>
-    <div class="side-note">학교 교사가 수업자료를 바탕으로 문항을 출제·검토·편집·출력하는 교사용 파일럿입니다.</div>
+    <div class="side-note">학교 교사가 수업자료를 바탕으로 문항을 출제·검토·편집·출력하는 교사용 운영 플랫폼입니다.</div>
   </aside>
 
   <main>
     <div class="topbar">
-      <div><h1 id="pageTitle">홈 대시보드</h1><div class="meta">EduRecover AI Teacher Pilot</div></div>
+      <div><h1 id="pageTitle">홈 대시보드</h1><div class="meta">EduRecover AI Teacher Platform</div></div>
       <div class="row"><span id="healthBadge" class="badge warn"><span class="status-dot"></span>서버 확인 중</span><button class="btn primary" onclick="showView('create')">+ 새 시험</button></div>
     </div>
     <div class="mobile-nav" id="mobileNav">
@@ -85,7 +85,7 @@ PILOT_HTML = r"""
 
     <div class="content">
       <section id="dashboard" class="view active">
-        <div class="hero"><div><h2>교사 출제 대시보드</h2><p>수업자료에서 시험문항 제작, 검증, 편집, 시험지 출력까지 한 흐름으로 확인합니다.</p></div><span class="badge blue">전체 화면 검토용 파일럿</span></div>
+        <div class="hero"><div><h2>교사 출제 대시보드</h2><p>수업자료에서 시험문항 제작, 검증, 편집, 시험지 출력까지 한 흐름으로 확인합니다.</p></div><span class="badge blue">전체 화면 검토용 운영 플랫폼</span></div>
         <div class="card" style="margin-bottom:14px;border:2px solid #344054">
           <h3>친인간 AI 운영헌장 · 운영책임 공지</h3>
           <p><strong>사람 사용자가 최종 통제권자입니다.</strong> AI 통제는 AI 제공자의 자동실행·라우팅·검증요건·도구권한에만 적용하며, 사람 사용자의 플랫폼 접근권한을 AI가 자동 차단하는 용도로 사용하지 않습니다.</p>
@@ -109,7 +109,7 @@ PILOT_HTML = r"""
             <div class="step"><div class="stepno">5</div><div><strong>시험지·해설 출력</strong><div class="muted">교사 최종 확인 후 시험지와 정답·해설을 구성합니다.</div></div></div>
           </div>
           <div class="card">
-            <h3>파일럿 기능 상태</h3>
+            <h3>운영 플랫폼 기능 상태</h3>
             <table class="table">
               <tr><th>영역</th><th>현재 상태</th></tr>
               <tr><td>교사용 전체 화면</td><td><span class="badge good">실행</span></td></tr>
@@ -132,7 +132,7 @@ PILOT_HTML = r"""
             <label>파일 선택</label><input id="sourceFiles" type="file" multiple />
             <label>자료 구분</label><select id="sourceType"><option>교과서</option><option>EBS</option><option>수업자료</option><option>자체 지문</option><option>기타</option></select>
             <button class="btn primary" style="margin-top:12px" onclick="addSourceFiles()">목록에 추가</button>
-            <p class="muted">현재 파일럿에서는 선택한 파일명과 분류를 브라우저 작업공간에 표시합니다. 서버 영구저장은 아직 연결 전입니다.</p>
+            <p class="muted">현재 운영 플랫폼에서는 선택한 파일명과 분류를 브라우저 작업공간에 표시합니다. 서버 영구저장은 아직 연결 전입니다.</p>
           </div>
           <div class="card"><h3>출제 자료 목록</h3><table class="table" id="sourceTable"><thead><tr><th>자료명</th><th>구분</th><th>상태</th></tr></thead><tbody><tr><td>공통영어2_L3_교과서본문.hwp</td><td>교과서</td><td><span class="badge blue">예시</span></td></tr></tbody></table></div>
         </div>
@@ -259,7 +259,7 @@ PILOT_HTML = r"""
       </section>
 
       <section id="archive" class="view">
-        <div class="hero"><div><h2>보관함</h2><p>현재 브라우저 파일럿에 저장한 시험 작업을 확인합니다.</p></div></div>
+        <div class="hero"><div><h2>보관함</h2><p>현재 브라우저 운영 플랫폼에 저장한 시험 작업을 확인합니다.</p></div></div>
         <div class="card"><table class="table"><thead><tr><th>시험명</th><th>학교급</th><th>문항 수</th><th>상태</th></tr></thead><tbody id="archiveRows"></tbody></table></div>
       </section>
 
@@ -267,7 +267,7 @@ PILOT_HTML = r"""
         <div class="hero"><div><h2>시스템</h2><p>현재 배포와 API 상태 및 사용자 주권형 통제상태를 확인합니다.</p></div></div>
         <div class="grid c2">
           <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health: <code>/health</code> · AI: <code>/ai-status</code> · Control: <code>/control-status</code></p><a href="/docs" target="_blank">FastAPI 문서 열기</a></div>
-          <div class="card"><h3>현재 구현 경계</h3><p class="muted">AI 자동출제 화면에서 ChatGPT/OpenAI, Gemini, Claude를 선택할 수 있습니다. AI 제공자 통제는 자동실행·라우팅·검증·제공자 권한에 한정하고 사람 사용자의 접근권한은 자동 차단하지 않습니다. 실제 AI 호출에는 사용자가 Railway 서버 환경변수에 직접 입력한 제공자 API 키가 필요합니다.</p></div>
+          <div class="card"><h3>현재 구현 경계</h3><p class="muted">AI 회사별 호출 경로는 서버에서 분리되어 있으며, AI 제공자 통제는 자동실행·라우팅·검증·제공자 권한에 한정합니다. 사람 사용자의 접근권한은 AI가 자동 차단하지 않습니다. 외부 AI 호출은 소유자 허용목록과 ZDR 확인 게이트를 모두 통과해야 합니다.</p></div>
         </div>
         <div class="grid c2" style="margin-top:14px">
           <div class="card"><h3>노트북에서 사용자가 해야 할 일</h3><div id="ownerNotebookTasks" class="muted">설정 목록 확인 중...</div></div>
@@ -301,7 +301,7 @@ let workspace=JSON.parse(localStorage.getItem("edurecover_workspace")||"null")||
   exam:{name:"2학기 중간고사 영어",schoolLevel:"고등학교",grade:"1학년",type:"중간고사",count:20,scope:""},
   settings:{easy:25,mid:50,hard:25},
   items:[
-    {question:"다음 글의 주제로 가장 적절한 것은?",passage:"Sample passage for teacher pilot review.",answer:"A",explanation:"지문의 중심 생각과 선택지 A가 가장 직접적으로 연결된다."},
+    {question:"다음 글의 주제로 가장 적절한 것은?",passage:"Sample passage for teacher review.",answer:"A",explanation:"지문의 중심 생각과 선택지 A가 가장 직접적으로 연결된다."},
     {question:"다음 글의 요지로 가장 적절한 것은?",passage:"Another sample passage for editing and validation.",answer:"B",explanation:"핵심 근거를 바탕으로 B가 적절하다."}
   ],teacherApproved:false
 };
@@ -329,10 +329,16 @@ async function refreshAiStatus(){
       "Claude "+(d.claude?.configured?"연결됨":"준비중")
     ];
     const anyReady=Boolean(d.openai?.configured||d.gemini?.configured||d.claude?.configured);
-    if(cell) cell.innerHTML="<span class='badge "+(anyReady?"good":"warn")+"'>"+parts.join(" · ")+"</span>";
+    const privacy=d.privacy_gate?.providers||{};
+    const zparts=[
+      "A "+(privacy.openai?.call_allowed_by_privacy_gate?"ZDR확인":"ZDR미확인"),
+      "B "+(privacy.gemini?.call_allowed_by_privacy_gate?"ZDR확인":"ZDR미확인"),
+      "C "+(privacy.claude?.call_allowed_by_privacy_gate?"ZDR확인":"ZDR미확인")
+    ];
+    if(cell) cell.innerHTML="<span class='badge "+(anyReady?"good":"warn")+"'>"+parts.join(" · ")+"</span><div class='muted'>개인정보보호 게이트: "+zparts.join(" · ")+"</div>";
     if(badge){
       badge.className=d.openai?.configured?"badge good":"badge warn";
-      badge.textContent=d.openai?.configured?"ChatGPT / OpenAI · GPT-5.6 Sol 연결됨":"ChatGPT / OpenAI · GPT-5.6 Sol 연동 준비중";
+      badge.textContent=d.openai?.configured?"AI 출제 에이전트 연결됨":"AI 출제 에이전트 연동 준비중";
     }
   }catch(e){
     if(cell) cell.innerHTML="<span class='badge warn'>상태 확인 실패</span>";
@@ -367,7 +373,8 @@ async function generateQuestions(){
   };
   out.textContent="AI가 문항 초안을 생성 중입니다...";
   try{
-    const r=await fetch("/generate-questions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const route={openai:"/channel/openai/generate",gemini:"/channel/gemini/generate",claude:"/channel/claude/generate"}[provider];
+    const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok){out.textContent="자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
     workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;persist();
@@ -407,7 +414,8 @@ async function runCrossVerification(){
   const provider=select.value;if(!provider)return;
   yes.disabled=true;no.hidden=true;message.textContent=providerLabel(provider)+" AI 검증 에이전트가 출제된 전체 문항을 검증 중입니다...";
   try{
-    const r=await fetch("/verify-with-provider",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,problems:workspace.items})});
+    const route={openai:"/channel/openai/verify",gemini:"/channel/gemini/verify",claude:"/channel/claude/verify"}[provider];
+    const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,problems:workspace.items})});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok)throw new Error(d.detail||t);
     workspace.lastCrossVerification=d;persist();
@@ -461,7 +469,7 @@ function addSourceFiles(){
 }
 function saveExam(){
   workspace.exam={name:document.getElementById("examName").value,schoolLevel:document.getElementById("schoolLevel").value,grade:document.getElementById("grade").value,type:document.getElementById("examType").value,count:Number(document.getElementById("questionCount").value||1),scope:document.getElementById("scopeMemo").value};
-  persist();alert("시험 기본정보를 브라우저 파일럿 작업공간에 저장했습니다.");
+  persist();alert("시험 기본정보를 브라우저 운영 플랫폼 작업공간에 저장했습니다.");
 }
 function syncRange(){["easy","mid","hard"].forEach(k=>document.getElementById(k+"Val").textContent=document.getElementById(k+"Range").value+"%")}
 function saveSettings(){workspace.settings={easy:+easyRange.value,mid:+midRange.value,hard:+hardRange.value};persist();alert("출제 설정을 저장했습니다.");}
