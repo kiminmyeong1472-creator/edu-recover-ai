@@ -1,0 +1,1183 @@
+[INTERNAL / SOURCE-NORMALIZED]
+에듀리커버 수능 영단어 정리본
+버전: VOCAB-NORM-v1.0 / 2026-09-23
+
+중요 상태
+- 원본 제목은 '핵심 2,000'이지만 현재 실제 보존본 Part 1~41에는 1,148개 번호 항목이 있다.
+- headword 기준 중복 제거 후 고유 표제어는 1,114개이다.
+- 중복 headword는 34개이며, 원래 번호와 Part는 삭제하지 않고 아래 source에 보존했다.
+- 이 목록은 제미나이 제공 외부AI 작업자산이며, 평가원·교육부의 공식 수능 빈출순위나 공식 어휘목록이 아니다.
+- 후속 Part 42~51은 현재 보존된 SOURCE_LAYER에 범위와 충돌정보만 있고 각 항목 원문이 없어, 단어를 추정·복원하지 않고 PENDING으로 남긴다.
+- Part 52~56은 현존 인덱스에서도 원문 미확인 상태다.
+
+정규화 컬럼
+VOC-ID | headword | 한국어 핵심뜻 | source(원번호/Part) | duplicate
+
+VOC-0001 | vulnerable | 취약한 | 1/P1 | N
+VOC-0002 | cognitive | 인지의 | 2/P1 | N
+VOC-0003 | sustain | 유지하다 | 3/P1 | N
+VOC-0004 | implement | 실행하다 | 4/P1 | N
+VOC-0005 | integrate | 통합하다 | 5/P1 | N
+VOC-0006 | facilitate | 촉진하다; 용이하게 하다 | 6/P1, 1066/P39 | Y
+VOC-0007 | obsolete | 구식의 | 7/P1 | N
+VOC-0008 | unprecedented | 전례 없는 | 8/P1 | N
+VOC-0009 | ambiguous | 애매한 | 9/P1 | N
+VOC-0010 | plausible | 그럴듯한 | 10/P1 | N
+VOC-0011 | resilient | 회복력 있는 | 11/P1 | N
+VOC-0012 | ubiquitous | 어디에나 있는 | 12/P1 | N
+VOC-0013 | alleviate | 완화하다 | 13/P1 | N
+VOC-0014 | fluctuate | 변동하다 | 14/P1 | N
+VOC-0015 | inherent | 내재적인 | 15/P1 | N
+VOC-0016 | mandatory | 의무적인 | 16/P1 | N
+VOC-0017 | redundant | 불필요한 | 17/P1 | N
+VOC-0018 | scrutiny | 면밀한 조사 | 18/P1 | N
+VOC-0019 | tangible | 유형의 | 19/P1 | N
+VOC-0020 | versatile | 다재다능한 | 20/P1 | N
+VOC-0021 | comprehensive | 종합적인 | 21/P1 | N
+VOC-0022 | pragmatic | 실용적인 | 22/P1 | N
+VOC-0023 | empirical | 경험적인 | 23/P1, 939/P34 | Y
+VOC-0024 | arbitrary | 임의적인 | 24/P1 | N
+VOC-0025 | susceptible | 민감한 | 25/P1 | N
+VOC-0026 | spontaneous | 자발적인 | 26/P1 | N
+VOC-0027 | autonomous | 자율적인 | 27/P1 | N
+VOC-0028 | profound | 심오한 | 28/P1 | N
+VOC-0029 | intricate | 복잡한 | 29/P2 | N
+VOC-0030 | pervasive | 만연하는 | 30/P2 | N
+VOC-0031 | advocate | 지지하다 | 31/P2 | N
+VOC-0032 | validate | 입증하다 | 32/P2 | N
+VOC-0033 | conducive | 도움이 되는 | 33/P2 | N
+VOC-0034 | differentiate | 구별하다 | 34/P2 | N
+VOC-0035 | paradigm | 패러다임 | 35/P2 | N
+VOC-0036 | compile | 엮다; 편집하다 | 36/P2, 607/P22 | Y
+VOC-0037 | supplement | 보충하다 | 37/P2 | N
+VOC-0038 | implicit | 암시된 | 38/P2 | N
+VOC-0039 | explicit | 명백한 | 39/P2, 1047/P38 | Y
+VOC-0040 | correlation | 상관관계 | 40/P2 | N
+VOC-0041 | diminish | 줄어들다 | 41/P2, 834/P30 | Y
+VOC-0042 | prominent | 저명한 | 42/P2 | N
+VOC-0043 | refine | 정제하다 | 43/P2 | N
+VOC-0044 | superficial | 피상적인 | 44/P2 | N
+VOC-0045 | undermine | 약화시키다 | 45/P2 | N
+VOC-0046 | analogous | 유사한 | 46/P2 | N
+VOC-0047 | compensate | 보상하다 | 47/P2, 604/P22 | Y
+VOC-0048 | derive | 유래하다; 끌어내다 | 48/P2, 806/P29 | Y
+VOC-0049 | distort | 왜곡하다 | 49/P2, 866/P31 | Y
+VOC-0050 | evaluate | 평가하다 | 50/P2, 1007/P36 | Y
+VOC-0051 | exploit | 이용하다; 착취하다, 이용하다 | 51/P2, 1049/P38 | Y
+VOC-0052 | hierarchy | 계급 | 52/P2 | N
+VOC-0053 | manipulate | 조종하다 | 53/P2 | N
+VOC-0054 | obscure | 모호한 | 54/P2 | N
+VOC-0055 | paradox | 역설 | 55/P2 | N
+VOC-0056 | prospect | 전망 | 56/P2 | N
+VOC-0057 | accommodate | 수용하다 | 57/P3 | N
+VOC-0058 | allocate | 할당하다 | 58/P3 | N
+VOC-0059 | alter | 변경하다 | 59/P3 | N
+VOC-0060 | anticipate | 예상하다 | 60/P3 | N
+VOC-0061 | awe | 경외감 | 61/P3 | N
+VOC-0062 | bias | 편견 | 62/P3 | N
+VOC-0063 | capacity | 수용력 | 63/P3 | N
+VOC-0064 | chronic | 만성적인 | 64/P3 | N
+VOC-0065 | coherent | 일관성 있는 | 65/P3 | N
+VOC-0066 | compatible | 호환되는; 양립할 수 있는 | 66/P3, 602/P22 | Y
+VOC-0067 | compel | 강요하다 | 67/P3, 603/P22 | Y
+VOC-0068 | consensus | 합의 | 68/P3 | N
+VOC-0069 | crucial | 중대한; 결정적인 | 69/P3, 737/P27 | Y
+VOC-0070 | deficit | 적자 | 70/P3, 784/P28 | Y
+VOC-0071 | deplete | 고갈시키다 | 71/P3, 802/P29 | Y
+VOC-0072 | deduce | 추론하다 | 72/P3, 775/P28 | Y
+VOC-0073 | deter | 단념시키다 | 73/P3 | N
+VOC-0074 | devastate | 파괴하다; 완전히 파괴하다 | 74/P3, 822/P30 | Y
+VOC-0075 | diagnose | 진단하다 | 75/P3, 826/P30 | Y
+VOC-0076 | dictate | 지시하다 | 76/P3, 827/P30 | Y
+VOC-0077 | discard | 버리다 | 77/P3, 843/P31 | Y
+VOC-0078 | discrepancy | 불일치 | 78/P3, 850/P31 | Y
+VOC-0079 | disrupt | 방해하다 | 79/P3, 861/P31 | Y
+VOC-0080 | eccentric | 괴짜인 | 80/P3 | N
+VOC-0081 | ecological | 생태계의 | 81/P3 | N
+VOC-0082 | eligible | 자격이 있는 | 82/P3 | N
+VOC-0083 | emerge | 나타나다 | 83/P3, 933/P34 | Y
+VOC-0084 | emit | 방출하다 | 84/P3, 935/P34 | Y
+VOC-0085 | empathy | 공감 | 85/P4 | N
+VOC-0086 | endow | 부여하다; 기부하다, 부여하다 | 86/P4, 952/P34 | Y
+VOC-0087 | endure | 견디다; 참다, 견디다 | 87/P4, 953/P35 | Y
+VOC-0088 | enhance | 향상시키다 | 88/P4, 959/P35 | Y
+VOC-0089 | equivalent | 동등한 | 89/P4, 986/P36 | Y
+VOC-0090 | eradicate | 근절하다 | 90/P4, 988/P36 | Y
+VOC-0091 | evolve | 진화하다 | 91/P4 | N
+VOC-0092 | exaggerate | 과장하다 | 92/P4, 1017/P37 | Y
+VOC-0093 | exclusive | 독점적인 | 93/P4, 1026/P37 | Y
+VOC-0094 | exotic | 이국적인 | 94/P4, 1037/P38 | Y
+VOC-0095 | flourish | 번창하다 | 95/P4, 1148/P41 | Y
+VOC-0096 | fatal | 치명적인 | 96/P4, 1091/P39 | Y
+VOC-0097 | formidable | 가공할 | 97/P4 | N
+VOC-0098 | foster | 육성하다 | 98/P4 | N
+VOC-0099 | fundamental | 근본적인 | 99/P4 | N
+VOC-0100 | genuine | 진짜의 | 100/P4 | N
+VOC-0101 | harness | 이용하다 | 101/P4 | N
+VOC-0102 | hazard | 위험 | 102/P4 | N
+VOC-0103 | hostile | 적대적인 | 103/P4 | N
+VOC-0104 | hypothesis | 가설 | 104/P4 | N
+VOC-0105 | identical | 동일한 | 105/P4 | N
+VOC-0106 | illiterate | 문맹의 | 106/P4 | N
+VOC-0107 | illuminate | 밝게 하다 | 107/P4 | N
+VOC-0108 | immerse | 몰두시키다 | 108/P4 | N
+VOC-0109 | indigenous | 토착의 | 109/P4 | N
+VOC-0110 | implication | 함축 | 110/P4 | N
+VOC-0111 | incentive | 동기 | 111/P4 | N
+VOC-0112 | incorporate | 통합하다 | 112/P4 | N
+VOC-0113 | indispensable | 필수불가결한 | 113/P5 | N
+VOC-0114 | induce | 유도하다 | 114/P5 | N
+VOC-0115 | inevitable | 불가피한 | 115/P5 | N
+VOC-0116 | infrastructure | 기반 시설 | 116/P5 | N
+VOC-0117 | ingenious | 기발한 | 117/P5 | N
+VOC-0118 | inhibit | 억제하다 | 118/P5 | N
+VOC-0119 | initial | 초기의 | 119/P5 | N
+VOC-0120 | initiate | 시작하다 | 120/P5 | N
+VOC-0121 | innate | 타고난 | 121/P5 | N
+VOC-0122 | innovate | 혁신하다 | 122/P5 | N
+VOC-0123 | inquire | 문의하다 | 123/P5 | N
+VOC-0124 | insight | 통찰력 | 124/P5 | N
+VOC-0125 | isolate | 고립시키다 | 125/P5 | N
+VOC-0126 | jeopardy | 위험 | 126/P5 | N
+VOC-0127 | legacy | 유산 | 127/P5 | N
+VOC-0128 | legitimate | 합법적인 | 128/P5 | N
+VOC-0129 | liable | ~할 책임이 있는 | 129/P5 | N
+VOC-0130 | literally | 문자 그대로 | 130/P5 | N
+VOC-0131 | magnitude | 규모 | 131/P5 | N
+VOC-0132 | maintenance | 유지 | 132/P5 | N
+VOC-0133 | mandate | 명령 | 133/P5 | N
+VOC-0134 | manifest | 명백한 | 134/P5 | N
+VOC-0135 | mutual | 상호간의 | 135/P5 | N
+VOC-0136 | marginal | 미미한 | 136/P5 | N
+VOC-0137 | mediate | 중재하다 | 137/P5 | N
+VOC-0138 | metaphor | 은유 | 138/P5 | N
+VOC-0139 | milestone | 이정표 | 139/P5 | N
+VOC-0140 | modify | 수정하다 | 140/P5 | N
+VOC-0141 | mundane | 평범한 | 141/P6 | N
+VOC-0142 | naive | 순진한 | 142/P6 | N
+VOC-0143 | negate | 무효화하다 | 143/P6 | N
+VOC-0144 | novelty | 참신함 | 144/P6 | N
+VOC-0145 | norm | 규범 | 145/P6 | N
+VOC-0146 | nurture | 양육하다 | 146/P6 | N
+VOC-0147 | objective | 객관적인 | 147/P6 | N
+VOC-0148 | obligation | 의무 | 148/P6 | N
+VOC-0149 | obsess | 강박을 갖게 하다 | 149/P6 | N
+VOC-0150 | offspring | 자식 | 150/P6 | N
+VOC-0151 | optimal | 최적의 | 151/P6 | N
+VOC-0152 | originate | 비롯되다 | 152/P6 | N
+VOC-0153 | outcome | 결과 | 153/P6 | N
+VOC-0154 | overwhelm | 압도하다 | 154/P6 | N
+VOC-0155 | parallel | 평행한 | 155/P6 | N
+VOC-0156 | paralyze | 마비시키다 | 156/P6 | N
+VOC-0157 | perceive | 인지하다 | 157/P6 | N
+VOC-0158 | permanent | 영구적인 | 158/P6 | N
+VOC-0159 | persist | 지속되다 | 159/P6 | N
+VOC-0160 | perspective | 관점 | 160/P6 | N
+VOC-0161 | phenomenon | 현상 | 161/P6 | N
+VOC-0162 | pioneer | 개척자 | 162/P6 | N
+VOC-0163 | ponder | 숙고하다 | 163/P6 | N
+VOC-0164 | potential | 잠재적인 | 164/P6 | N
+VOC-0165 | precede | 선행하다 | 165/P6 | N
+VOC-0166 | precise | 정확한 | 166/P6 | N
+VOC-0167 | predator | 포식자 | 167/P6 | N
+VOC-0168 | predict | 예측하다 | 168/P6 | N
+VOC-0169 | prejudice | 편견 | 169/P7 | N
+VOC-0170 | preliminary | 예비의 | 170/P7 | N
+VOC-0171 | prescribe | 처방하다 | 171/P7 | N
+VOC-0172 | preserve | 보존하다 | 172/P7 | N
+VOC-0173 | prestige | 명성 | 173/P7 | N
+VOC-0174 | prevalent | 만연한 | 174/P7 | N
+VOC-0175 | primary | 주된 | 175/P7 | N
+VOC-0176 | primitive | 원시의 | 176/P7 | N
+VOC-0177 | principal | 주요한 | 177/P7 | N
+VOC-0178 | principle | 원칙 | 178/P7 | N
+VOC-0179 | prior | 이전의 | 179/P7 | N
+VOC-0180 | privilege | 특권 | 180/P7 | N
+VOC-0181 | prohibit | 금지하다 | 181/P7 | N
+VOC-0182 | promote | 촉진하다 | 182/P7 | N
+VOC-0183 | prompt | 신속한 | 183/P7 | N
+VOC-0184 | proportion | 비율 | 184/P7 | N
+VOC-0185 | prosper | 번영하다 | 185/P7 | N
+VOC-0186 | provoke | 유발하다 | 186/P7 | N
+VOC-0187 | psychology | 심리학 | 187/P7 | N
+VOC-0188 | pursue | 추구하다 | 188/P7 | N
+VOC-0189 | qualify | 자격을 얻다 | 189/P7 | N
+VOC-0190 | radical | 근본적인 | 190/P7 | N
+VOC-0191 | rational | 합리적인 | 191/P7 | N
+VOC-0192 | realm | 영역 | 192/P7 | N
+VOC-0193 | reap | 수확하다 | 193/P7 | N
+VOC-0194 | rebel | 반항하다 | 194/P7 | N
+VOC-0195 | reciprocal | 상호간의 | 195/P7 | N
+VOC-0196 | reckless | 무모한 | 196/P7 | N
+VOC-0197 | reconcile | 화해시키다 | 197/P8 | N
+VOC-0198 | recur | 재발하다 | 198/P8 | N
+VOC-0199 | reform | 개혁하다 | 199/P8 | N
+VOC-0200 | refrain | 삼가다 | 200/P8 | N
+VOC-0201 | refuge | 피난처 | 201/P8 | N
+VOC-0202 | regulate | 규제하다 | 202/P8 | N
+VOC-0203 | reinforce | 강화하다 | 203/P8 | N
+VOC-0204 | relevant | 관련된 | 204/P8 | N
+VOC-0205 | reluctant | 꺼리는 | 205/P8 | N
+VOC-0206 | remedy | 치료약 | 206/P8 | N
+VOC-0207 | render | 만들다 | 207/P8 | N
+VOC-0208 | repel | 격퇴하다 | 208/P8 | N
+VOC-0209 | reproduce | 번식하다 | 209/P8 | N
+VOC-0210 | reputation | 명성 | 210/P8 | N
+VOC-0211 | resent | 분개하다 | 211/P8 | N
+VOC-0212 | reserve | 예약하다 | 212/P8 | N
+VOC-0213 | reside | 거주하다 | 213/P8 | N
+VOC-0214 | resign | 사임하다 | 214/P8 | N
+VOC-0215 | resist | 저항하다 | 215/P8 | N
+VOC-0216 | resolve | 해결하다 | 216/P8 | N
+VOC-0217 | restrict | 제한하다 | 217/P8 | N
+VOC-0218 | retain | 유지하다 | 218/P8 | N
+VOC-0219 | retrieve | 되찾다 | 219/P8 | N
+VOC-0220 | reveal | 드러내다 | 220/P8 | N
+VOC-0221 | reverse | 뒤집다 | 221/P8 | N
+VOC-0222 | revise | 수정하다 | 222/P8 | N
+VOC-0223 | rigid | 엄격한 | 223/P8 | N
+VOC-0224 | robust | 튼튼한 | 224/P8 | N
+VOC-0225 | routine | 일과 | 225/P9 | N
+VOC-0226 | sacrifice | 희생하다 | 226/P9 | N
+VOC-0227 | salient | 두드러진 | 227/P9 | N
+VOC-0228 | sanction | 제재 | 228/P9 | N
+VOC-0229 | scarce | 부족한 | 229/P9 | N
+VOC-0230 | scope | 범위 | 230/P9 | N
+VOC-0231 | secure | 안전한 | 231/P9 | N
+VOC-0232 | segregate | 분리하다 | 232/P9 | N
+VOC-0233 | sequence | 순서 | 233/P9 | N
+VOC-0234 | severe | 심각한 | 234/P9 | N
+VOC-0235 | shrink | 줄어들다 | 235/P9 | N
+VOC-0236 | significant | 중요한 | 236/P9 | N
+VOC-0237 | simulate | 모의실험하다 | 237/P9 | N
+VOC-0238 | skeptical | 회의적인 | 238/P9 | N
+VOC-0239 | soar | 치솟다 | 239/P9 | N
+VOC-0240 | sole | 유일한 | 240/P9 | N
+VOC-0241 | solitary | 고독한 | 241/P9 | N
+VOC-0242 | sophisticated | 정교한 | 242/P9 | N
+VOC-0243 | spatial | 공간의 | 243/P9 | N
+VOC-0244 | specify | 명시하다 | 244/P9 | N
+VOC-0245 | speculate | 추측하다 | 245/P9 | N
+VOC-0246 | sphere | 영역 | 246/P9 | N
+VOC-0247 | standardize | 표준화하다 | 247/P9 | N
+VOC-0248 | startle | 깜짝 놀라게 하다 | 248/P9 | N
+VOC-0249 | static | 정적인 | 249/P9 | N
+VOC-0250 | status | 지위 | 250/P9 | N
+VOC-0251 | stereotype | 고정관념 | 251/P9 | N
+VOC-0252 | stimulus | 자극 | 252/P9 | N
+VOC-0253 | strategy | 전략 | 253/P10 | N
+VOC-0254 | strict | 엄격한 | 254/P10 | N
+VOC-0255 | strive | 노력하다 | 255/P10 | N
+VOC-0256 | stubborn | 완고한 | 256/P10 | N
+VOC-0257 | subjective | 주관적인 | 257/P10 | N
+VOC-0258 | submit | 제출하다 | 258/P10 | N
+VOC-0259 | subordinate | 종속적인 | 259/P10 | N
+VOC-0260 | subsequent | 그 다음의 | 260/P10 | N
+VOC-0261 | substitute | 대체하다 | 261/P10 | N
+VOC-0262 | subtle | 미묘한 | 262/P10 | N
+VOC-0263 | sufficient | 충분한 | 263/P10 | N
+VOC-0264 | summarize | 요약하다 | 264/P10 | N
+VOC-0265 | surpass | 능가하다 | 265/P10 | N
+VOC-0266 | surrender | 항복하다 | 266/P10 | N
+VOC-0267 | suppress | 억압하다 | 267/P10 | N
+VOC-0268 | surge | 급증하다 | 268/P10 | N
+VOC-0269 | suspend | 보류하다 | 269/P10 | N
+VOC-0270 | swallow | 삼키다 | 270/P10 | N
+VOC-0271 | swap | 교환하다 | 271/P10 | N
+VOC-0272 | swell | 부풀다 | 272/P10 | N
+VOC-0273 | symbol | 상징 | 273/P10 | N
+VOC-0274 | sympathy | 동정심 | 274/P10 | N
+VOC-0275 | syndrome | 증후군 | 275/P10 | N
+VOC-0276 | synthetic | 합성의 | 276/P10 | N
+VOC-0277 | tactic | 전술 | 277/P10 | N
+VOC-0278 | temporary | 일시적인 | 278/P10 | N
+VOC-0279 | tempt | 유혹하다 | 279/P10 | N
+VOC-0280 | terminate | 끝내다 | 280/P10 | N
+VOC-0281 | terrify | 겁나게 하다 | 281/P11 | N
+VOC-0282 | testify | 증언하다 | 282/P11 | N
+VOC-0283 | theoretical | 이론적인 | 283/P11 | N
+VOC-0284 | threaten | 위협하다 | 284/P11 | N
+VOC-0285 | thrive | 번창하다 | 285/P11 | N
+VOC-0286 | tolerate | 용인하다 | 286/P11 | N
+VOC-0287 | trace | 추적하다 | 287/P11 | N
+VOC-0288 | tradition | 전통 | 288/P11 | N
+VOC-0289 | trait | 특성 | 289/P11 | N
+VOC-0290 | transaction | 거래 | 290/P11 | N
+VOC-0291 | transform | 변형시키다 | 291/P11 | N
+VOC-0292 | transition | 변화 | 292/P11 | N
+VOC-0293 | transmit | 전송하다 | 293/P11 | N
+VOC-0294 | transparent | 투명한 | 294/P11 | N
+VOC-0295 | trigger | 촉발하다 | 295/P11 | N
+VOC-0296 | triumph | 승리 | 296/P11 | N
+VOC-0297 | trivial | 사소한 | 297/P11 | N
+VOC-0298 | ultimate | 궁극적인 | 298/P11 | N
+VOC-0299 | unanimous | 만장일치의 | 299/P11 | N
+VOC-0300 | uncover | 알아내다 | 300/P11 | N
+VOC-0301 | undergo | 겪다 | 301/P11 | N
+VOC-0302 | underlying | 근본적인 | 302/P11 | N
+VOC-0303 | undertake | 착수하다 | 303/P11 | N
+VOC-0304 | unify | 통일하다 | 304/P11 | N
+VOC-0305 | unique | 독특한 | 305/P11 | N
+VOC-0306 | universal | 보편적인 | 306/P11 | N
+VOC-0307 | update | 갱신하다 | 307/P11 | N
+VOC-0308 | upgrade | 개선하다 | 308/P11 | N
+VOC-0309 | urban | 도시의 | 309/P12 | N
+VOC-0310 | urge | 촉구하다 | 310/P12 | N
+VOC-0311 | utilize | 활용하다 | 311/P12 | N
+VOC-0312 | vacant | 비어 있는 | 312/P12 | N
+VOC-0313 | vague | 모호한 | 313/P12 | N
+VOC-0314 | valid | 유효한 | 314/P12 | N
+VOC-0315 | vanish | 사라지다 | 315/P12 | N
+VOC-0316 | variable | 변하기 쉬운 | 316/P12 | N
+VOC-0317 | vast | 방대한 | 317/P12 | N
+VOC-0318 | verify | 입증하다 | 318/P12 | N
+VOC-0319 | version | 판, 형태 | 319/P12 | N
+VOC-0320 | vertical | 수직의 | 320/P12 | N
+VOC-0321 | viable | 실행 가능한 | 321/P12 | N
+VOC-0322 | vibrate | 진동하다 | 322/P12 | N
+VOC-0323 | vice | 악 | 323/P12 | N
+VOC-0324 | vicious | 사악한 | 324/P12 | N
+VOC-0325 | victim | 희생자 | 325/P12 | N
+VOC-0326 | vigor | 활력 | 326/P12 | N
+VOC-0327 | violate | 위반하다 | 327/P12 | N
+VOC-0328 | virtual | 가상의 | 328/P12 | N
+VOC-0329 | virtue | 미덕 | 329/P12 | N
+VOC-0330 | visible | 눈에 보이는 | 330/P12 | N
+VOC-0331 | visual | 시각의 | 331/P12 | N
+VOC-0332 | vital | 필수적인 | 332/P12 | N
+VOC-0333 | vivid | 생생한 | 333/P12 | N
+VOC-0334 | vocal | 목소리의 | 334/P12 | N
+VOC-0335 | vocation | 천직 | 335/P12 | N
+VOC-0336 | volume | 부피 | 336/P12 | N
+VOC-0337 | voluntary | 자발적인 | 337/P13 | N
+VOC-0338 | voyage | 항해 | 338/P13 | N
+VOC-0339 | wander | 헤매다 | 339/P13 | N
+VOC-0340 | warrant | 보증하다 | 340/P13 | N
+VOC-0341 | wealthy | 부유한 | 341/P13 | N
+VOC-0342 | weave | 엮다 | 342/P13 | N
+VOC-0343 | welfare | 복지 | 343/P13 | N
+VOC-0344 | whisper | 속삭이다 | 344/P13 | N
+VOC-0345 | widespread | 널리 퍼진 | 345/P13 | N
+VOC-0346 | withdraw | 철수하다 | 346/P13 | N
+VOC-0347 | witness | 목격하다 | 347/P13 | N
+VOC-0348 | wrap | 포장하다 | 348/P13 | N
+VOC-0349 | wreck | 파괴하다 | 349/P13 | N
+VOC-0350 | yield | 생산하다, 양보하다 | 350/P13 | N
+VOC-0351 | zeal | 열정 | 351/P13 | N
+VOC-0352 | absorb | 흡수하다 | 352/P13 | N
+VOC-0353 | abstract | 추상적인 | 353/P13 | N
+VOC-0354 | absurd | 터무니없는 | 354/P13 | N
+VOC-0355 | abundant | 풍부한 | 355/P13 | N
+VOC-0356 | abuse | 남용하다 | 356/P13 | N
+VOC-0357 | accelerate | 가속하다 | 357/P13 | N
+VOC-0358 | access | 접근하다 | 358/P13 | N
+VOC-0359 | accidental | 우연한 | 359/P13 | N
+VOC-0360 | accomplish | 성취하다 | 360/P13 | N
+VOC-0361 | accord | 일치 | 361/P13 | N
+VOC-0362 | accumulate | 축적하다 | 362/P13 | N
+VOC-0363 | accurate | 정확한 | 363/P13 | N
+VOC-0364 | accuse | 비난하다 | 364/P13 | N
+VOC-0365 | achieve | 달성하다 | 365/P14 | N
+VOC-0366 | acquire | 획득하다 | 366/P14 | N
+VOC-0367 | acute | 극심한 | 367/P14 | N
+VOC-0368 | adapt | 적응하다 | 368/P14 | N
+VOC-0369 | addict | 중독되다 | 369/P14 | N
+VOC-0370 | address | 다루다 | 370/P14 | N
+VOC-0371 | adequate | 적절한 | 371/P14 | N
+VOC-0372 | adhere | 고수하다 | 372/P14 | N
+VOC-0373 | adjacent | 인접한 | 373/P14 | N
+VOC-0374 | adjust | 조정하다 | 374/P14 | N
+VOC-0375 | administer | 관리하다 | 375/P14 | N
+VOC-0376 | admire | 존경하다 | 376/P14 | N
+VOC-0377 | admission | 입장 | 377/P14 | N
+VOC-0378 | adolescent | 청소년 | 378/P14 | N
+VOC-0379 | adopt | 채택하다 | 379/P14 | N
+VOC-0380 | advance | 전진하다 | 380/P14 | N
+VOC-0381 | adverse | 부정적인 | 381/P14 | N
+VOC-0382 | affection | 애착 | 382/P14 | N
+VOC-0383 | afford | ~할 여유가 있다 | 383/P14 | N
+VOC-0384 | agent | 대리인 | 384/P14 | N
+VOC-0385 | aggressive | 공격적인 | 385/P14 | N
+VOC-0386 | agriculture | 농업 | 386/P14 | N
+VOC-0387 | alien | 이질적인 | 387/P14 | N
+VOC-0388 | align | 나란히 하다 | 388/P14 | N
+VOC-0389 | allay | 가라앉히다 | 389/P14 | N
+VOC-0390 | allege | 혐의를 제기하다 | 390/P14 | N
+VOC-0391 | ally | 동맹하다 | 391/P14 | N
+VOC-0392 | altitude | 고도 | 392/P14 | N
+VOC-0393 | amaze | 놀라게 하다 | 393/P15 | N
+VOC-0394 | ambassador | 대사 | 394/P15 | N
+VOC-0395 | ambition | 야망 | 395/P15 | N
+VOC-0396 | amend | 수정하다 | 396/P15 | N
+VOC-0397 | ample | 충분한 | 397/P15 | N
+VOC-0398 | amuse | 즐겁게 하다 | 398/P15 | N
+VOC-0399 | analyze | 분석하다 | 399/P15 | N
+VOC-0400 | ancestor | 조상 | 400/P15 | N
+VOC-0401 | anchor | 정박하다 | 401/P15 | N
+VOC-0402 | angle | 각도 | 402/P15 | N
+VOC-0403 | animate | 생기를 불어넣다 | 403/P15 | N
+VOC-0404 | anniversary | 기념일 | 404/P15 | N
+VOC-0405 | announce | 발표하다 | 405/P15 | N
+VOC-0406 | annoy | 짜증나게 하다 | 406/P15 | N
+VOC-0407 | annual | 연간의 | 407/P15 | N
+VOC-0408 | anonymous | 익명의 | 408/P15 | N
+VOC-0409 | antarctic | 남극의 | 409/P15 | N
+VOC-0410 | antibody | 항체 | 410/P15 | N
+VOC-0411 | antique | 골동품 | 411/P15 | N
+VOC-0412 | anxiety | 불안 | 412/P15 | N
+VOC-0413 | apart | 떨어져 | 413/P15 | N
+VOC-0414 | apparent | 분명한 | 414/P15 | N
+VOC-0415 | appeal | 호소하다 | 415/P15 | N
+VOC-0416 | appetite | 식욕 | 416/P15 | N
+VOC-0417 | applaud | 박수갈채를 보내다 | 417/P15 | N
+VOC-0418 | appliance | 기기 | 418/P15 | N
+VOC-0419 | applicable | 적용되는 | 419/P15 | N
+VOC-0420 | appoint | 임명하다 | 420/P15 | N
+VOC-0421 | appreciate | 이해하다, 감사하다 | 421/P16 | N
+VOC-0422 | approach | 접근하다 | 422/P16 | N
+VOC-0423 | appropriate | 적절한 | 423/P16 | N
+VOC-0424 | approve | 승인하다 | 424/P16 | N
+VOC-0425 | approximate | 대략적인 | 425/P16 | N
+VOC-0426 | apt | ~하는 경향이 있는 | 426/P16 | N
+VOC-0427 | architecture | 건축 | 427/P16 | N
+VOC-0428 | arise | 발생하다 | 428/P16 | N
+VOC-0429 | arouse | 불러일으키다 | 429/P16 | N
+VOC-0430 | arrange | 마련하다 | 430/P16 | N
+VOC-0431 | arrest | 체포하다 | 431/P16 | N
+VOC-0432 | arrogant | 오만한 | 432/P16 | N
+VOC-0433 | artificial | 인공의 | 433/P16 | N
+VOC-0434 | ascend | 오르다 | 434/P16 | N
+VOC-0435 | ashamed | 부끄러운 | 435/P16 | N
+VOC-0436 | aspect | 측면 | 436/P16 | N
+VOC-0437 | aspire | 열망하다 | 437/P16 | N
+VOC-0438 | assemble | 조립하다 | 438/P16 | N
+VOC-0439 | assert | 주장하다 | 439/P16 | N
+VOC-0440 | assess | 평가하다 | 440/P16 | N
+VOC-0441 | assign | 할당하다 | 441/P16 | N
+VOC-0442 | assist | 돕다 | 442/P16 | N
+VOC-0443 | associate | 연관 짓다 | 443/P16 | N
+VOC-0444 | assume | 가정하다 | 444/P16 | N
+VOC-0445 | assure | 보장하다 | 445/P16 | N
+VOC-0446 | astonish | 놀라게 하다 | 446/P16 | N
+VOC-0447 | attach | 붙이다 | 447/P16 | N
+VOC-0448 | attain | 달성하다 | 448/P16 | N
+VOC-0449 | attempt | 시도하다 | 449/P17 | N
+VOC-0450 | attend | 참석하다 | 450/P17 | N
+VOC-0451 | attitude | 태도 | 451/P17 | N
+VOC-0452 | attract | 끌다 | 452/P17 | N
+VOC-0453 | attribute | 탓으로 돌리다 | 453/P17 | N
+VOC-0454 | auditory | 청각의 | 454/P17 | N
+VOC-0455 | authentic | 진짜의 | 455/P17 | N
+VOC-0456 | authority | 권위 | 456/P17 | N
+VOC-0457 | automatic | 자동의 | 457/P17 | N
+VOC-0458 | available | 이용 가능한 | 458/P17 | N
+VOC-0459 | average | 평균의 | 459/P17 | N
+VOC-0460 | avoid | 피하다 | 460/P17 | N
+VOC-0461 | awake | 깨어 있는 | 461/P17 | N
+VOC-0462 | award | 수여하다 | 462/P17 | N
+VOC-0463 | aware | 알고 있는 | 463/P17 | N
+VOC-0464 | awful | 끔찍한 | 464/P17 | N
+VOC-0465 | awkward | 어색한 | 465/P17 | N
+VOC-0466 | ban | 금지하다 | 466/P17 | N
+VOC-0467 | barely | 간신히 | 467/P17 | N
+VOC-0468 | barrier | 장벽 | 468/P17 | N
+VOC-0469 | beforehand | 사전에 | 469/P17 | N
+VOC-0470 | behalf | 이익, 대신하여 | 470/P17 | N
+VOC-0471 | behave | 행동하다 | 471/P17 | N
+VOC-0472 | beneficial | 유익한 | 472/P17 | N
+VOC-0473 | betray | 배신하다 | 473/P17 | N
+VOC-0474 | beware | 조심하다 | 474/P17 | N
+VOC-0475 | bewilder | 어리둥절하게 하다 | 475/P17 | N
+VOC-0476 | bid | 입찰하다 | 476/P17 | N
+VOC-0477 | bind | 묶다 | 477/P18 | N
+VOC-0478 | biography | 전기 | 478/P18 | N
+VOC-0479 | biological | 생물학의 | 479/P18 | N
+VOC-0480 | bizarre | 기이한 | 480/P18 | N
+VOC-0481 | blame | 탓하다 | 481/P18 | N
+VOC-0482 | blast | 폭발 | 482/P18 | N
+VOC-0483 | blend | 혼합하다 | 483/P18 | N
+VOC-0484 | blink | 깜박이다 | 484/P18 | N
+VOC-0485 | block | 차단하다 | 485/P18 | N
+VOC-0486 | blossom | 꽃이 피다 | 486/P18 | N
+VOC-0487 | blur | 흐릿해지다 | 487/P18 | N
+VOC-0488 | boast | 자랑하다 | 488/P18 | N
+VOC-0489 | bold | 대담한 | 489/P18 | N
+VOC-0490 | bond | 유대 | 490/P18 | N
+VOC-0491 | boost | 북돋우다 | 491/P18 | N
+VOC-0492 | border | 경계 | 492/P18 | N
+VOC-0493 | bore | 지루하게 만들다 | 493/P18 | N
+VOC-0494 | bother | 괴롭히다 | 494/P18 | N
+VOC-0495 | bound | ~할 것 같은 | 495/P18 | N
+VOC-0496 | boundary | 경계 | 496/P18 | N
+VOC-0497 | breed | 번식하다 | 497/P18 | N
+VOC-0498 | breeze | 산들바람 | 498/P18 | N
+VOC-0499 | brief | 짧은 | 499/P18 | N
+VOC-0500 | brilliant | 훌륭한 | 500/P18 | N
+VOC-0501 | broadcast | 방송하다 | 501/P18 | N
+VOC-0502 | brutal | 잔혹한 | 502/P18 | N
+VOC-0503 | budget | 예산 | 503/P18 | N
+VOC-0504 | bulk | 대부분, 부피 | 504/P18 | N
+VOC-0505 | burden | 부담 | 505/P19 | N
+VOC-0506 | calculate | 계산하다 | 506/P19 | N
+VOC-0507 | campaign | 캠페인 | 507/P19 | N
+VOC-0508 | candidate | 입후보자 | 508/P19 | N
+VOC-0509 | capable | 유능한 | 509/P19 | N
+VOC-0510 | capital | 수도, 자본 | 510/P19 | N
+VOC-0511 | capture | 포획하다 | 511/P19 | N
+VOC-0512 | career | 직업 | 512/P19 | N
+VOC-0513 | carve | 조각하다 | 513/P19 | N
+VOC-0514 | cast | 던지다 | 514/P19 | N
+VOC-0515 | casual | 태평스러운 | 515/P19 | N
+VOC-0516 | category | 범주 | 516/P19 | N
+VOC-0517 | caution | 조심 | 517/P19 | N
+VOC-0518 | cease | 중단하다 | 518/P19 | N
+VOC-0519 | celebrate | 축하하다 | 519/P19 | N
+VOC-0520 | cell | 세포 | 520/P19 | N
+VOC-0521 | censor | 검열하다 | 521/P19 | N
+VOC-0522 | century | 세기 | 522/P19 | N
+VOC-0523 | ceremony | 의식 | 523/P19 | N
+VOC-0524 | certain | 확실한 | 524/P19 | N
+VOC-0525 | certificate | 증명서 | 525/P19 | N
+VOC-0526 | challenge | 도전 | 526/P19 | N
+VOC-0527 | chaos | 혼돈 | 527/P19 | N
+VOC-0528 | character | 성격 | 528/P19 | N
+VOC-0529 | charge | 청구하다 | 529/P19 | N
+VOC-0530 | charity | 자선 | 530/P19 | N
+VOC-0531 | charm | 매력 | 531/P19 | N
+VOC-0532 | chase | 뒤쫓다 | 532/P19 | N
+VOC-0533 | chat | 수다 | 533/P20 | N
+VOC-0534 | cheat | 속이다 | 534/P20 | N
+VOC-0535 | chemical | 화학의 | 535/P20 | N
+VOC-0536 | cherish | 소중히 여기다 | 536/P20 | N
+VOC-0537 | chief | 주된 | 537/P20 | N
+VOC-0538 | chill | 한기 | 538/P20 | N
+VOC-0539 | choice | 선택 | 539/P20 | N
+VOC-0540 | choir | 합창단 | 540/P20 | N
+VOC-0541 | choke | 질식시키다 | 541/P20 | N
+VOC-0542 | chore | 가사, 허드렛일 | 542/P20 | N
+VOC-0543 | chronological | 연대순의 | 543/P20 | N
+VOC-0544 | circuit | 순환, 회로 | 544/P20 | N
+VOC-0545 | circulate | 순환하다 | 545/P20 | N
+VOC-0546 | circumstance | 상황 | 546/P20 | N
+VOC-0547 | cite | 인용하다 | 547/P20 | N
+VOC-0548 | citizen | 시민 | 548/P20 | N
+VOC-0549 | civil | 민간의 | 549/P20 | N
+VOC-0550 | claim | 주장하다 | 550/P20 | N
+VOC-0551 | clarify | 명확하게 하다 | 551/P20 | N
+VOC-0552 | clash | 충돌하다 | 552/P20 | N
+VOC-0553 | classic | 고전적인 | 553/P20 | N
+VOC-0554 | classify | 분류하다 | 554/P20 | N
+VOC-0555 | clause | 조항 | 555/P20 | N
+VOC-0556 | clear | 명확한 | 556/P20 | N
+VOC-0557 | client | 고객 | 557/P20 | N
+VOC-0558 | climate | 기후 | 558/P20 | N
+VOC-0559 | cling | 고수하다 | 559/P20 | N
+VOC-0560 | clinic | 진료소 | 560/P20 | N
+VOC-0561 | clip | 자르다 | 561/P21 | N
+VOC-0562 | clock | 시계 | 562/P21 | N
+VOC-0563 | close | 닫다, 가까운 | 563/P21 | N
+VOC-0564 | clue | 단서 | 564/P21 | N
+VOC-0565 | clumsy | 서투른 | 565/P21 | N
+VOC-0566 | cluster | 무리 | 566/P21 | N
+VOC-0567 | coach | 마차, 지도자 | 567/P21 | N
+VOC-0568 | coal | 석탄 | 568/P21 | N
+VOC-0569 | coarse | 거친 | 569/P21 | N
+VOC-0570 | coast | 해안 | 570/P21 | N
+VOC-0571 | code | 암호, 규범 | 571/P21 | N
+VOC-0572 | coincide | 동시에 일어나다 | 572/P21 | N
+VOC-0573 | collaborate | 협력하다 | 573/P21 | N
+VOC-0574 | collapse | 붕괴하다 | 574/P21 | N
+VOC-0575 | collar | 깃 | 575/P21 | N
+VOC-0576 | colleague | 동료 | 576/P21 | N
+VOC-0577 | collect | 수집하다 | 577/P21 | N
+VOC-0578 | colony | 식민지 | 578/P21 | N
+VOC-0579 | color | 색 | 579/P21 | N
+VOC-0580 | column | 기둥 | 580/P21 | N
+VOC-0581 | combat | 전투 | 581/P21 | N
+VOC-0582 | combine | 결합하다 | 582/P21 | N
+VOC-0583 | come | 오다 | 583/P21 | N
+VOC-0584 | comedy | 희극 | 584/P21 | N
+VOC-0585 | comfort | 편안함 | 585/P21 | N
+VOC-0586 | command | 명령하다 | 586/P21 | N
+VOC-0587 | commence | 시작하다 | 587/P21 | N
+VOC-0588 | comment | 논평 | 588/P21 | N
+VOC-0589 | commerce | 상업 | 589/P22 | N
+VOC-0590 | commission | 위원회 | 590/P22 | N
+VOC-0591 | commit | 저지르다 | 591/P22 | N
+VOC-0592 | committee | 위원회 | 592/P22 | N
+VOC-0593 | common | 흔한, 공통의 | 593/P22 | N
+VOC-0594 | communicate | 의사소통하다 | 594/P22 | N
+VOC-0595 | community | 공동체 | 595/P22 | N
+VOC-0596 | commute | 통근하다 | 596/P22 | N
+VOC-0597 | compact | 조밀한 | 597/P22 | N
+VOC-0598 | company | 회사, 동반 | 598/P22 | N
+VOC-0599 | compare | 비교하다 | 599/P22 | N
+VOC-0600 | compass | 나침반 | 600/P22 | N
+VOC-0601 | passion | 열정 | 601/P22 | N
+VOC-0602 | compete | 경쟁하다 | 605/P22 | N
+VOC-0603 | competent | 유능한 | 606/P22 | N
+VOC-0604 | complain | 불평하다 | 608/P22 | N
+VOC-0605 | complement | 보완하다 | 609/P22 | N
+VOC-0606 | complete | 완전한 | 610/P22 | N
+VOC-0607 | complex | 복잡한 | 611/P22 | N
+VOC-0608 | complicate | 복잡하게 하다 | 612/P22 | N
+VOC-0609 | comply | 따르다 | 613/P22 | N
+VOC-0610 | component | 구성 요소 | 614/P22 | N
+VOC-0611 | compose | 구성하다 | 615/P22 | N
+VOC-0612 | compound | 혼합물 | 616/P22 | N
+VOC-0613 | comprehend | 이해하다 | 617/P23 | N
+VOC-0614 | compress | 압축하다 | 618/P23 | N
+VOC-0615 | comprise | 포함하다 | 619/P23 | N
+VOC-0616 | compromise | 타협하다 | 620/P23 | N
+VOC-0617 | compulsory | 의무적인 | 621/P23 | N
+VOC-0618 | conceal | 숨기다 | 622/P23 | N
+VOC-0619 | concede | 인정하다 | 623/P23 | N
+VOC-0620 | conceive | 마음속으로 품다 | 624/P23 | N
+VOC-0621 | concentrate | 집중하다 | 625/P23 | N
+VOC-0622 | concept | 개념 | 626/P23 | N
+VOC-0623 | concern | 우려, 관심 | 627/P23 | N
+VOC-0624 | concert | 음악회, 협력 | 628/P23 | N
+VOC-0625 | conclude | 결론짓다 | 629/P23 | N
+VOC-0626 | concrete | 구체적인 | 630/P23 | N
+VOC-0627 | condemn | 비난하다 | 631/P23 | N
+VOC-0628 | condition | 상태, 조건 | 632/P23 | N
+VOC-0629 | conduct | 수행하다 | 633/P23 | N
+VOC-0630 | confer | 수여하다, 상의하다 | 634/P23 | N
+VOC-0631 | confess | 고백하다 | 635/P23 | N
+VOC-0632 | confidence | 자신감 | 636/P23 | N
+VOC-0633 | confine | 제한하다 | 637/P23 | N
+VOC-0634 | confirm | 확인하다 | 638/P23 | N
+VOC-0635 | conflict | 갈등 | 639/P23 | N
+VOC-0636 | conform | 따르다 | 640/P23 | N
+VOC-0637 | confront | 직면하다 | 641/P23 | N
+VOC-0638 | confuse | 혼동하다 | 642/P23 | N
+VOC-0639 | congratulate | 축하하다 | 643/P23 | N
+VOC-0640 | congress | 회의, 의회 | 644/P23 | N
+VOC-0641 | connect | 연결하다 | 645/P24 | N
+VOC-0642 | conscience | 양심 | 646/P24 | N
+VOC-0643 | conscious | 의식하는 | 647/P24 | N
+VOC-0644 | consent | 동의하다 | 648/P24 | N
+VOC-0645 | consequence | 결과 | 649/P24 | N
+VOC-0646 | conserve | 보존하다 | 650/P24 | N
+VOC-0647 | consider | 고려하다 | 651/P24 | N
+VOC-0648 | consist | 구성되다 | 652/P24 | N
+VOC-0649 | console | 위로하다 | 653/P24 | N
+VOC-0650 | conspicuous | 눈에 띄는 | 654/P24 | N
+VOC-0651 | constant | 끊임없는 | 655/P24 | N
+VOC-0652 | constitute | 구성하다 | 656/P24 | N
+VOC-0653 | construct | 건설하다 | 657/P24 | N
+VOC-0654 | consult | 상담하다 | 658/P24 | N
+VOC-0655 | consume | 소비하다 | 659/P24 | N
+VOC-0656 | contact | 접촉하다 | 660/P24 | N
+VOC-0657 | contain | 포함하다 | 661/P24 | N
+VOC-0658 | contaminate | 오염시키다 | 662/P24 | N
+VOC-0659 | contemplate | 심사숙고하다 | 663/P24 | N
+VOC-0660 | contemporary | 현대의 | 664/P24 | N
+VOC-0661 | contempt | 경멸 | 665/P24 | N
+VOC-0662 | contend | 주장하다, 겨루다 | 666/P24 | N
+VOC-0663 | content | 내용물, 만족한 | 667/P24 | N
+VOC-0664 | contest | 경연 | 668/P24 | N
+VOC-0665 | context | 문맥 | 669/P24 | N
+VOC-0666 | continent | 대륙 | 670/P24 | N
+VOC-0667 | continue | 계속하다 | 671/P24 | N
+VOC-0668 | contract | 계약, 수축하다 | 672/P24 | N
+VOC-0669 | contradict | 모순되다 | 673/P25 | N
+VOC-0670 | contrast | 대조하다 | 674/P25 | N
+VOC-0671 | contribute | 기여하다 | 675/P25 | N
+VOC-0672 | control | 통제하다 | 676/P25 | N
+VOC-0673 | controversy | 논란 | 677/P25 | N
+VOC-0674 | convenience | 편리 | 678/P25 | N
+VOC-0675 | convention | 관습, 대회 | 679/P25 | N
+VOC-0676 | converge | 모이다 | 680/P25 | N
+VOC-0677 | conversation | 대화 | 681/P25 | N
+VOC-0678 | convert | 전환하다 | 682/P25 | N
+VOC-0679 | convey | 전달하다 | 683/P25 | N
+VOC-0680 | convict | 유죄를 선고하다 | 684/P25 | N
+VOC-0681 | convince | 설득하다 | 685/P25 | N
+VOC-0682 | cooperate | 협력하다 | 686/P25 | N
+VOC-0683 | coordinate | 조정하다 | 687/P25 | N
+VOC-0684 | cope | 대처하다 | 688/P25 | N
+VOC-0685 | copy | 복사하다 | 689/P25 | N
+VOC-0686 | core | 핵심 | 690/P25 | N
+VOC-0687 | corner | 모퉁이 | 691/P25 | N
+VOC-0688 | corporate | 기업의 | 692/P25 | N
+VOC-0689 | correct | 정확한 | 693/P25 | N
+VOC-0690 | correlate | 상관관계를 갖다 | 694/P25 | N
+VOC-0691 | correspond | 일치하다 | 695/P25 | N
+VOC-0692 | corrupt | 부패한 | 696/P25 | N
+VOC-0693 | cost | 비용 | 697/P25 | N
+VOC-0694 | costume | 의상 | 698/P25 | N
+VOC-0695 | cottage | 오두막 | 699/P25 | N
+VOC-0696 | cotton | 목화, 면 | 700/P25 | N
+VOC-0697 | couch | 소파 | 701/P26 | N
+VOC-0698 | cough | 기침하다 | 702/P26 | N
+VOC-0699 | council | 의회 | 703/P26 | N
+VOC-0700 | counsel | 조언하다 | 704/P26 | N
+VOC-0701 | count | 세다, 중요하다 | 705/P26 | N
+VOC-0702 | counter | 반박하다, 계산대 | 706/P26 | N
+VOC-0703 | country | 국가 | 707/P26 | N
+VOC-0704 | couple | 부부, 한 쌍 | 708/P26 | N
+VOC-0705 | courage | 용기 | 709/P26 | N
+VOC-0706 | course | 과정 | 710/P26 | N
+VOC-0707 | court | 법정 | 711/P26 | N
+VOC-0708 | courtesy | 예의 | 712/P26 | N
+VOC-0709 | cover | 덮다 | 713/P26 | N
+VOC-0710 | cow | 암소 | 714/P26 | N
+VOC-0711 | coward | 겁쟁이 | 715/P26 | N
+VOC-0712 | crack | 갈라지다 | 716/P26 | N
+VOC-0713 | craft | 공예, 기술 | 717/P26 | N
+VOC-0714 | crash | 충돌하다 | 718/P26 | N
+VOC-0715 | crawl | 기어가다 | 719/P26 | N
+VOC-0716 | crazy | 미친 | 720/P26 | N
+VOC-0717 | create | 창조하다 | 721/P26 | N
+VOC-0718 | creature | 생물 | 722/P26 | N
+VOC-0719 | credit | 신용 | 723/P26 | N
+VOC-0720 | creep | 살금살금 걷다 | 724/P26 | N
+VOC-0721 | crew | 승무원 | 725/P26 | N
+VOC-0722 | crime | 범죄 | 726/P26 | N
+VOC-0723 | criminal | 범죄자 | 727/P26 | N
+VOC-0724 | crisis | 위기 | 728/P26 | N
+VOC-0725 | crisp | 바삭바삭한 | 729/P27 | N
+VOC-0726 | criterion | 기준 | 730/P27 | N
+VOC-0727 | critic | 비평가 | 731/P27 | N
+VOC-0728 | criticize | 비판하다 | 732/P27 | N
+VOC-0729 | crop | 농작물 | 733/P27 | N
+VOC-0730 | cross | 건너다 | 734/P27 | N
+VOC-0731 | crowd | 군중 | 735/P27 | N
+VOC-0732 | crown | 왕관 | 736/P27 | N
+VOC-0733 | cruel | 잔인한 | 738/P27 | N
+VOC-0734 | crush | 짓부수다 | 739/P27 | N
+VOC-0735 | cry | 울다 | 740/P27 | N
+VOC-0736 | culture | 문화 | 741/P27 | N
+VOC-0737 | cure | 치료하다 | 742/P27 | N
+VOC-0738 | curious | 호기심 많은 | 743/P27 | N
+VOC-0739 | currency | 통화, 화폐 | 744/P27 | N
+VOC-0740 | current | 현재의 | 745/P27 | N
+VOC-0741 | curse | 저주하다 | 746/P27 | N
+VOC-0742 | curve | 곡선 | 747/P27 | N
+VOC-0743 | custom | 관습 | 748/P27 | N
+VOC-0744 | customer | 고객 | 749/P27 | N
+VOC-0745 | cut | 자르다 | 750/P27 | N
+VOC-0746 | cycle | 순환 | 751/P27 | N
+VOC-0747 | cynical | 냉소적인 | 752/P27 | N
+VOC-0748 | daily | 매일의 | 753/P27 | N
+VOC-0749 | damage | 피해 | 754/P27 | N
+VOC-0750 | damp | 축축한 | 755/P27 | N
+VOC-0751 | danger | 위험 | 756/P27 | N
+VOC-0752 | dare | 감히 ~하다 | 757/P28 | N
+VOC-0753 | dark | 어두운 | 758/P28 | N
+VOC-0754 | data | 자료 | 759/P28 | N
+VOC-0755 | dawn | 새벽 | 760/P28 | N
+VOC-0756 | dead | 죽은 | 761/P28 | N
+VOC-0757 | deal | 다루다 | 762/P28 | N
+VOC-0758 | debate | 토론하다 | 763/P28 | N
+VOC-0759 | debt | 빚 | 764/P28 | N
+VOC-0760 | decade | 10년 | 765/P28 | N
+VOC-0761 | decay | 부패하다 | 766/P28 | N
+VOC-0762 | deceive | 속이다 | 767/P28 | N
+VOC-0763 | decent | 괜찮은 | 768/P28 | N
+VOC-0764 | decide | 결정하다 | 769/P28 | N
+VOC-0765 | declare | 선언하다 | 770/P28 | N
+VOC-0766 | decline | 감소하다 | 771/P28 | N
+VOC-0767 | decorate | 장식하다 | 772/P28 | N
+VOC-0768 | decrease | 감소하다 | 773/P28 | N
+VOC-0769 | dedicate | 헌신하다 | 774/P28 | N
+VOC-0770 | deduct | 공제하다 | 776/P28 | N
+VOC-0771 | deed | 행위 | 777/P28 | N
+VOC-0772 | deem | ~라고 여기다 | 778/P28 | N
+VOC-0773 | deep | 깊은 | 779/P28 | N
+VOC-0774 | defeat | 패배시키다 | 780/P28 | N
+VOC-0775 | defect | 결함 | 781/P28 | N
+VOC-0776 | defend | 방어하다 | 782/P28 | N
+VOC-0777 | deficiency | 부족 | 783/P28 | N
+VOC-0778 | define | 정의하다 | 785/P29 | N
+VOC-0779 | definite | 확실한 | 786/P29 | N
+VOC-0780 | degree | 정도, 학위 | 787/P29 | N
+VOC-0781 | delay | 지연시키다 | 788/P29 | N
+VOC-0782 | delegate | 위임하다 | 789/P29 | N
+VOC-0783 | delete | 삭제하다 | 790/P29 | N
+VOC-0784 | deliberate | 의도적인 | 791/P29 | N
+VOC-0785 | delicate | 섬세한 | 792/P29 | N
+VOC-0786 | deliver | 배달하다 | 793/P29 | N
+VOC-0787 | demand | 요구하다 | 794/P29 | N
+VOC-0788 | democracy | 민주주의 | 795/P29 | N
+VOC-0789 | demonstrate | 증명하다 | 796/P29 | N
+VOC-0790 | dense | 빽빽한 | 797/P29 | N
+VOC-0791 | deny | 부인하다 | 798/P29 | N
+VOC-0792 | depart | 출발하다 | 799/P29 | N
+VOC-0793 | depend | 의지하다 | 800/P29 | N
+VOC-0794 | depict | 묘사하다 | 801/P29 | N
+VOC-0795 | deposit | 예금하다 | 803/P29 | N
+VOC-0796 | depress | 우울하게 하다 | 804/P29 | N
+VOC-0797 | deprive | 빼앗다 | 805/P29 | N
+VOC-0798 | descend | 내려가다 | 807/P29 | N
+VOC-0799 | describe | 묘사하다 | 808/P29 | N
+VOC-0800 | desert | 사막, 버리다 | 809/P29 | N
+VOC-0801 | deserve | ~할 가치가 있다 | 810/P29 | N
+VOC-0802 | design | 설계하다 | 811/P29 | N
+VOC-0803 | desire | 바라다 | 812/P29 | N
+VOC-0804 | despair | 절망 | 813/P30 | N
+VOC-0805 | despise | 경멸하다 | 814/P30 | N
+VOC-0806 | despite | ~에도 불구하고 | 815/P30 | N
+VOC-0807 | destination | 목적지 | 816/P30 | N
+VOC-0808 | destiny | 운명 | 817/P30 | N
+VOC-0809 | destroy | 파괴하다 | 818/P30 | N
+VOC-0810 | detail | 세부 사항 | 819/P30 | N
+VOC-0811 | detect | 감지하다 | 820/P30 | N
+VOC-0812 | determine | 결정하다 | 821/P30 | N
+VOC-0813 | develop | 발달시키다 | 823/P30 | N
+VOC-0814 | device | 장치 | 824/P30 | N
+VOC-0815 | devote | 바치다, 헌신하다 | 825/P30 | N
+VOC-0816 | differ | 다르다 | 828/P30 | N
+VOC-0817 | digest | 소화하다 | 829/P30 | N
+VOC-0818 | digit | 숫자 | 830/P30 | N
+VOC-0819 | dignity | 존엄 | 831/P30 | N
+VOC-0820 | dilemma | 딜레마 | 832/P30 | N
+VOC-0821 | dimension | 차원 | 833/P30 | N
+VOC-0822 | direct | 직접적인, 지시하다 | 835/P30 | N
+VOC-0823 | dirt | 먼지, 흙 | 836/P30 | N
+VOC-0824 | disable | 장애를 입히다 | 837/P30 | N
+VOC-0825 | disadvantage | 불이익 | 838/P30 | N
+VOC-0826 | disagree | 동의하지 않다 | 839/P30 | N
+VOC-0827 | disappear | 사라지다 | 840/P30 | N
+VOC-0828 | disappoint | 실망시키다 | 841/P31 | N
+VOC-0829 | disaster | 재앙 | 842/P31 | N
+VOC-0830 | discharge | 방출하다 | 844/P31 | N
+VOC-0831 | discipline | 규율, 훈련 | 845/P31 | N
+VOC-0832 | disclose | 밝히다, 폭로하다 | 846/P31 | N
+VOC-0833 | discount | 할인 | 847/P31 | N
+VOC-0834 | discourage | 낙담시키다 | 848/P31 | N
+VOC-0835 | discover | 발견하다 | 849/P31 | N
+VOC-0836 | discriminate | 차별하다 | 851/P31 | N
+VOC-0837 | discuss | 토론하다 | 852/P31 | N
+VOC-0838 | disease | 질병 | 853/P31 | N
+VOC-0839 | disgust | 혐오감 | 854/P31 | N
+VOC-0840 | dismiss | 해고하다, 묵살하다 | 855/P31 | N
+VOC-0841 | disorder | 무질서 | 856/P31 | N
+VOC-0842 | display | 전시하다 | 857/P31 | N
+VOC-0843 | dispose | 배치하다, 처분하다 | 858/P31 | N
+VOC-0844 | dispute | 논쟁하다 | 859/P31 | N
+VOC-0845 | disregard | 무시하다 | 860/P31 | N
+VOC-0846 | dissolve | 녹이다, 해산하다 | 862/P31 | N
+VOC-0847 | distance | 거리 | 863/P31 | N
+VOC-0848 | distinct | 뚜렷한 | 864/P31 | N
+VOC-0849 | distinguish | 구별하다 | 865/P31 | N
+VOC-0850 | distract | 주의를 딴 데로 돌리다 | 867/P31 | N
+VOC-0851 | distribute | 분배하다 | 868/P31 | N
+VOC-0852 | district | 구역, 지역 | 869/P32 | N
+VOC-0853 | disturb | 방해하다 | 870/P32 | N
+VOC-0854 | diverse | 다양한 | 871/P32 | N
+VOC-0855 | divide | 나누다 | 872/P32 | N
+VOC-0856 | divine | 신성한 | 873/P32 | N
+VOC-0857 | division | 분할 | 874/P32 | N
+VOC-0858 | divorce | 이혼 | 875/P32 | N
+VOC-0859 | document | 문서 | 876/P32 | N
+VOC-0860 | domestic | 국내의, 가정의 | 877/P32 | N
+VOC-0861 | dominate | 지배하다 | 878/P32 | N
+VOC-0862 | donate | 기부하다 | 879/P32 | N
+VOC-0863 | dose | 복용량 | 880/P32 | N
+VOC-0864 | doubt | 의심하다 | 881/P32 | N
+VOC-0865 | draft | 초안 | 882/P32 | N
+VOC-0866 | drag | 끌다 | 883/P32 | N
+VOC-0867 | drain | 물을 빼다 | 884/P32 | N
+VOC-0868 | drastic | 과감한 | 885/P32 | N
+VOC-0869 | draw | 그리다, 끌다 | 886/P32 | N
+VOC-0870 | dread | 두려워하다 | 887/P32 | N
+VOC-0871 | drift | 표류하다 | 888/P32 | N
+VOC-0872 | drill | 훈련, 구멍 뚫다 | 889/P32 | N
+VOC-0873 | drive | 운전하다, 몰다 | 890/P32 | N
+VOC-0874 | drop | 떨어지다 | 891/P32 | N
+VOC-0875 | drown | 익사하다 | 892/P32 | N
+VOC-0876 | drug | 약, 마약 | 893/P32 | N
+VOC-0877 | dual | 이중의 | 894/P32 | N
+VOC-0878 | dull | 지루한, 무딘 | 895/P32 | N
+VOC-0879 | dumb | 말 못 하는, 바보 같은 | 896/P32 | N
+VOC-0880 | dump | 버리다 | 897/P33 | N
+VOC-0881 | duplicate | 복제하다 | 898/P33 | N
+VOC-0882 | durable | 내구성이 있는 | 899/P33 | N
+VOC-0883 | duration | 지속 기간 | 900/P33 | N
+VOC-0884 | duty | 의무 | 901/P33 | N
+VOC-0885 | dwell | 거주하다 | 902/P33 | N
+VOC-0886 | dynamic | 역동적인 | 903/P33 | N
+VOC-0887 | eager | 열망하는 | 904/P33 | N
+VOC-0888 | earn | 벌다 | 905/P33 | N
+VOC-0889 | earnest | 성실한 | 906/P33 | N
+VOC-0890 | earth | 지구, 흙 | 907/P33 | N
+VOC-0891 | ease | 편안함, 완화시키다 | 908/P33 | N
+VOC-0892 | ecology | 생태학 | 909/P33 | N
+VOC-0893 | economy | 경제 | 910/P33 | N
+VOC-0894 | edge | 가장자리, 우위 | 911/P33 | N
+VOC-0895 | edit | 편집하다 | 912/P33 | N
+VOC-0896 | educate | 교육하다 | 913/P33 | N
+VOC-0897 | effect | 효과, 영향 | 914/P33 | N
+VOC-0898 | effective | 효과적인 | 915/P33 | N
+VOC-0899 | efficient | 효율적인 | 916/P33 | N
+VOC-0900 | effort | 노력 | 917/P33 | N
+VOC-0901 | ego | 자아 | 918/P33 | N
+VOC-0902 | elaborate | 정교한 | 919/P33 | N
+VOC-0903 | elastic | 탄력 있는 | 920/P33 | N
+VOC-0904 | elect | 선출하다 | 921/P33 | N
+VOC-0905 | elegant | 우아한 | 922/P33 | N
+VOC-0906 | element | 요소 | 923/P33 | N
+VOC-0907 | elevate | 올리다 | 924/P33 | N
+VOC-0908 | eliminate | 제거하다 | 925/P34 | N
+VOC-0909 | elite | 엘리트 | 926/P34 | N
+VOC-0910 | eloquent | 웅변의, 유창한 | 927/P34 | N
+VOC-0911 | embarrass | 당황하게 하다 | 928/P34 | N
+VOC-0912 | embassy | 대사관 | 929/P34 | N
+VOC-0913 | embed | 박아 넣다 | 930/P34 | N
+VOC-0914 | embody | 구현하다 | 931/P34 | N
+VOC-0915 | embrace | 포용하다, 껴안다 | 932/P34 | N
+VOC-0916 | emergency | 비상사태 | 934/P34 | N
+VOC-0917 | emotion | 감정 | 936/P34 | N
+VOC-0918 | emphasis | 강조 | 937/P34 | N
+VOC-0919 | empire | 제국 | 938/P34 | N
+VOC-0920 | employ | 고용하다, 이용하다 | 940/P34 | N
+VOC-0921 | empty | 비어 있는 | 941/P34 | N
+VOC-0922 | enable | 가능하게 하다 | 942/P34 | N
+VOC-0923 | enclose | 동봉하다, 둘러싸다 | 943/P34 | N
+VOC-0924 | encounter | 마주치다 | 944/P34 | N
+VOC-0925 | encourage | 격려하다 | 945/P34 | N
+VOC-0926 | encyclopedia | 백과사전 | 946/P34 | N
+VOC-0927 | end | 끝, 목적 | 947/P34 | N
+VOC-0928 | endanger | 위태롭게 하다 | 948/P34 | N
+VOC-0929 | endeavor | 노력, 시도 | 949/P34 | N
+VOC-0930 | endless | 끝없는 | 950/P34 | N
+VOC-0931 | endorse | 지지하다 | 951/P34 | N
+VOC-0932 | enemy | 적 | 954/P35 | N
+VOC-0933 | energy | 에너지 | 955/P35 | N
+VOC-0934 | enforce | 집행하다, 강요하다 | 956/P35 | N
+VOC-0935 | engage | 관여하다, 약혼하다 | 957/P35 | N
+VOC-0936 | engine | 엔진 | 958/P35 | N
+VOC-0937 | enjoy | 즐기다 | 960/P35 | N
+VOC-0938 | enlarge | 확대하다 | 961/P35 | N
+VOC-0939 | enormous | 거대한 | 962/P35 | N
+VOC-0940 | enough | 충분한 | 963/P35 | N
+VOC-0941 | enrich | 풍요롭게 하다 | 964/P35 | N
+VOC-0942 | enroll | 등록하다 | 965/P35 | N
+VOC-0943 | ensure | 보장하다 | 966/P35 | N
+VOC-0944 | entail | 수반하다 | 967/P35 | N
+VOC-0945 | enter | 들어가다 | 968/P35 | N
+VOC-0946 | enterprise | 기업, 사업 | 969/P35 | N
+VOC-0947 | entertain | 즐겁게 하다 | 970/P35 | N
+VOC-0948 | enthusiasm | 열정 | 971/P35 | N
+VOC-0949 | entire | 전체의 | 972/P35 | N
+VOC-0950 | entitle | 자격을 주다 | 973/P35 | N
+VOC-0951 | entity | 실체, 독립체 | 974/P35 | N
+VOC-0952 | entrance | 입구 | 975/P35 | N
+VOC-0953 | entreat | 간청하다 | 976/P35 | N
+VOC-0954 | entry | 입장, 출품작 | 977/P35 | N
+VOC-0955 | envelope | 봉투 | 978/P35 | N
+VOC-0956 | environment | 환경 | 979/P35 | N
+VOC-0957 | envy | 부러워하다 | 980/P35 | N
+VOC-0958 | epidemic | 전염병 | 981/P36 | N
+VOC-0959 | equal | 동등한 | 982/P36 | N
+VOC-0960 | equate | 동일시하다 | 983/P36 | N
+VOC-0961 | equator | 적도 | 984/P36 | N
+VOC-0962 | equip | 장비를 갖추다 | 985/P36 | N
+VOC-0963 | era | 시대 | 987/P36 | N
+VOC-0964 | erase | 지우다 | 989/P36 | N
+VOC-0965 | erect | 세우다, 똑바로 선 | 990/P36 | N
+VOC-0966 | erode | 침식시키다 | 991/P36 | N
+VOC-0967 | err | 실수하다 | 992/P36 | N
+VOC-0968 | errand | 심부름 | 993/P36 | N
+VOC-0969 | error | 오류 | 994/P36 | N
+VOC-0970 | erupt | 분출하다 | 995/P36 | N
+VOC-0971 | escape | 탈출하다 | 996/P36 | N
+VOC-0972 | escort | 호위하다 | 997/P36 | N
+VOC-0973 | essay | 수필, 에세이 | 998/P36 | N
+VOC-0974 | essence | 본질 | 999/P36 | N
+VOC-0975 | establish | 설립하다, 확립하다 | 1000/P36 | N
+VOC-0976 | estate | 토지, 재산 | 1001/P36 | N
+VOC-0977 | esteem | 존중하다 | 1002/P36 | N
+VOC-0978 | estimate | 추정하다 | 1003/P36 | N
+VOC-0979 | eternal | 영원한 | 1004/P36 | N
+VOC-0980 | ethics | 윤리학 | 1005/P36 | N
+VOC-0981 | ethnic | 민족의 | 1006/P36 | N
+VOC-0982 | evaporate | 증발하다 | 1008/P36 | N
+VOC-0983 | even | 심지어, 평평한, 짝수의 | 1009/P37 | N
+VOC-0984 | event | 사건, 행사 | 1010/P37 | N
+VOC-0985 | eventual | 결국 일어나는 | 1011/P37 | N
+VOC-0986 | evident | 명백한 | 1012/P37 | N
+VOC-0987 | evil | 악 | 1013/P37 | N
+VOC-0988 | evoke | 불러일으키다 | 1014/P37 | N
+VOC-0989 | evolution | 진화 | 1015/P37 | N
+VOC-0990 | exact | 정확한 | 1016/P37 | N
+VOC-0991 | examine | 조사하다 | 1018/P37 | N
+VOC-0992 | exceed | 초과하다 | 1019/P37 | N
+VOC-0993 | excel | 뛰어나다 | 1020/P37 | N
+VOC-0994 | except | ~을 제외하고 | 1021/P37 | N
+VOC-0995 | excess | 초과, 과잉 | 1022/P37 | N
+VOC-0996 | exchange | 교환하다 | 1023/P37 | N
+VOC-0997 | excite | 흥분시키다 | 1024/P37 | N
+VOC-0998 | exclude | 배제하다 | 1025/P37 | N
+VOC-0999 | excuse | 변명, 용서하다 | 1027/P37 | N
+VOC-1000 | execute | 실행하다, 처형하다 | 1028/P37 | N
+VOC-1001 | executive | 경영진, 행정부 | 1029/P37 | N
+VOC-1002 | exercise | 운동, 행사하다 | 1030/P37 | N
+VOC-1003 | exert | 가하다, 행사하다 | 1031/P37 | N
+VOC-1004 | exhaust | 기진맥진하게 하다, 고갈시키다 | 1032/P37 | N
+VOC-1005 | exhibit | 전시하다 | 1033/P37 | N
+VOC-1006 | exile | 추방하다, 망명 | 1034/P37 | N
+VOC-1007 | exist | 존재하다 | 1035/P37 | N
+VOC-1008 | exit | 출구 | 1036/P37 | N
+VOC-1009 | expand | 확장하다 | 1038/P38 | N
+VOC-1010 | expect | 기대하다 | 1039/P38 | N
+VOC-1011 | expel | 추방하다, 배출하다 | 1040/P38 | N
+VOC-1012 | expense | 비용 | 1041/P38 | N
+VOC-1013 | experience | 경험 | 1042/P38 | N
+VOC-1014 | experiment | 실험 | 1043/P38 | N
+VOC-1015 | expert | 전문가 | 1044/P38 | N
+VOC-1016 | expire | 만료되다 | 1045/P38 | N
+VOC-1017 | explain | 설명하다 | 1046/P38 | N
+VOC-1018 | explode | 폭발하다 | 1048/P38 | N
+VOC-1019 | explore | 탐험하다 | 1050/P38 | N
+VOC-1020 | export | 수출하다 | 1051/P38 | N
+VOC-1021 | expose | 노출시키다 | 1052/P38 | N
+VOC-1022 | express | 표현하다, 급행의 | 1053/P38 | N
+VOC-1023 | extend | 연장하다 | 1054/P38 | N
+VOC-1024 | extent | 정도, 범위 | 1055/P38 | N
+VOC-1025 | exterior | 외부의 | 1056/P38 | N
+VOC-1026 | external | 외부의 | 1057/P38 | N
+VOC-1027 | extinct | 멸종된 | 1058/P38 | N
+VOC-1028 | extra | 추가의 | 1059/P38 | N
+VOC-1029 | extract | 추출하다 | 1060/P38 | N
+VOC-1030 | extraordinary | 비범한, 대단한 | 1061/P38 | N
+VOC-1031 | extreme | 극단의 | 1062/P38 | N
+VOC-1032 | eye | 눈, 시선 | 1063/P38 | N
+VOC-1033 | fabric | 직물, 구조 | 1064/P38 | N
+VOC-1034 | face | 얼굴, 직면하다 | 1065/P39 | N
+VOC-1035 | facility | 시설, 편의 | 1067/P39 | N
+VOC-1036 | fact | 사실 | 1068/P39 | N
+VOC-1037 | factor | 요인 | 1069/P39 | N
+VOC-1038 | factory | 공장 | 1070/P39 | N
+VOC-1039 | faculty | 능력, 교수진 | 1071/P39 | N
+VOC-1040 | fade | 희미해지다 | 1072/P39 | N
+VOC-1041 | fail | 실패하다 | 1073/P39 | N
+VOC-1042 | faint | 희미한, 기절하다 | 1074/P39 | N
+VOC-1043 | fair | 공평한, 박람회 | 1075/P39 | N
+VOC-1044 | faith | 믿음 | 1076/P39 | N
+VOC-1045 | fake | 가짜의 | 1077/P39 | N
+VOC-1046 | fall | 떨어지다, 가을 | 1078/P39 | N
+VOC-1047 | false | 거짓의 | 1079/P39 | N
+VOC-1048 | fame | 명성 | 1080/P39 | N
+VOC-1049 | familiar | 친숙한 | 1081/P39 | N
+VOC-1050 | famine | 기근 | 1082/P39 | N
+VOC-1051 | famous | 유명한 | 1083/P39 | N
+VOC-1052 | fancy | 화려한, 상상하다 | 1084/P39 | N
+VOC-1053 | far | 멀리 | 1085/P39 | N
+VOC-1054 | fare | 요금 | 1086/P39 | N
+VOC-1055 | fascinate | 매혹하다 | 1087/P39 | N
+VOC-1056 | fashion | 유행, 방식 | 1088/P39 | N
+VOC-1057 | fast | 빠른, 금식하다 | 1089/P39 | N
+VOC-1058 | fasten | 매다, 고정하다 | 1090/P39 | N
+VOC-1059 | fate | 운명 | 1092/P39 | N
+VOC-1060 | fatigue | 피로 | 1093/P40 | N
+VOC-1061 | fault | 잘못, 단점 | 1094/P40 | N
+VOC-1062 | favor | 호의, 부탁 | 1095/P40 | N
+VOC-1063 | fear | 두려움 | 1096/P40 | N
+VOC-1064 | feat | 위업, 솜씨 | 1097/P40 | N
+VOC-1065 | feature | 특징 | 1098/P40 | N
+VOC-1066 | federal | 연방의 | 1099/P40 | N
+VOC-1067 | fee | 요금, 수수료 | 1100/P40 | N
+VOC-1068 | feed | 먹이를 주다 | 1101/P40 | N
+VOC-1069 | feel | 느끼다 | 1102/P40 | N
+VOC-1070 | fellow | 동료 | 1103/P40 | N
+VOC-1071 | female | 여성의 | 1104/P40 | N
+VOC-1072 | fertile | 비옥한 | 1105/P40 | N
+VOC-1073 | festival | 축제 | 1106/P40 | N
+VOC-1074 | fetch | 가져오다 | 1107/P40 | N
+VOC-1075 | fever | 열 | 1108/P40 | N
+VOC-1076 | few | 거의 없는 | 1109/P40 | N
+VOC-1077 | fiber | 섬유 | 1110/P40 | N
+VOC-1078 | fiction | 허구, 소설 | 1111/P40 | N
+VOC-1079 | field | 들판, 분야 | 1112/P40 | N
+VOC-1080 | fierce | 사나운, 치열한 | 1113/P40 | N
+VOC-1081 | fight | 싸우다 | 1114/P40 | N
+VOC-1082 | figure | 수치, 인물, 모양 | 1115/P40 | N
+VOC-1083 | file | 파일, 제출하다 | 1116/P40 | N
+VOC-1084 | fill | 채우다 | 1117/P40 | N
+VOC-1085 | filter | 거르다 | 1118/P40 | N
+VOC-1086 | final | 마지막의 | 1119/P40 | N
+VOC-1087 | finance | 재정, 자금 | 1120/P40 | N
+VOC-1088 | fine | 훌륭한, 벌금 | 1121/P41 | N
+VOC-1089 | finger | 손가락 | 1122/P41 | N
+VOC-1090 | finish | 끝내다 | 1123/P41 | N
+VOC-1091 | finite | 유한한 | 1124/P41 | N
+VOC-1092 | fire | 불, 해고하다 | 1125/P41 | N
+VOC-1093 | firm | 확고한, 회사 | 1126/P41 | N
+VOC-1094 | first | 첫째의 | 1127/P41 | N
+VOC-1095 | fiscal | 재정의, 회계의 | 1128/P41 | N
+VOC-1096 | fish | 물고기 | 1129/P41 | N
+VOC-1097 | fit | 알맞다, 건강한 | 1130/P41 | N
+VOC-1098 | fix | 고정하다, 고치다 | 1131/P41 | N
+VOC-1099 | flag | 깃발 | 1132/P41 | N
+VOC-1100 | flame | 불꽃 | 1133/P41 | N
+VOC-1101 | flash | 번쩍이다 | 1134/P41 | N
+VOC-1102 | flat | 평평한 | 1135/P41 | N
+VOC-1103 | flatter | 아부하다 | 1136/P41 | N
+VOC-1104 | flavor | 맛, 풍미 | 1137/P41 | N
+VOC-1105 | flaw | 결함 | 1138/P41 | N
+VOC-1106 | flee | 달아나다 | 1139/P41 | N
+VOC-1107 | flesh | 살, 육체 | 1140/P41 | N
+VOC-1108 | flexible | 유연한 | 1141/P41 | N
+VOC-1109 | flight | 비행 | 1142/P41 | N
+VOC-1110 | fling | 내던지다 | 1143/P41 | N
+VOC-1111 | float | 뜨다 | 1144/P41 | N
+VOC-1112 | flock | 무리, 모이다 | 1145/P41 | N
+VOC-1113 | flood | 홍수 | 1146/P41 | N
+VOC-1114 | floor | 바닥 | 1147/P41 | N
+
+[DUPLICATE REPORT]
+- facilitate: 촉진하다 / 용이하게 하다 | 6/P1, 1066/P39
+- empirical: 경험적인 | 23/P1, 939/P34
+- compile: 엮다 / 편집하다 | 36/P2, 607/P22
+- explicit: 명백한 | 39/P2, 1047/P38
+- diminish: 줄어들다 | 41/P2, 834/P30
+- compensate: 보상하다 | 47/P2, 604/P22
+- derive: 유래하다 / 끌어내다 | 48/P2, 806/P29
+- distort: 왜곡하다 | 49/P2, 866/P31
+- evaluate: 평가하다 | 50/P2, 1007/P36
+- exploit: 이용하다 / 착취하다, 이용하다 | 51/P2, 1049/P38
+- compatible: 호환되는 / 양립할 수 있는 | 66/P3, 602/P22
+- compel: 강요하다 | 67/P3, 603/P22
+- crucial: 중대한 / 결정적인 | 69/P3, 737/P27
+- deficit: 적자 | 70/P3, 784/P28
+- deplete: 고갈시키다 | 71/P3, 802/P29
+- deduce: 추론하다 | 72/P3, 775/P28
+- devastate: 파괴하다 / 완전히 파괴하다 | 74/P3, 822/P30
+- diagnose: 진단하다 | 75/P3, 826/P30
+- dictate: 지시하다 | 76/P3, 827/P30
+- discard: 버리다 | 77/P3, 843/P31
+- discrepancy: 불일치 | 78/P3, 850/P31
+- disrupt: 방해하다 | 79/P3, 861/P31
+- emerge: 나타나다 | 83/P3, 933/P34
+- emit: 방출하다 | 84/P3, 935/P34
+- endow: 부여하다 / 기부하다, 부여하다 | 86/P4, 952/P34
+- endure: 견디다 / 참다, 견디다 | 87/P4, 953/P35
+- enhance: 향상시키다 | 88/P4, 959/P35
+- equivalent: 동등한 | 89/P4, 986/P36
+- eradicate: 근절하다 | 90/P4, 988/P36
+- exaggerate: 과장하다 | 92/P4, 1017/P37
+- exclusive: 독점적인 | 93/P4, 1026/P37
+- exotic: 이국적인 | 94/P4, 1037/P38
+- flourish: 번창하다 | 95/P4, 1148/P41
+- fatal: 치명적인 | 96/P4, 1091/P39
+
+[FOLLOW-UP SOURCE STATUS]
+- Part42 fatigue~first
+- Part43 fit~fold
+- Part44 folk~frank
+- Part45 fraud~further
+- Part46 fuss~genuine
+- Part47 geology~greet
+- Part48 grief~head
+- Part49 heal~holiday
+- Part50 hollow~idea
+- Part51 ideal~improve
+- 대체/확장 재제시 Part21~25 clip~continue
+- 위 후속 범위는 개별 원문 항목이 현재 회수되지 않아 기존 1~41에 병합하지 않음.
+
+[SOURCE]
+- 수능 영단어 핵심 2000 마스터 (Part 1~41 통합본).txt
+- 제미나이_수능빈출단어_후속수집_SOURCE_LAYER_20260918.txt
