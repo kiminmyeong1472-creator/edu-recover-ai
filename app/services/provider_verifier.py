@@ -10,6 +10,7 @@ from google import genai
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.services.authoring_assets import build_verification_context
 from app.services.auto_generator import (
     GenerationFailed,
     GeneratorNotConfigured,
@@ -37,7 +38,11 @@ or
 
 def _serialize(problems: list[dict[str, Any]]) -> str:
     return json.dumps(
-        {"problem_count": len(problems), "problems": problems},
+        {
+            "problem_count": len(problems),
+            "problems": problems,
+            "edurecover_verification_context": build_verification_context(problems),
+        },
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -94,6 +99,7 @@ async def verify_with_provider(
                 model=settings.openai_model,
                 instructions=VERIFICATION_INSTRUCTIONS,
                 input=payload,
+                store=False,
             )
             result = _parse_result(response.output_text)
             return {
@@ -112,6 +118,7 @@ async def verify_with_provider(
             response = await client.aio.models.generate_content(
                 model=settings.gemini_model,
                 contents=VERIFICATION_INSTRUCTIONS + "\n\n" + payload,
+                config={"store": False},
             )
             result = _parse_result(response.text)
             return {
