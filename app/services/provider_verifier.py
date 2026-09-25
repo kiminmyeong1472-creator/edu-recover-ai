@@ -10,7 +10,9 @@ from google import genai
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.services.access_notice import AI_ACCESS_NOTICE
 from app.services.authoring_assets import build_verification_context
+from app.services.privacy_guard import assert_provider_zdr
 from app.services.auto_generator import (
     GenerationFailed,
     GeneratorNotConfigured,
@@ -18,7 +20,8 @@ from app.services.auto_generator import (
 )
 
 
-VERIFICATION_INSTRUCTIONS = """You are an independent EduRecover AI assessment verifier.
+VERIFICATION_INSTRUCTIONS = AI_ACCESS_NOTICE + """
+You are an independent EduRecover AI assessment verifier.
 Review the supplied generated assessment item(s) against the supplied passage/evidence.
 
 Check conservatively:
@@ -91,6 +94,7 @@ async def verify_with_provider(
     payload = _serialize(problems)
 
     if normalized == GenerationProvider.OPENAI.value:
+        assert_provider_zdr("openai")
         if settings.openai_api_key is None:
             raise GeneratorNotConfigured("OPENAI_API_KEY is not configured.")
         client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
@@ -111,6 +115,7 @@ async def verify_with_provider(
             await client.close()
 
     if normalized == GenerationProvider.GEMINI.value:
+        assert_provider_zdr("gemini")
         if settings.gemini_api_key is None:
             raise GeneratorNotConfigured("GEMINI_API_KEY is not configured.")
         try:
@@ -118,7 +123,6 @@ async def verify_with_provider(
             response = await client.aio.models.generate_content(
                 model=settings.gemini_model,
                 contents=VERIFICATION_INSTRUCTIONS + "\n\n" + payload,
-                config={"store": False},
             )
             result = _parse_result(response.text)
             return {
@@ -136,6 +140,7 @@ async def verify_with_provider(
             ) from exc
 
     if normalized == GenerationProvider.CLAUDE.value:
+        assert_provider_zdr("claude")
         if settings.anthropic_api_key is None:
             raise GeneratorNotConfigured("ANTHROPIC_API_KEY is not configured.")
         client = AsyncAnthropic(
