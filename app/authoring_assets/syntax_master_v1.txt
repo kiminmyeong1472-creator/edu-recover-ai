@@ -1,0 +1,182 @@
+[INTERNAL / SOURCE-CONSOLIDATED]
+에듀리커버 수능·내신 영어 구문집 정리본
+버전: SYNTAX-MASTER-v1.0 / 2026-09-23
+
+권위 구분
+- 제미나이 X-ray 자료: 외부AI 원료자산. 공식 평가원 규칙으로 간주하지 않음.
+- 3개년 45회 구문난도 자료: 공식 시험지를 동일 계산법으로 분석한 내부 운영기준이며 교육부의 공식 수치기준은 아님.
+
+[SYN-FRAME] 긴 문장 해체 기본
+SYN-FRAME-01 | 동사 후보 전부 표시 후 본동사와 준동사 구분
+SYN-FRAME-02 | that/which/who/if/because/although 등으로 절 경계 확인
+SYN-FRAME-03 | 긴 주어에서 주어 핵과 본동사 수일치 연결
+SYN-FRAME-04 | 목적어·보어 구조와 가목적어/진목적어 확인
+SYN-FRAME-05 | 관계절·전치사구·삽입구를 접었다가 의미복원
+SYN-FRAME-06 | 분사·분사구문의 숨은 주체와 능동/수동 확인
+SYN-FRAME-07 | 도치된 어순을 평서문으로 복원
+SYN-FRAME-08 | 강조·대조·부정범위를 문장 전체에서 판정
+SYN-FRAME-09 | 동일 개념의 패러프레이징 사슬 추적
+
+[SYN-LONG] 장문 구문 장치
+SYN-LONG-01 | 긴 명사구·명사화
+SYN-LONG-02 | 관계절 중첩
+SYN-LONG-03 | 전치사구·삽입구
+SYN-LONG-04 | 동격 that / 보문절
+SYN-LONG-05 | 분사구문·후치수식
+SYN-LONG-06 | 무생물 주어
+SYN-LONG-07 | not A but/rather B / not so much A as B
+SYN-LONG-08 | while/although/despite 양보·대조
+SYN-LONG-09 | result in/from, lead to 등 원인-결과 방향
+
+[SYN-GRADE] 3개년 45회 실측 기반 학년 운영범위
+SYN-GRADE-H1 | 표준 16~25단어, 상위 26~32단어, 기본 2절 안팎
+SYN-GRADE-H2 | 표준 17~27단어, 상위 28~34단어, 2~3절·익숙한 구조 결합
+SYN-GRADE-H3 | 표준 18~28단어, 상위 29~35단어, 평가원형 중첩·논리거리 허용
+SYN-GRADE-CAUTION | 학년을 높이기 위해 모든 문장을 기계적으로 길게 만들지 않음
+
+[SYN-EXPR-001~120] 구동사·다의어·연결사·관용구
+SYN-EXPR-001 | result in: ~을 낳다 / 앞 원인→뒤 결과
+SYN-EXPR-002 | result from: ~에서 기인하다 / 앞 결과←뒤 원인
+SYN-EXPR-003 | bring about: ~을 초래하다
+SYN-EXPR-004 | lead to: ~로 이어지다
+SYN-EXPR-005 | contribute to: ~에 기여하다, 원인이 되다
+SYN-EXPR-006 | give rise to: ~을 발생시키다
+SYN-EXPR-007 | attribute A to B: A를 B의 결과로 보다
+SYN-EXPR-008 | distinguish A from B: A와 B를 구별하다
+SYN-EXPR-009 | tell A from B: A와 B를 구별하다
+SYN-EXPR-010 | substitute A for B: B 대신 A를 쓰다
+SYN-EXPR-011 | replace A with B: A를 B로 바꾸다
+SYN-EXPR-012 | turn A into B: A를 B로 바꾸다
+SYN-EXPR-013 | take the place of: ~을 대신하다
+SYN-EXPR-014 | account for: 설명하다 / 비율을 차지하다 / 원인이 되다
+SYN-EXPR-015 | make up: 구성하다 / 지어내다 / 화장하다
+SYN-EXPR-016 | take into account: ~을 고려하다
+SYN-EXPR-017 | take for granted: ~을 당연하게 여기다
+SYN-EXPR-018 | come up with: 생각해내다
+SYN-EXPR-019 | figure out: 알아내다, 이해하다
+SYN-EXPR-020 | carry out: 수행하다
+SYN-EXPR-021 | rule out: 배제하다
+SYN-EXPR-022 | point out: 지적하다
+SYN-EXPR-023 | refer to A as B: A를 B라고 부르다
+SYN-EXPR-024 | cope with: 대처하다
+SYN-EXPR-025 | rely on / depend on: 의존하다
+SYN-EXPR-026 | consist of: ~로 구성되다
+SYN-EXPR-027 | be composed of: ~로 구성되다
+SYN-EXPR-028 | end up ~ing: 결국 ~하게 되다
+SYN-EXPR-029 | apply to: ~에 적용되다
+SYN-EXPR-030 | take advantage of: ~을 이용하다
+SYN-EXPR-031 | give in (to): ~에 굴복하다
+SYN-EXPR-032 | conform to: ~에 따르다, 순응하다
+SYN-EXPR-033 | comply with: ~을 준수하다
+SYN-EXPR-034 | be subject to: ~의 지배/영향을 받다
+SYN-EXPR-035 | settle for: ~에 타협하다
+SYN-EXPR-036 | boil down to: 결국 ~로 요약되다
+SYN-EXPR-037 | lay emphasis on: ~을 강조하다
+SYN-EXPR-038 | sum up: 요약하다
+SYN-EXPR-039 | go so far as to: 심지어 ~하기까지 하다
+SYN-EXPR-040 | let alone: ~은 말할 것도 없이
+SYN-EXPR-041 | give way to: ~에 자리를 내주다, ~로 대체되다
+SYN-EXPR-042 | adapt to: ~에 적응하다
+SYN-EXPR-043 | adjust to: ~에 맞추다
+SYN-EXPR-044 | transform into: ~으로 변형되다
+SYN-EXPR-045 | blend in (with): ~에 섞이다, 조화되다
+SYN-EXPR-046 | cling to: ~에 집착하다
+SYN-EXPR-047 | stick to: ~을 고수하다
+SYN-EXPR-048 | adhere to: ~을 고수하다 / 부착되다
+SYN-EXPR-049 | hold on to: ~을 유지하다
+SYN-EXPR-050 | obsess over: ~에 집착하다
+SYN-EXPR-051 | do away with: ~을 없애다
+SYN-EXPR-052 | deprive A of B: A에게서 B를 빼앗다
+SYN-EXPR-053 | get rid of: ~을 제거하다
+SYN-EXPR-054 | weed out: ~을 솎아내다
+SYN-EXPR-055 | clear away: ~을 치우다
+SYN-EXPR-056 | shed light on: ~을 밝히다
+SYN-EXPR-057 | make sense of: ~을 이해하다
+SYN-EXPR-058 | lose sight of: ~을 간과하다
+SYN-EXPR-059 | take note of: ~에 주목하다
+SYN-EXPR-060 | reflect on: ~을 성찰하다
+SYN-EXPR-061 | observe: 관찰하다 / 준수하다 / 말하다
+SYN-EXPR-062 | appreciate: 감사하다 / 감상하다 / 이해·진가인정 / 가치가 오르다
+SYN-EXPR-063 | term: 용어 / 기간·학기 / 조건
+SYN-EXPR-064 | subject: 주제·과목 / 피실험자 / ~의 영향을 받는
+SYN-EXPR-065 | measure: 측정하다 / 조치 / 척도
+SYN-EXPR-066 | matter: 문제·물질 / 중요하다
+SYN-EXPR-067 | nature: 자연 / 본성·본질
+SYN-EXPR-068 | practice: 연습 / 관행 / 실행
+SYN-EXPR-069 | discipline: 규율 / 학문분야
+SYN-EXPR-070 | yield: 양보하다 / 산출하다 / 수확량
+SYN-EXPR-071 | However / Yet / Still: 역접
+SYN-EXPR-072 | Rather / Instead: 대안·대체
+SYN-EXPR-073 | On the other hand / In contrast: 대조
+SYN-EXPR-074 | Furthermore / Moreover / Besides: 첨가
+SYN-EXPR-075 | Therefore / Thus / Hence / Consequently: 결론·인과
+SYN-EXPR-076 | In fact / Indeed / As a matter of fact: 강조·정정·보강(문맥판단 필요)
+SYN-EXPR-077 | For example / For instance: 예시
+SYN-EXPR-078 | In other words / That is (to say): 환언
+SYN-EXPR-079 | Likewise / Similarly: 유사
+SYN-EXPR-080 | Nevertheless / Nonetheless: 양보 뒤 역접
+SYN-EXPR-081 | stop short of: ~까지는 가지 않다
+SYN-EXPR-082 | anything but: 결코 ~이 아닌
+SYN-EXPR-083 | leave much to be desired: 아쉬운 점이 많다, 불충분하다
+SYN-EXPR-084 | fall short of: ~에 미치지 못하다
+SYN-EXPR-085 | be predicated upon: ~에 근거·전제되다
+SYN-EXPR-086 | be contingent upon: ~에 달려 있다
+SYN-EXPR-087 | be susceptible to: ~에 취약하다
+SYN-EXPR-088 | at the mercy of: ~에 휘둘리는
+SYN-EXPR-089 | at the expense of: ~을 희생하여
+SYN-EXPR-090 | to the detriment of: ~을 해치며
+SYN-EXPR-091 | in lieu of: ~을 대신하여
+SYN-EXPR-092 | make allowance(s) for: ~을 감안하다
+SYN-EXPR-093 | pay lip service to: 말로만 지지하다
+SYN-EXPR-094 | turn a blind eye to: ~을 못 본 체하다
+SYN-EXPR-095 | take its toll (on): ~에 큰 피해를 주다
+SYN-EXPR-096 | lose no time in ~ing: 지체 없이 ~하다
+SYN-EXPR-097 | nothing less than: 다름 아닌 바로 ~
+SYN-EXPR-098 | go out of one's way to: 굳이 애써 ~하다
+SYN-EXPR-099 | rule of thumb: 경험 법칙, 어림짐작
+SYN-EXPR-100 | do justice to: ~의 진가를 제대로 나타내다/공정하게 대하다
+SYN-EXPR-101 | compromise: 훼손하다, 위태롭게 하다
+SYN-EXPR-102 | address: 문제를 다루다
+SYN-EXPR-103 | assume: 책임·역할을 떠맡다 / 형태를 띠다
+SYN-EXPR-104 | render + O + C: O를 C하게 만들다
+SYN-EXPR-105 | cast doubt on: ~에 의문을 제기하다
+SYN-EXPR-106 | in that: ~라는 점에서
+SYN-EXPR-107 | given (that): ~을 고려하면
+SYN-EXPR-108 | short of: ~이 부족한 / ~외에는
+SYN-EXPR-109 | to the extent that / to which: ~할 정도까지
+SYN-EXPR-110 | by no means: 결코 ~이 아닌
+SYN-EXPR-111 | be a recipe for: ~을 초래할 지름길이다
+SYN-EXPR-112 | come at a price/cost: 대가가 따르다
+SYN-EXPR-113 | tip the balance/scales: 판도를 기울이다
+SYN-EXPR-114 | take its course: 자연스러운 과정을 밟다
+SYN-EXPR-115 | keep ~ at bay: ~을 저지하다
+SYN-EXPR-116 | have yet to V: 아직 ~하지 않았다
+SYN-EXPR-117 | be bound to V: 반드시/매우 가능성이 높게 ~하다
+SYN-EXPR-118 | be prone to V/N: ~하기 쉽다
+SYN-EXPR-119 | leave ~ unchecked / unnoticed: ~을 억제/인지하지 못한 채 방치하다
+SYN-EXPR-120 | in light of: ~에 비추어, ~을 고려하여
+
+[SYN-COH] 순서·삽입 결속 단서
+SYN-COH-01 | a/an 첫 도입 → the 재지칭
+SYN-COH-02 | such + 명사 → 앞의 구체 내용 회수
+SYN-COH-03 | it/they의 수일치와 선행사
+SYN-COH-04 | this/these/such의 지시대상
+SYN-COH-05 | 시간·인과·대조 표현
+SYN-COH-06 | 개념의 최초도입 여부
+SYN-COH-07 | 동일어 하나가 아니라 최소 2개 이상 결속조건으로 판단
+
+[W-SYN-01~10] 내신 서술형 검수게이트
+W-SYN-01 | 원문정합: 주체·시제·태·인과·대조·조건 보존
+W-SYN-02 | 학년적합: 목표 학년 표준/상위 범위
+W-SYN-03 | 목표단일성: 기본 1개, 통합형 최대 2개
+W-SYN-04 | 답안개방성: 가능한 동의표현을 부당하게 배제하지 않음
+W-SYN-05 | 부분점수: 구조·의미·조건·표기 분리
+W-SYN-06 | 답안공간: 요구 길이와 실제 답안칸·시간 일치
+W-SYN-07 | 인지부담: 어려운 어휘·긴 문장·복합구문·분산근거를 모두 한 문항에 몰지 않음
+W-SYN-08 | 설명가능성: 교사가 원문 근거로 판정 설명 가능
+W-SYN-09 | 이상치: P90 초과 수동검수, P95 초과 반복 금지
+W-SYN-10 | 세트균형: 동일 구문·동일 변형·동일 감점요소 반복 금지
+
+[SOURCE]
+- 제미나이_수능Xray_구문구동사_표현_SOURCE_LAYER_20260918.txt
+- 영어_학년별_구문난도_3개년45회전수조사_내신서술형청사진_20260920.txt
