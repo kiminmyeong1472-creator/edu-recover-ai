@@ -24,6 +24,12 @@ ASSET_MANIFEST: list[dict[str, Any]] = [
         "server_only": True,
     },
     {
+        "file": "grade_vocab_blueprint_verified.txt",
+        "source_title": "영어_출제블루프린트_고1고2고3_300문항_통합본.txt에서 직접 회수",
+        "description": "블루프린트 원본에서 직접 회수한 학년별 구체 어휘.",
+        "server_only": True,
+    },
+    {
         "file": "syntax_master_v1.txt",
         "source_title": "02_수능내신_구문집_SYNTAX-ID_20260923.txt",
         "description": "수능·내신 구체 구문 자산과 고1·고2·고3 구문 범위.",
@@ -144,6 +150,7 @@ def build_authoring_context(
         ),
         "vocabulary": {
             "matched_source_entries": _source_vocab_rows(source_text),
+            "grade_vocab_verified": _read("grade_vocab_blueprint_verified.txt"),
             "grade_tag_status": (
                 "The normalized VOC-ID corpus is installed on the server, but its recovered source does "
                 "not contain verified per-word H1/H2/H3 tags. Do not fabricate grade labels. Apply the "
