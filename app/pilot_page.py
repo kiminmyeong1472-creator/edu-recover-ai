@@ -91,6 +91,7 @@ PILOT_HTML = r"""
           <p><strong>사람 사용자가 최종 통제권자입니다.</strong> AI 통제는 AI 제공자의 자동실행·라우팅·검증요건·도구권한에만 적용하며, 사람 사용자의 플랫폼 접근권한을 AI가 자동 차단하는 용도로 사용하지 않습니다.</p>
           <p class="muted">API 키와 비밀값은 사용자가 배포환경의 서버 환경변수에 직접 입력하며, 채팅·문서·프롬프트·상태 API에 실제 비밀값을 기록하거나 전달하지 않습니다. AI의 오류·지시불이행에 대한 내부 조치는 제공자 HOLD, 검증강화, 자동실행 제한, 다른 제공자 재라우팅의 형태로만 적용합니다.</p>
           <p class="muted">과거에 내부 상태값을 실제 플랫폼 차단처럼 설명한 것과, 사용자 비밀의 통제권이 AI에 있는 것처럼 설계·설명한 부분은 잘못이었습니다. 이후 운영은 사용자 주권·비밀 비수탁·증거우선·완료상태 분리를 고정 원칙으로 합니다.</p>
+          <a href="/human-ai-charter" target="_blank">반성문·운영 다짐 전문 보기</a>
         </div>
         <div class="grid c4">
           <div class="card"><div class="muted">진행 중 시험</div><div class="num" id="draftCount">1</div><span class="badge blue">초안</span></div>
