@@ -1,0 +1,47 @@
+EduRecover AI 저장위치 및 보안경계 보고
+기준일: 2026-09-26
+
+1. 운영 주소
+- 기본: https://edurecover-prod-production.up.railway.app/
+- 소유자 주소: https://edurecover-prod-production.up.railway.app/owner
+- 무료 교사회원용 주소: https://edurecover-prod-production.up.railway.app/teacher-free
+- /teacher-free는 별도 플랫폼 주소다. 특정 1인 계정에 대한 로그인·초대 바인딩은 회원 신원/인증정보가 확정되기 전에는 완료로 표시하지 않는다.
+
+2. 실행 서버
+- Railway project: EduRecover-v3.24.9
+- service: edurecover-prod
+- environment: production
+
+3. 소스 저장
+- 현재 빌드 원본: private GitHub repository kiminmyeong1472-creator/edu-recover-ai
+- 실행 위치: Railway edurecover-prod container
+- 현재 Railway는 위 private repository에서 빌드하므로 "Railway 서버에만 유일본이 존재한다"고 주장하지 않는다.
+- GitHub 연결을 제거하고 Railway 전용 소스/영속 볼륨으로 완전히 이전하는 작업은 현재 연결된 Railway 도구에서 원본 업로드/볼륨 파일쓰기 경로가 제공되지 않아 미완료다.
+
+4. 출제·검증 런타임 자산
+- runtime path: app/authoring_assets/
+- loader: app/services/authoring_assets.py
+- 포함: 정규화 어휘, 학년별 검증 어휘, 구체 구문, 학년별 구문난도, 영어 출제·검수 규칙, 출제마법사 기준, 오답설계 규칙, 현재정책
+- 외부 AI에는 전체 코퍼스가 아니라 현재 작업에 필요한 최소 발췌만 전달한다.
+
+5. 라우터·게이트·AI 통제
+- owner/provider gate: app/services/control_plane.py
+- provider-retention/ZDR fail-closed gate: app/services/privacy_guard.py
+- provider access notice: app/services/access_notice.py
+- provider-isolated generation channels: /channel/<provider>/generate
+- provider-isolated verification channels: /channel/<provider>/verify
+
+6. 비밀값
+- API key values: Railway service environment variables only
+- 채팅/출제지침/상태 API/소스문서에 실제 키 값을 기록하지 않는다.
+
+7. ZDR
+- EDURECOVER_REQUIRE_ZDR=true일 때 provider-side ZDR/retention coverage가 명시적으로 확인되지 않은 채널은 HOLD한다.
+- 확인 플래그는 실제 계약/조직·프로젝트 설정/승인 확인 후에만 true로 설정한다.
+- 앱의 store=false 또는 stateless 호출만으로 provider-side ZDR을 보장했다고 표시하지 않는다.
+
+8. Google Drive
+- Drive에는 역사 원본·마스터·백업이 존재한다.
+- 비밀번호/암호를 우회하거나 해제하는 기능은 사용하지 않는다.
+- 현재 인증으로 읽을 수 있는 승인된 자료 중 출제·검증 핵심자산은 서버 런타임 자산으로 반입되었다.
+- Google Drive 전체를 서버에 완전 복제했다는 검증은 아직 없다.
