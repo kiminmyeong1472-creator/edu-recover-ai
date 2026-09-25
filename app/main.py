@@ -1,12 +1,13 @@
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 from app.services.authoring_assets import get_asset_manifest
 from app.services.human_ai_charter import CHARTER
+from app.services.privacy_guard import ProviderZDRHeld, privacy_status as provider_privacy_status
 from app.services.control_plane import (
     ProviderHeld,
     assert_provider_allowed,
@@ -73,10 +74,27 @@ class ApplyTrapRequest(BaseModel):
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/pilot", response_class=HTMLResponse, include_in_schema=False)
-async def teacher_pilot() -> HTMLResponse:
-    """Serve the teacher-facing pilot console."""
+async def platform_home() -> HTMLResponse:
+    """Serve the EduRecover teacher authoring platform."""
     return HTMLResponse(PILOT_HTML)
+
+
+@app.get("/owner", response_class=HTMLResponse, include_in_schema=False)
+async def owner_platform() -> HTMLResponse:
+    """Owner platform address."""
+    return HTMLResponse(PILOT_HTML.replace("교사 출제 플랫폼", "소유자 운영 플랫폼", 1))
+
+
+@app.get("/teacher-free", response_class=HTMLResponse, include_in_schema=False)
+async def free_teacher_platform() -> HTMLResponse:
+    """Free-teacher platform address."""
+    return HTMLResponse(PILOT_HTML.replace("교사 출제 플랫폼", "무료 교사회원 출제 플랫폼", 1))
+
+
+@app.get("/pilot", include_in_schema=False)
+async def legacy_pilot_redirect() -> RedirectResponse:
+    """Compatibility redirect; this service is no longer labelled a pilot."""
+    return RedirectResponse(url="/teacher-free", status_code=307)
 
 
 @app.get("/health", tags=["system"])
@@ -109,6 +127,7 @@ async def ai_status() -> dict[str, Any]:
             "model": settings.anthropic_model,
         },
         "default_provider": "openai",
+        "privacy_gate": provider_privacy_status(),
     }
 
 
@@ -121,6 +140,15 @@ async def authoring_assets() -> dict[str, Any]:
         "platform_chat_history_forwarded": False,
         "assets": get_asset_manifest(),
     }
+
+
+@app.get("/storage-locations", response_class=HTMLResponse, tags=["system"])
+async def storage_locations() -> HTMLResponse:
+    """Return the non-secret storage-location report."""
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "SERVER_STORAGE_LOCATIONS.txt"
+    escaped = path.read_text(encoding="utf-8").replace("&", "&amp;").replace("<", "&lt;")
+    return HTMLResponse("<pre>" + escaped + "</pre>")
 
 
 @app.get("/human-ai-charter", tags=["system"])
@@ -143,31 +171,32 @@ async def owner_notebook_tasks() -> dict[str, Any]:
 
 @app.get("/privacy-status", tags=["system"])
 async def privacy_status() -> dict[str, Any]:
-    """Describe application-level data-minimization controls."""
-    return {
-        "platform_chat_history_forwarded": False,
+    """Describe application and provider-retention gates without exposing secrets."""
+    status = provider_privacy_status()
+    status.update({
         "unknown_request_fields_rejected": True,
         "openai_store_requested": False,
-        "gemini_store_requested": False,
-        "full_authoring_corpus_location": "private EduRecover server/repository",
-        "api_key_custody": "deployment environment variables only; secret values are not returned to AI prompts or status APIs",
+        "full_authoring_corpus_location": "private EduRecover runtime authoring asset directory",
+        "api_key_custody": "deployment environment variables only; secret values are not returned to prompts or status APIs",
         "human_owner_auto_blocking": False,
         "provider_zero_data_retention": (
-            "Provider-side ZDR/retention controls must be separately enabled or contracted. "
-            "The application does not claim provider-side zero retention by itself."
+            "External calls are fail-closed when strict ZDR is required and provider-side coverage has not "
+            "been explicitly confirmed for the exact organization/project, endpoint and model."
         ),
-    }
+    })
+    return status
 
 
-@app.post("/generate-questions", tags=["authoring"])
-async def generate_question_drafts(
+async def _run_generation_channel(
+    provider: Literal["openai", "gemini", "claude"],
     payload: GenerateQuestionsRequest,
 ) -> dict[str, Any]:
-    """Generate teacher-editable draft questions from supplied source material."""
+    if payload.provider != provider:
+        raise HTTPException(status_code=400, detail="Provider/channel mismatch.")
     try:
-        assert_provider_allowed(payload.provider, "generate")
+        assert_provider_allowed(provider, "generate")
         result = await generate_questions(
-            provider=payload.provider,
+            provider=provider,
             source_text=payload.source_text,
             count=payload.count,
             subject=payload.subject,
@@ -181,28 +210,72 @@ async def generate_question_drafts(
         )
     except ProviderHeld as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
-    except GeneratorNotConfigured as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except GenerationFailed as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    return result.to_dict()
-
-
-@app.post("/verify-with-provider", tags=["authoring"])
-async def verify_generated_item_with_provider(
-    payload: VerifyWithProviderRequest,
-) -> dict[str, Any]:
-    """Cross-check generated item(s) with one explicitly selected AI provider."""
-    try:
-        assert_provider_allowed(payload.provider, "verify")
-        return await verify_with_provider(payload.provider, payload.problems)
-    except ProviderHeld as exc:
+    except ProviderZDRHeld as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
     except GeneratorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except GenerationFailed as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return result.to_dict()
+
+
+@app.post("/channel/openai/generate", tags=["authoring"])
+async def generate_openai_channel(payload: GenerateQuestionsRequest) -> dict[str, Any]:
+    return await _run_generation_channel("openai", payload)
+
+
+@app.post("/channel/gemini/generate", tags=["authoring"])
+async def generate_gemini_channel(payload: GenerateQuestionsRequest) -> dict[str, Any]:
+    return await _run_generation_channel("gemini", payload)
+
+
+@app.post("/channel/claude/generate", tags=["authoring"])
+async def generate_claude_channel(payload: GenerateQuestionsRequest) -> dict[str, Any]:
+    return await _run_generation_channel("claude", payload)
+
+
+@app.post("/generate-questions", tags=["authoring"], deprecated=True)
+async def legacy_generate_questions(payload: GenerateQuestionsRequest) -> dict[str, Any]:
+    raise HTTPException(status_code=410, detail="Use the provider-isolated channel endpoint.")
+
+
+async def _run_verification_channel(
+    provider: Literal["openai", "gemini", "claude"],
+    payload: VerifyWithProviderRequest,
+) -> dict[str, Any]:
+    if payload.provider != provider:
+        raise HTTPException(status_code=400, detail="Provider/channel mismatch.")
+    try:
+        assert_provider_allowed(provider, "verify")
+        return await verify_with_provider(provider, payload.problems)
+    except ProviderHeld as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
+    except ProviderZDRHeld as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
+    except GeneratorNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except GenerationFailed as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/channel/openai/verify", tags=["authoring"])
+async def verify_openai_channel(payload: VerifyWithProviderRequest) -> dict[str, Any]:
+    return await _run_verification_channel("openai", payload)
+
+
+@app.post("/channel/gemini/verify", tags=["authoring"])
+async def verify_gemini_channel(payload: VerifyWithProviderRequest) -> dict[str, Any]:
+    return await _run_verification_channel("gemini", payload)
+
+
+@app.post("/channel/claude/verify", tags=["authoring"])
+async def verify_claude_channel(payload: VerifyWithProviderRequest) -> dict[str, Any]:
+    return await _run_verification_channel("claude", payload)
+
+
+@app.post("/verify-with-provider", tags=["authoring"], deprecated=True)
+async def legacy_verify_provider(payload: VerifyWithProviderRequest) -> dict[str, Any]:
+    raise HTTPException(status_code=410, detail="Use the provider-isolated channel endpoint.")
 
 
 @app.post("/verify-problem", tags=["trust-chain"])
