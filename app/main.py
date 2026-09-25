@@ -11,6 +11,7 @@ from app.services.auto_generator import (
     GeneratorNotConfigured,
     generate_questions,
 )
+from app.services.provider_verifier import verify_with_provider
 from app.services.socratic_trap import detect_socratic_traps
 from app.services.trust_chain import run_trust_chain
 
@@ -44,6 +45,11 @@ class GenerateQuestionsRequest(BaseModel):
     difficulty: str = "쉬움 25% / 보통 50% / 어려움 25%"
     scope_memo: str = ""
     extra_instructions: str = ""
+
+
+class VerifyWithProviderRequest(BaseModel):
+    provider: Literal["openai", "gemini", "claude"]
+    problems: list[dict[str, Any]] = Field(..., min_length=1)
 
 
 class ApplyTrapRequest(BaseModel):
@@ -121,6 +127,19 @@ async def generate_question_drafts(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return result.to_dict()
+
+
+@app.post("/verify-with-provider", tags=["authoring"])
+async def verify_generated_item_with_provider(
+    payload: VerifyWithProviderRequest,
+) -> dict[str, Any]:
+    """Cross-check generated item(s) with one explicitly selected AI provider."""
+    try:
+        return await verify_with_provider(payload.provider, payload.problems)
+    except GeneratorNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except GenerationFailed as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/verify-problem", tags=["trust-chain"])

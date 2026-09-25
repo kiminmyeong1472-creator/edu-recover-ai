@@ -44,6 +44,10 @@ PILOT_HTML = r"""
     .callout{border-left:4px solid #84adff;background:#f5f8ff;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.5}
     .checkgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.check{border:1px solid var(--line);border-radius:9px;padding:9px;font-size:13px}
     .check input{width:auto;margin-right:6px}.range-row{display:grid;grid-template-columns:130px 1fr 50px;gap:10px;align-items:center;margin:10px 0}.range-row input{padding:0}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(17,24,39,.58);display:grid;place-items:center;padding:18px;z-index:20}
+    .modal-backdrop[hidden]{display:none}.modal-panel{width:min(520px,100%);background:#fff;border-radius:16px;padding:20px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.25)}
+    .modal-panel h3{margin:0 0 8px;font-size:20px}.modal-panel p{margin:0 0 12px;line-height:1.55}.modal-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+    .modal-backdrop .btn{min-height:44px}
     .mobile-nav{display:none}
     @media(max-width:900px){
       .app{grid-template-columns:1fr}aside{display:none}.mobile-nav{display:flex;overflow:auto;gap:6px;padding:10px;background:#111827;position:sticky;top:70px;z-index:2}.mobile-nav button{white-space:nowrap;border:0;border-radius:8px;padding:8px 10px;background:#344054;color:#fff}
@@ -259,6 +263,23 @@ PILOT_HTML = r"""
   </main>
 </div>
 
+<div id="crossVerifyModal" class="modal-backdrop" hidden>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="crossVerifyTitle">
+    <h3 id="crossVerifyTitle">다른 AI로 교차검증</h3>
+    <p id="crossVerifyMessage">1문항 출제가 완료되었습니다. 다른 AI 1개로 검증하시겠습니까?</p>
+    <div id="crossVerifyChooser">
+      <label for="crossVerifyProvider">검증할 AI 선택</label>
+      <select id="crossVerifyProvider"></select>
+    </div>
+    <pre id="crossVerifyResult" hidden></pre>
+    <div class="modal-actions">
+      <button id="crossVerifyNo" class="btn ghost" type="button">아니오</button>
+      <button id="crossVerifyYes" class="btn primary" type="button">예, 검증</button>
+      <button id="crossVerifyWorkspace" class="btn dark" type="button" hidden>문항 작업실 열기</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const titles={dashboard:"홈 대시보드",sources:"자료 관리",create:"새 시험 만들기",settings:"출제 설정",generate:"AI 자동출제",workspace:"문항 작업실",verify:"검증 센터",preview:"시험지 · 해설",archive:"보관함",system:"시스템"};
 let workspace=JSON.parse(localStorage.getItem("edurecover_workspace")||"null")||{
@@ -334,11 +355,62 @@ async function generateQuestions(){
     const r=await fetch("/generate-questions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok){out.textContent="자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
-    workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;persist();
+    workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;persist();
     out.textContent=d.provider+" / "+d.model+" · "+d.count+"문항 생성 완료. 문항 작업실에서 교사가 확인·수정하십시오.";
-    showView("workspace");
+    if(Number(d.count)===1){
+      await showCrossVerifyPrompt(d.provider);
+    }else{
+      showView("workspace");
+    }
   }catch(e){out.textContent="자동출제 요청 실패: "+e.message;}
 }
+
+function providerLabel(provider){
+  return {openai:"ChatGPT / OpenAI",gemini:"Gemini",claude:"Claude"}[provider]||provider;
+}
+async function showCrossVerifyPrompt(originProvider){
+  const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
+  result.hidden=true;result.textContent="";workspaceBtn.hidden=true;no.hidden=false;yes.hidden=false;yes.disabled=false;
+  message.textContent="1문항 출제가 완료되었습니다. 현재 출제 AI는 "+providerLabel(originProvider)+"입니다. 다른 AI 1개로 교차검증하시겠습니까?";
+  select.innerHTML="";
+  try{
+    const r=await fetch("/ai-status");const status=await r.json();
+    const providers=[
+      ["openai","ChatGPT / OpenAI",status.openai?.configured],
+      ["gemini","Gemini",status.gemini?.configured],
+      ["claude","Claude",status.claude?.configured]
+    ].filter(([id,,configured])=>id!==originProvider&&configured);
+    providers.forEach(([id,label])=>{const o=document.createElement("option");o.value=id;o.textContent=label;select.appendChild(o)});
+    if(!providers.length){
+      message.textContent+=" 현재 연결된 다른 AI가 없습니다.";
+      yes.disabled=true;
+    }
+  }catch(e){
+    message.textContent+=" 연결 상태 확인에 실패했습니다.";
+    yes.disabled=true;
+  }
+  modal.hidden=false;
+}
+async function runCrossVerification(){
+  const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
+  const provider=select.value;if(!provider)return;
+  yes.disabled=true;no.hidden=true;message.textContent=providerLabel(provider)+"가 출제된 1문항을 검증 중입니다...";
+  try{
+    const r=await fetch("/verify-with-provider",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,problems:workspace.items})});
+    const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
+    if(!r.ok)throw new Error(d.detail||t);
+    workspace.lastCrossVerification=d;persist();
+    result.hidden=false;result.textContent=JSON.stringify(d,null,2);
+    message.textContent=providerLabel(provider)+" 교차검증 완료: "+d.verdict;
+  }catch(e){
+    result.hidden=false;result.textContent="교차검증 실패: "+e.message;
+    message.textContent="교차검증을 완료하지 못했습니다.";
+  }
+  yes.hidden=true;workspaceBtn.hidden=false;
+}
+document.getElementById("crossVerifyNo").addEventListener("click",()=>{document.getElementById("crossVerifyModal").hidden=true;showView("workspace")});
+document.getElementById("crossVerifyYes").addEventListener("click",runCrossVerification);
+document.getElementById("crossVerifyWorkspace").addEventListener("click",()=>{document.getElementById("crossVerifyModal").hidden=true;showView("workspace")});
 
 async function refreshHealth(){
   const badge=document.getElementById("healthBadge"),sys=document.getElementById("systemHealth");
