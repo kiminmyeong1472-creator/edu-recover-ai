@@ -15,6 +15,7 @@ from google import genai
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.services.authoring_assets import build_authoring_context
 
 
 class GenerationProvider(StrEnum):
@@ -46,8 +47,10 @@ class GenerationResult:
         }
 
 
-SYSTEM_INSTRUCTIONS = """You are EduRecover AI's teacher-facing assessment authoring engine.
-Create school assessment items only from the supplied source material and teacher settings.
+SYSTEM_INSTRUCTIONS = """You are an EduRecover AI authoring agent.
+Create school assessment items using the supplied source material, teacher settings,
+and the private EduRecover authoring materials/instructions included in the request.
+Do not request or use platform chat history or unrelated customer data.
 
 Rules:
 - Do not invent external facts that are not supported by the supplied source.
@@ -105,6 +108,12 @@ def _build_request_text(
             "scope_memo": scope_memo,
             "extra_instructions": extra_instructions,
             "source_text": source_text,
+            "edurecover_authoring_context": build_authoring_context(
+                subject=subject,
+                grade=grade,
+                source_text=source_text,
+                question_types=question_types,
+            ),
         },
         ensure_ascii=False,
     )
@@ -184,6 +193,7 @@ async def _generate_with_openai(prompt: str, count: int) -> GenerationResult:
             model=settings.openai_model,
             instructions=SYSTEM_INSTRUCTIONS,
             input=prompt,
+            store=False,
         )
         items = _parse_and_validate_items(response.output_text, count)
         return GenerationResult(
@@ -214,6 +224,7 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
         response = await client.aio.models.generate_content(
             model=settings.gemini_model,
             contents=SYSTEM_INSTRUCTIONS + "\n\n" + prompt,
+            config={"store": False},
         )
         items = _parse_and_validate_items(response.text, count)
         return GenerationResult(
