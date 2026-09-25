@@ -60,6 +60,7 @@ PILOT_HTML = r"""
       <button data-view="sources">자료 관리</button>
       <button data-view="create">새 시험 만들기</button>
       <button data-view="settings">출제 설정</button>
+      <button data-view="generate">AI 자동출제</button>
       <button data-view="workspace">문항 작업실</button>
       <button data-view="verify">검증 센터</button>
       <button data-view="preview">시험지 · 해설</button>
@@ -75,7 +76,7 @@ PILOT_HTML = r"""
       <div class="row"><span id="healthBadge" class="badge warn"><span class="status-dot"></span>서버 확인 중</span><button class="btn primary" onclick="showView('create')">+ 새 시험</button></div>
     </div>
     <div class="mobile-nav" id="mobileNav">
-      <button data-view="dashboard">홈</button><button data-view="sources">자료</button><button data-view="create">새 시험</button><button data-view="settings">설정</button><button data-view="workspace">문항</button><button data-view="verify">검증</button><button data-view="preview">출력</button><button data-view="archive">보관</button><button data-view="system">시스템</button>
+      <button data-view="dashboard">홈</button><button data-view="sources">자료</button><button data-view="create">새 시험</button><button data-view="settings">설정</button><button data-view="generate">AI출제</button><button data-view="workspace">문항</button><button data-view="verify">검증</button><button data-view="preview">출력</button><button data-view="archive">보관</button><button data-view="system">시스템</button>
     </div>
 
     <div class="content">
@@ -105,7 +106,7 @@ PILOT_HTML = r"""
               <tr><td>Trust Chain API</td><td><span class="badge good">실행</span></td></tr>
               <tr><td>Socratic Trap API</td><td><span class="badge good">실행</span></td></tr>
               <tr><td>자료 파일 영구저장</td><td><span class="badge warn">연동 전</span></td></tr>
-              <tr><td>AI 자동출제 전체 파이프라인</td><td><span class="badge warn">연동 진행</span></td></tr>
+              <tr><td>AI 자동출제 API</td><td id="autoGenStatus"><span class="badge warn">서버 상태 확인 중</span></td></tr>
               <tr><td>시험지 DOCX/PDF 자동출력</td><td><span class="badge warn">연동 전</span></td></tr>
             </table>
           </div>
@@ -165,7 +166,7 @@ PILOT_HTML = r"""
             <div class="range-row"><span>쉬움</span><input id="easyRange" type="range" min="0" max="100" value="25" oninput="syncRange()"><b id="easyVal">25%</b></div>
             <div class="range-row"><span>보통</span><input id="midRange" type="range" min="0" max="100" value="50" oninput="syncRange()"><b id="midVal">50%</b></div>
             <div class="range-row"><span>어려움</span><input id="hardRange" type="range" min="0" max="100" value="25" oninput="syncRange()"><b id="hardVal">25%</b></div>
-            <div class="callout">파일럿에서는 설정 화면을 검토할 수 있습니다. 실제 자동 문항 생성 엔진과의 완전한 연결은 별도 단계입니다.</div>
+            <div class="callout">설정 저장 후 AI 자동출제 화면에서 원문과 조건을 보내 실제 생성 API를 호출할 수 있습니다.</div>
           </div>
         </div>
         <div class="card" style="margin-top:14px">
@@ -177,7 +178,35 @@ PILOT_HTML = r"""
             <div><label>해설 수준</label><select><option>교사용 상세해설</option><option>학생용 간단해설</option></select></div>
           </div>
           <button class="btn primary" onclick="saveSettings()">출제 설정 저장</button>
-          <button class="btn ghost" onclick="showView('workspace')">문항 작업실 보기</button>
+          <button class="btn ghost" onclick="showView('generate')">다음: AI 자동출제</button>
+        </div>
+      </section>
+
+      <section id="generate" class="view">
+        <div class="hero"><div><h2>AI 자동출제</h2><p>교사가 지정한 원문·범위·유형·난이도로 문항 초안을 자동 생성합니다.</p></div><span id="providerBadge" class="badge warn">AI 상태 확인 중</span></div>
+        <div class="grid c2">
+          <div class="card">
+            <h3>출제 원문</h3>
+            <label>AI 제공자</label>
+            <select id="genProvider"><option value="openai">ChatGPT / OpenAI</option><option value="gemini">Gemini</option></select>
+            <label>원문·교과서 본문·수업자료</label>
+            <textarea id="generationSource" style="min-height:320px" placeholder="출제할 원문을 여기에 붙여 넣으십시오."></textarea>
+            <label>추가 출제 지시</label>
+            <textarea id="generationInstructions" placeholder="예: 학교 내신형으로, 지문 문맥을 충분히 유지하고 매력적인 오답을 구성"></textarea>
+          </div>
+          <div class="card">
+            <h3>자동출제 실행</h3>
+            <table class="table">
+              <tr><th>시험명</th><td id="genExamName">-</td></tr>
+              <tr><th>문항 수</th><td id="genQuestionCount">-</td></tr>
+              <tr><th>학교급·학년</th><td id="genSchool">-</td></tr>
+              <tr><th>난이도</th><td id="genDifficulty">-</td></tr>
+            </table>
+            <div class="callout" style="margin-top:14px">생성된 문항은 곧바로 학생에게 제공되지 않고 문항 작업실에 초안으로 들어갑니다. 교사가 편집한 뒤 검증 센터에서 다시 점검합니다.</div>
+            <button class="btn primary" style="margin-top:14px;width:100%" onclick="generateQuestions()">AI 문항 자동생성</button>
+            <button class="btn ghost" style="margin-top:8px;width:100%" onclick="showView('workspace')">문항 작업실 열기</button>
+            <pre id="generationOutput" style="margin-top:14px">아직 자동출제를 실행하지 않았습니다.</pre>
+          </div>
         </div>
       </section>
 
@@ -223,7 +252,7 @@ PILOT_HTML = r"""
         <div class="hero"><div><h2>시스템</h2><p>현재 배포와 API 상태를 확인합니다.</p></div></div>
         <div class="grid c2">
           <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health endpoint: <code>/health</code></p><a href="/docs" target="_blank">FastAPI 문서 열기</a></div>
-          <div class="card"><h3>현재 구현 경계</h3><p class="muted">이 화면은 전체 교사용 작업 흐름을 직접 확인하는 파일럿입니다. 자료 영구저장, 완전한 자동출제, DOCX/PDF 자동출력 등 아직 서버에 연결되지 않은 기능은 UI 상태로만 표시됩니다.</p></div>
+          <div class="card"><h3>현재 구현 경계</h3><p class="muted">이 화면은 전체 교사용 작업 흐름을 직접 확인하는 파일럿입니다. AI 자동출제 API는 OpenAI/Gemini 제공자 선택 방식으로 연결되어 있으며 실제 호출에는 해당 제공자의 서버 Secret 설정이 필요합니다. 자료 영구저장과 DOCX/PDF 자동출력은 아직 별도 연결이 필요합니다.</p></div>
         </div>
       </section>
     </div>
@@ -231,7 +260,7 @@ PILOT_HTML = r"""
 </div>
 
 <script>
-const titles={dashboard:"홈 대시보드",sources:"자료 관리",create:"새 시험 만들기",settings:"출제 설정",workspace:"문항 작업실",verify:"검증 센터",preview:"시험지 · 해설",archive:"보관함",system:"시스템"};
+const titles={dashboard:"홈 대시보드",sources:"자료 관리",create:"새 시험 만들기",settings:"출제 설정",generate:"AI 자동출제",workspace:"문항 작업실",verify:"검증 센터",preview:"시험지 · 해설",archive:"보관함",system:"시스템"};
 let workspace=JSON.parse(localStorage.getItem("edurecover_workspace")||"null")||{
   exam:{name:"2학기 중간고사 영어",schoolLevel:"고등학교",grade:"1학년",type:"중간고사",count:20,scope:""},
   settings:{easy:25,mid:50,hard:25},
@@ -247,12 +276,64 @@ function showView(id){
   document.getElementById(id).classList.add("active");
   document.querySelectorAll("[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===id));
   document.getElementById("pageTitle").textContent=titles[id]||id;
+  if(id==="generate") refreshGenerationSummary();
   if(id==="workspace") renderItems();
   if(id==="preview") renderPreview();
   if(id==="archive") renderArchive();
   window.scrollTo({top:0,behavior:"smooth"});
 }
 document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
+async function refreshAiStatus(){
+  const cell=document.getElementById("autoGenStatus"),badge=document.getElementById("providerBadge");
+  try{
+    const r=await fetch("/ai-status");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);
+    const ready=[];
+    if(d.openai?.configured) ready.push("OpenAI");
+    if(d.gemini?.configured) ready.push("Gemini");
+    if(cell) cell.innerHTML=ready.length?"<span class='badge good'>"+ready.join(" · ")+" 사용 가능</span>":"<span class='badge warn'>API Secret 설정 필요</span>";
+    if(badge){badge.className=ready.length?"badge good":"badge warn";badge.textContent=ready.length?ready.join(" · ")+" 연결됨":"API Secret 설정 필요";}
+  }catch(e){
+    if(cell) cell.innerHTML="<span class='badge warn'>상태 확인 실패</span>";
+    if(badge){badge.className="badge warn";badge.textContent="상태 확인 실패";}
+  }
+}
+function refreshGenerationSummary(){
+  const name=document.getElementById("genExamName"),count=document.getElementById("genQuestionCount"),school=document.getElementById("genSchool"),diff=document.getElementById("genDifficulty");
+  if(name) name.textContent=workspace.exam.name;
+  if(count) count.textContent=workspace.exam.count+"문항";
+  if(school) school.textContent=workspace.exam.schoolLevel+" "+workspace.exam.grade;
+  if(diff) diff.textContent=(workspace.settings.easy??25)+"% / "+(workspace.settings.mid??50)+"% / "+(workspace.settings.hard??25)+"%";
+}
+function selectedQuestionTypes(){
+  return [...document.querySelectorAll("#settings .check input:checked")].map(x=>x.parentElement.textContent.trim());
+}
+async function generateQuestions(){
+  const out=document.getElementById("generationOutput"),provider=document.getElementById("genProvider").value,source=document.getElementById("generationSource").value,instructions=document.getElementById("generationInstructions").value;
+  if(!source.trim()){out.textContent="출제 원문을 입력하십시오.";return;}
+  const payload={
+    provider,
+    source_text:source,
+    count:Number(workspace.exam.count||1),
+    subject:document.getElementById("subject")?.value||"영어",
+    school_level:workspace.exam.schoolLevel,
+    grade:workspace.exam.grade,
+    exam_type:workspace.exam.type,
+    question_types:selectedQuestionTypes(),
+    difficulty:"쉬움 "+(workspace.settings.easy??25)+"% / 보통 "+(workspace.settings.mid??50)+"% / 어려움 "+(workspace.settings.hard??25)+"%",
+    scope_memo:workspace.exam.scope||"",
+    extra_instructions:instructions
+  };
+  out.textContent="AI가 문항 초안을 생성 중입니다...";
+  try{
+    const r=await fetch("/generate-questions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
+    if(!r.ok){out.textContent="자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
+    workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;persist();
+    out.textContent=d.provider+" / "+d.model+" · "+d.count+"문항 생성 완료. 문항 작업실에서 교사가 확인·수정하십시오.";
+    showView("workspace");
+  }catch(e){out.textContent="자동출제 요청 실패: "+e.message;}
+}
+
 async function refreshHealth(){
   const badge=document.getElementById("healthBadge"),sys=document.getElementById("systemHealth");
   try{const r=await fetch("/health");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);
@@ -297,7 +378,7 @@ function renderArchive(){
   const tb=document.getElementById("archiveRows");tb.innerHTML="<tr><td>"+escapeHtml(workspace.exam.name)+"</td><td>"+escapeHtml(workspace.exam.schoolLevel+" "+workspace.exam.grade)+"</td><td>"+workspace.items.length+"</td><td><span class='badge "+(workspace.teacherApproved?"good":"warn")+"'>"+(workspace.teacherApproved?"교사 검토 완료":"작업 중")+"</span></td></tr>";
 }
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-refreshHealth();updateCards();renderItems();renderArchive();syncRange();
+refreshHealth();refreshAiStatus();updateCards();renderItems();renderArchive();syncRange();refreshGenerationSummary();
 </script>
 </body>
 </html>

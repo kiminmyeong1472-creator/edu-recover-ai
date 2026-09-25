@@ -21,6 +21,10 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="ANTHROPIC_API_KEY",
     )
+    gemini_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="GEMINI_API_KEY",
+    )
     openai_model: str = Field(
         default="gpt-5.6-luna",
         validation_alias="OPENAI_MODEL",
@@ -28,6 +32,10 @@ class Settings(BaseSettings):
     anthropic_model: str = Field(
         default="claude-sonnet-5",
         validation_alias="ANTHROPIC_MODEL",
+    )
+    gemini_model: str = Field(
+        default="gemini-3.8-flash",
+        validation_alias="GEMINI_MODEL",
     )
 
     model_config = SettingsConfigDict(
