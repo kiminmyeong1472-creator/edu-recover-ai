@@ -191,7 +191,7 @@ PILOT_HTML = r"""
         <div class="grid c2">
           <div class="card">
             <h3>출제 원문</h3>
-            <label>AI 제공자</label>
+            <label>AI 출제 에이전트</label>
             <select id="genProvider"><option value="openai" selected>ChatGPT / OpenAI · GPT-5.6 Sol</option><option value="gemini">Gemini</option><option value="claude">Claude</option></select>
             <label>원문·교과서 본문·수업자료</label>
             <textarea id="generationSource" style="min-height:320px" placeholder="출제할 원문을 여기에 붙여 넣으십시오."></textarea>
@@ -206,7 +206,11 @@ PILOT_HTML = r"""
               <tr><th>학교급·학년</th><td id="genSchool">-</td></tr>
               <tr><th>난이도</th><td id="genDifficulty">-</td></tr>
             </table>
-            <div class="callout" style="margin-top:14px">생성된 문항은 곧바로 학생에게 제공되지 않고 문항 작업실에 초안으로 들어갑니다. 교사가 편집한 뒤 검증 센터에서 다시 점검합니다.</div>
+            <div class="callout" style="margin-top:14px"><strong>출제·검증 기준:</strong> 에듀리커버 서버의 출제자료(정규화 어휘 자산, 학년별 구문난도, 구체 구문집)와 출제지침(출제마법사, 영어 문항제작 규칙, 오답선지 원리)을 적용합니다. AI 출제·검증 에이전트에는 해당 작업에 필요한 범위만 공유하며 플랫폼 채팅기록은 전달하지 않습니다.</div>
+            <div class="card" style="margin-top:12px;padding:12px">
+              <strong>적용 출제자료 및 출제지침</strong>
+              <div id="authoringAssetsList" class="muted" style="margin-top:8px">서버 자료 확인 중...</div>
+            </div>
             <button class="btn primary" style="margin-top:14px;width:100%" onclick="generateQuestions()">AI 문항 자동생성</button>
             <button class="btn ghost" style="margin-top:8px;width:100%" onclick="showView('workspace')">문항 작업실 열기</button>
             <pre id="generationOutput" style="margin-top:14px">아직 자동출제를 실행하지 않았습니다.</pre>
@@ -265,10 +269,10 @@ PILOT_HTML = r"""
 
 <div id="crossVerifyModal" class="modal-backdrop" hidden>
   <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="crossVerifyTitle">
-    <h3 id="crossVerifyTitle">다른 AI로 교차검증</h3>
-    <p id="crossVerifyMessage">1문항 출제가 완료되었습니다. 다른 AI 1개로 검증하시겠습니까?</p>
+    <h3 id="crossVerifyTitle">다른 AI 검증 에이전트로 교차검증</h3>
+    <p id="crossVerifyMessage">AI 출제 에이전트가 출제를 완료했습니다. 다른 AI 검증 에이전트로 교차검증하시겠습니까?</p>
     <div id="crossVerifyChooser">
-      <label for="crossVerifyProvider">검증할 AI 선택</label>
+      <label for="crossVerifyProvider">AI 검증 에이전트 선택</label>
       <select id="crossVerifyProvider"></select>
     </div>
     <pre id="crossVerifyResult" hidden></pre>
@@ -367,7 +371,7 @@ function providerLabel(provider){
 async function showCrossVerifyPrompt(originProvider, generatedCount){
   const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
   result.hidden=true;result.textContent="";workspaceBtn.hidden=true;no.hidden=false;yes.hidden=false;yes.disabled=false;
-  message.textContent=providerLabel(originProvider)+" 1개 AI가 "+generatedCount+"문항 출제를 완료했습니다. 다른 AI 1개로 전체 문항을 교차검증하시겠습니까?";
+  message.textContent=providerLabel(originProvider)+" AI 출제 에이전트가 "+generatedCount+"문항 출제를 완료했습니다. 다른 AI 검증 에이전트로 전체 문항을 교차검증하시겠습니까?";
   select.innerHTML="";
   try{
     const r=await fetch("/ai-status");const status=await r.json();
@@ -390,14 +394,14 @@ async function showCrossVerifyPrompt(originProvider, generatedCount){
 async function runCrossVerification(){
   const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
   const provider=select.value;if(!provider)return;
-  yes.disabled=true;no.hidden=true;message.textContent=providerLabel(provider)+" 1개 AI가 출제된 전체 문항을 검증 중입니다...";
+  yes.disabled=true;no.hidden=true;message.textContent=providerLabel(provider)+" AI 검증 에이전트가 출제된 전체 문항을 검증 중입니다...";
   try{
     const r=await fetch("/verify-with-provider",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,problems:workspace.items})});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok)throw new Error(d.detail||t);
     workspace.lastCrossVerification=d;persist();
     result.hidden=false;result.textContent=JSON.stringify(d,null,2);
-    message.textContent=providerLabel(provider)+" 교차검증 완료: "+d.verdict;
+    message.textContent=providerLabel(provider)+" AI 검증 에이전트 교차검증 완료: "+d.verdict;
   }catch(e){
     result.hidden=false;result.textContent="교차검증 실패: "+e.message;
     message.textContent="교차검증을 완료하지 못했습니다.";
@@ -407,6 +411,16 @@ async function runCrossVerification(){
 document.getElementById("crossVerifyNo").addEventListener("click",()=>{document.getElementById("crossVerifyModal").hidden=true;showView("workspace")});
 document.getElementById("crossVerifyYes").addEventListener("click",runCrossVerification);
 document.getElementById("crossVerifyWorkspace").addEventListener("click",()=>{document.getElementById("crossVerifyModal").hidden=true;showView("workspace")});
+
+async function refreshAuthoringAssets(){
+  const el=document.getElementById("authoringAssetsList");
+  if(!el)return;
+  try{
+    const r=await fetch("/authoring-assets");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);
+    el.innerHTML=(d.assets||[]).map(a=>"<div>• "+escapeHtml(a.source_title)+"</div>").join("")+
+      "<div style='margin-top:6px'>※ 전체 원본은 EduRecover 서버에 보관하고, AI 에이전트에는 현재 작업에 필요한 부분만 전달합니다.</div>";
+  }catch(e){el.textContent="출제자료 목록 확인 실패: "+e.message}
+}
 
 async function refreshHealth(){
   const badge=document.getElementById("healthBadge"),sys=document.getElementById("systemHealth");
@@ -452,7 +466,7 @@ function renderArchive(){
   const tb=document.getElementById("archiveRows");tb.innerHTML="<tr><td>"+escapeHtml(workspace.exam.name)+"</td><td>"+escapeHtml(workspace.exam.schoolLevel+" "+workspace.exam.grade)+"</td><td>"+workspace.items.length+"</td><td><span class='badge "+(workspace.teacherApproved?"good":"warn")+"'>"+(workspace.teacherApproved?"교사 검토 완료":"작업 중")+"</span></td></tr>";
 }
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-refreshHealth();refreshAiStatus();updateCards();renderItems();renderArchive();syncRange();refreshGenerationSummary();
+refreshHealth();refreshAiStatus();refreshAuthoringAssets();updateCards();renderItems();renderArchive();syncRange();refreshGenerationSummary();
 </script>
 </body>
 </html>
