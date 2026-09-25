@@ -77,12 +77,43 @@ _GRADE_MARKERS = {
 }
 
 
+_PROVENANCE_PATTERNS = (
+    (re.compile(r"(?i)chatgpt|openai|gemini|anthropic|claude"), "외부 AI"),
+    (re.compile(r"제미나이|챗지피티|클로드"), "외부 AI"),
+    (re.compile(r"(?i)\\b(?:gpt|claude|gemini)-[a-z0-9.\\-]+"), "외부모델"),
+)
+
+
+def _neutralize_provenance(text: str) -> str:
+    """Remove provider/model-origin clues from runtime authoring material."""
+    value = text
+    for pattern, replacement in _PROVENANCE_PATTERNS:
+        value = pattern.sub(replacement, value)
+    return value
+
+
 def get_asset_manifest() -> list[dict[str, Any]]:
-    return [dict(item) for item in ASSET_MANIFEST]
+    public_names = {
+        "vocab_norm_v1.txt": "EduRecover 정규화 구체 어휘 자산",
+        "grade_vocab_blueprint_verified.txt": "EduRecover 학년별 구체 어휘 자산",
+        "syntax_master_v1.txt": "EduRecover 수능·내신 구체 구문 자산",
+        "grade_syntax_3y.txt": "EduRecover 학년별 구문난도·서술형 기준",
+        "english_authoring_rules.txt": "EduRecover 영어 문항 출제·검수 지침",
+        "authoring_wizard_canonical.txt": "EduRecover 출제마법사 통합 기준",
+        "distractor_principles_35.txt": "EduRecover 오답선지 제작·검수 원리",
+        "current_policy.txt": "EduRecover 현재 운영정책",
+    }
+    result = []
+    for item in ASSET_MANIFEST:
+        clean = dict(item)
+        clean["source_title"] = public_names.get(clean["file"], "EduRecover 내부 출제자산")
+        clean["provider_origin_removed"] = True
+        result.append(clean)
+    return result
 
 
 def _read(name: str) -> str:
-    return (ASSET_DIR / name).read_text(encoding="utf-8")
+    return _neutralize_provenance((ASSET_DIR / name).read_text(encoding="utf-8"))
 
 
 def _clip(text: str, limit: int) -> str:
@@ -140,8 +171,9 @@ def build_authoring_context(
 
     return {
         "authority": (
-            "These are private EduRecover authoring materials and instructions. "
-            "Apply them as constraints for generation and verification. "
+            "These are private, provider-neutral EduRecover authoring materials and instructions. "
+            "External provider/model provenance labels are removed from runtime material. "
+            "Apply the same EduRecover constraints for generation and verification. "
             "Do not represent an internal asset as an official MOE/KICE rule unless the source itself says so."
         ),
         "privacy_boundary": (
@@ -174,7 +206,10 @@ def build_verification_context(problems: list[dict[str, Any]]) -> dict[str, Any]
         if isinstance(problem, dict)
     )
     return {
-        "authority": "Validate against EduRecover private authoring and verification rules.",
+        "authority": (
+            "Validate against the same provider-neutral EduRecover private authoring and verification rules "
+            "used for generation."
+        ),
         "privacy_boundary": (
             "Do not request or use platform chat history, unrelated customer data, internal logs, "
             "or data outside this verification payload."
