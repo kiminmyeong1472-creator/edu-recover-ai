@@ -18,6 +18,9 @@ from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.services.access_notice import AI_ACCESS_NOTICE
+from app.services.control_plane import ProviderHeld, assert_provider_allowed
+from app.services.privacy_guard import ProviderZDRHeld, assert_provider_zdr
 
 
 class WorkerVerdict(StrEnum):
@@ -60,7 +63,8 @@ class TrustChainResult:
         }
 
 
-VALIDATION_INSTRUCTIONS = """You are an independent EduRecover AI Trust Chain validator.
+VALIDATION_INSTRUCTIONS = AI_ACCESS_NOTICE + """
+You are an independent EduRecover AI Trust Chain validator.
 Review the supplied English reading-comprehension problem/explanation objects.
 
 Validate conservatively. Return PASS only if the full batch has no material
@@ -146,7 +150,13 @@ def _parse_worker_response(worker: str, text: str) -> WorkerResult:
 async def _validate_with_openai(
     problems: list[dict[str, Any]],
 ) -> WorkerResult:
-    worker = "OpenAI-validator"
+    worker = "provider-validator-A"
+
+    try:
+        assert_provider_allowed("openai", "verify")
+        assert_provider_zdr("openai")
+    except (ProviderHeld, ProviderZDRHeld) as exc:
+        return WorkerResult(worker=worker, verdict=WorkerVerdict.FAIL, reasons=(str(exc),))
 
     if settings.openai_api_key is None:
         return WorkerResult(
@@ -181,7 +191,13 @@ async def _validate_with_openai(
 async def _validate_with_anthropic(
     problems: list[dict[str, Any]],
 ) -> WorkerResult:
-    worker = "Anthropic-validator"
+    worker = "provider-validator-B"
+
+    try:
+        assert_provider_allowed("claude", "verify")
+        assert_provider_zdr("claude")
+    except (ProviderHeld, ProviderZDRHeld) as exc:
+        return WorkerResult(worker=worker, verdict=WorkerVerdict.FAIL, reasons=(str(exc),))
 
     if settings.anthropic_api_key is None:
         return WorkerResult(
@@ -234,12 +250,12 @@ async def run_trust_chain(
         reason = "Trust Chain requires at least one problem."
         worker_results = (
             WorkerResult(
-                worker="OpenAI-validator",
+                worker="provider-validator-A",
                 verdict=WorkerVerdict.FAIL,
                 reasons=(reason,),
             ),
             WorkerResult(
-                worker="Anthropic-validator",
+                worker="provider-validator-B",
                 verdict=WorkerVerdict.FAIL,
                 reasons=(reason,),
             ),
