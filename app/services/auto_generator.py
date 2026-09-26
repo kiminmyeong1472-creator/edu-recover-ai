@@ -1,6 +1,7 @@
-"""AI automatic question generation for the teacher pilot.
+"""AI automatic question generation for the teacher platform.
 
-OpenAI, Gemini, and Claude/Anthropic are supported as selectable generation providers. OpenAI is the default provider for the teacher pilot.
+OpenAI, Gemini, and Claude/Anthropic are selectable, provider-isolated channels.
+The caller must explicitly select a provider for each request.
 """
 
 from __future__ import annotations
@@ -43,7 +44,6 @@ class GenerationResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "provider": self.provider,
-            "model": self.model,
             "count": len(self.items),
             "items": list(self.items),
         }
