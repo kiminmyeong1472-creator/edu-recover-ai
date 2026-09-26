@@ -16,6 +16,7 @@ import base64
 import hashlib
 import os
 import struct
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -326,5 +327,53 @@ def decrypt_file(source: str | Path, destination: str | Path) -> dict[str, Any]:
         "decrypted_size_bytes": bytes_written,
         "decrypted_sha256": plain_hash.hexdigest(),
         "algorithm": "AES-256-GCM",
+        "master_key_value_exposed": False,
+    }
+
+
+def run_backup_encryption_self_test() -> dict[str, Any]:
+    """Verify one encrypt/decrypt round trip with the configured master key.
+
+    The test uses random non-user data in a temporary directory and removes all
+    artifacts before returning. No secret value or plaintext content is
+    returned.
+    """
+    assert_backup_encryption_ready()
+
+    payload = os.urandom(4096)
+    expected_hash = hashlib.sha256(payload).hexdigest()
+
+    with tempfile.TemporaryDirectory(prefix="edurecover-backup-selftest-") as tmpdir:
+        root = Path(tmpdir)
+        source = root / "selftest-source.bin"
+        encrypted = root / "selftest-backup.edurbk"
+        restored = root / "selftest-restored.bin"
+
+        source.write_bytes(payload)
+        encrypt_result = encrypt_file(source, encrypted)
+        decrypt_result = decrypt_file(encrypted, restored)
+
+        restored_hash = hashlib.sha256(restored.read_bytes()).hexdigest()
+        if restored_hash != expected_hash:
+            raise BackupCiphertextInvalid(
+                "Backup encryption self-test restore hash mismatch."
+            )
+
+        if decrypt_result["decrypted_sha256"] != expected_hash:
+            raise BackupCiphertextInvalid(
+                "Backup encryption self-test metadata hash mismatch."
+            )
+
+        if encrypt_result["source_sha256"] != expected_hash:
+            raise BackupCiphertextInvalid(
+                "Backup encryption self-test source hash mismatch."
+            )
+
+    return {
+        "ready": True,
+        "roundtrip_verified": True,
+        "algorithm": "AES-256-GCM",
+        "test_payload_bytes": len(payload),
+        "temporary_artifacts_removed": True,
         "master_key_value_exposed": False,
     }
