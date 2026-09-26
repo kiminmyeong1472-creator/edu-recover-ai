@@ -14,6 +14,19 @@ from typing import Any
 
 PRIVATE_DIR = Path(__file__).resolve().parents[1] / "private_assets"
 
+_PROVENANCE_PATTERNS = (
+    (re.compile(r"(?i)chatgpt|openai|gemini|anthropic|claude"), "외부 AI"),
+    (re.compile(r"제미나이|챗지피티|클로드"), "외부 AI"),
+    (re.compile(r"(?i)\\b(?:gpt|claude|gemini)-[a-z0-9.\\-]+"), "외부모델"),
+)
+
+
+def _neutralize_provenance(text: str) -> str:
+    value = text
+    for pattern, replacement in _PROVENANCE_PATTERNS:
+        value = pattern.sub(replacement, value)
+    return value
+
 PRIVATE_ASSETS: tuple[dict[str, Any], ...] = (
     {
         "file": "csat_authoring_principles_20260920.txt",
@@ -86,7 +99,9 @@ def _path(name: str) -> Path:
 
 def _read(name: str) -> str:
     p = _path(name)
-    return p.read_text(encoding="utf-8") if p.exists() else ""
+    if not p.exists():
+        return ""
+    return _neutralize_provenance(p.read_text(encoding="utf-8"))
 
 
 def _clip(text: str, limit: int) -> str:
