@@ -117,6 +117,19 @@ models/cache/
 huggingface/
 transformers_cache/
 
+# Owner-controlled training artifacts (never commit raw data/checkpoints)
+training_runs/
+checkpoints/
+datasets/local/
+datasets/private/
+*.safetensors
+*.gguf
+*.ckpt
+*.pt
+*.pth
+adapter_model.bin
+adapter_model.safetensors
+
 # Celery / task queue
 celerybeat-schedule
 celerybeat.pid
