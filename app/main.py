@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 from app.services.authoring_assets import get_asset_manifest
+import app.services.context_overlay  # installs task-scoped provider context builders
 from app.services.human_ai_charter import CHARTER
 from app.services.privacy_guard import ProviderZDRHeld, privacy_status as provider_privacy_status
 from app.services.control_plane import (
