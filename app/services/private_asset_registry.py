@@ -8,11 +8,13 @@ with provider_policy="excerpt_only" may contribute excerpts. Assets marked
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any
 
 PRIVATE_DIR = Path(__file__).resolve().parents[1] / "private_assets"
+DRIVE_ARCHIVE_MANIFEST = PRIVATE_DIR / "drive_archive_manifest.json"
 
 _PROVENANCE_PATTERNS = (
     (re.compile(r"(?i)chatgpt|openai|gemini|anthropic|claude"), "외부 AI"),
@@ -248,6 +250,34 @@ def build_task_scoped_private_context(
     }
 
 
+
+def _load_drive_archive_manifest() -> dict[str, Any]:
+    """Load the recursive Drive inventory without exposing archived contents."""
+    if not DRIVE_ARCHIVE_MANIFEST.exists():
+        return {"entries": [], "inventory_counts": {}}
+    try:
+        value = json.loads(DRIVE_ARCHIVE_MANIFEST.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"entries": [], "inventory_counts": {}, "manifest_state": "INVALID"}
+    if not isinstance(value, dict):
+        return {"entries": [], "inventory_counts": {}, "manifest_state": "INVALID"}
+    return value
+
+
+def drive_archive_inventory_summary() -> dict[str, Any]:
+    manifest = _load_drive_archive_manifest()
+    return {
+        "schema_version": manifest.get("schema_version"),
+        "root_drive_id": manifest.get("root_drive_id"),
+        "root_title": manifest.get("root_title"),
+        "unique_entry_count": manifest.get("unique_entry_count", 0),
+        "unique_folder_count": manifest.get("unique_folder_count", 0),
+        "unique_file_count": manifest.get("unique_file_count", 0),
+        "inventory_counts": manifest.get("inventory_counts", {}),
+        "provider_delivery_rule": "drive_archive is never_send; only curated excerpt_only assets may contribute task-scoped excerpts",
+    }
+
+
 def private_asset_integrity_snapshot() -> list[dict[str, Any]]:
     """Internal integrity inventory; never includes file contents."""
     rows: list[dict[str, Any]] = []
@@ -265,5 +295,29 @@ def private_asset_integrity_snapshot() -> list[dict[str, Any]]:
             )
         else:
             row.update({"local_state": item.get("ingest_state", "NOT_INSTALLED")})
+        rows.append(row)
+    manifest = _load_drive_archive_manifest()
+    for item in manifest.get("entries", []):
+        if item.get("kind") != "file":
+            continue
+        if item.get("server_storage_state") == "CURATED_INSTALLED":
+            continue
+        row = dict(item)
+        archive_file = row.get("archive_file")
+        if archive_file:
+            p = PRIVATE_DIR / str(archive_file)
+            if p.exists():
+                data = p.read_bytes()
+                row.update(
+                    {
+                        "local_state": "INSTALLED",
+                        "size_bytes": len(data),
+                        "sha256": hashlib.sha256(data).hexdigest(),
+                    }
+                )
+            else:
+                row.update({"local_state": "ARCHIVE_FILE_MISSING"})
+        else:
+            row.update({"local_state": row.get("server_storage_state", "NOT_INSTALLED")})
         rows.append(row)
     return rows
