@@ -1,7 +1,7 @@
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
@@ -31,6 +31,7 @@ from app.services.auto_generator import (
 from app.services.provider_verifier import verify_with_provider
 from app.services.docx_export import build_exam_docx
 from app.services.encrypted_backup import backup_encryption_status
+from app.services.agent_access_guard import agent_access_status, evaluate_agent_access
 from app.services.socratic_trap import detect_socratic_traps
 from app.services.trust_chain import run_trust_chain
 
@@ -46,6 +47,30 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+@app.middleware("http")
+async def agent_ingress_gate(request: Request, call_next):
+    """Reject blocked or unapproved AI-agent/automation callers before routing."""
+    agent_id = request.headers.get("X-EduRecover-Agent-Id")
+    automation_declared = request.headers.get("X-EduRecover-Automation", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    if agent_id or automation_declared:
+        decision = evaluate_agent_access(
+            agent_id,
+            automation_declared=automation_declared,
+        )
+        if not decision.allowed:
+            return JSONResponse(
+                status_code=423,
+                content={
+                    "detail": "AI agent/automation access blocked by owner policy.",
+                    "state": decision.state,
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+    return await call_next(request)
 
 
 class VerifyProblemRequest(BaseModel):
@@ -299,6 +324,12 @@ async def human_ai_charter() -> dict[str, Any]:
 async def platform_control_status(_: None = Depends(require_owner)) -> dict[str, Any]:
     """Expose non-secret owner-sovereignty and AI-control state."""
     return control_status()
+
+
+@app.get("/owner/agent-access-status", tags=["owner"])
+async def owner_agent_access_status(_: None = Depends(require_owner)) -> dict[str, Any]:
+    """Return non-secret AI-agent ingress policy and block-list state."""
+    return agent_access_status()
 
 
 @app.get("/owner-notebook-tasks", tags=["owner"])
