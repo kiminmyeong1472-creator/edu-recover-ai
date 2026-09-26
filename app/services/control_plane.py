@@ -101,7 +101,7 @@ def _normalized_manifest() -> dict[str, Any]:
 
 
 def control_status() -> dict[str, Any]:
-    """Return the non-secret control status safe for the teacher/admin UI."""
+    """Return the non-secret owner control status."""
     return _normalized_manifest()
 
 
@@ -177,7 +177,7 @@ def notebook_tasks() -> list[dict[str, str]]:
             "step": "4",
             "title": "배포 후 상태 확인",
             "detail": (
-                "/ai-status, /control-status, /privacy-status를 확인하고 실제 키 값이 어떤 응답에도 노출되지 않는지 확인합니다."
+                "/owner/ai-status, /control-status, /privacy-status를 확인하고 실제 키 값이 어떤 응답에도 노출되지 않는지 확인합니다."
             ),
         },
     ]
