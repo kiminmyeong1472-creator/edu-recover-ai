@@ -1,5 +1,7 @@
 from typing import Any, Literal
 
+import logging
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,7 +32,10 @@ from app.services.auto_generator import (
 )
 from app.services.provider_verifier import verify_with_provider
 from app.services.docx_export import build_exam_docx
-from app.services.encrypted_backup import backup_encryption_status
+from app.services.encrypted_backup import (
+    backup_encryption_status,
+    run_backup_encryption_self_test,
+)
 from app.services.agent_access_guard import agent_access_status, evaluate_agent_access
 from app.services.socratic_trap import detect_socratic_traps
 from app.services.trust_chain import run_trust_chain
@@ -47,6 +52,30 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+async def backup_encryption_startup_self_test() -> None:
+    """Run a non-secret backup encrypt/decrypt round-trip on each deploy."""
+    try:
+        result = run_backup_encryption_self_test()
+    except Exception as exc:
+        logger.error(
+            "backup_encryption_self_test=FAILED error_type=%s",
+            type(exc).__name__,
+        )
+        return
+
+    logger.info(
+        "backup_encryption_self_test=SUCCESS algorithm=%s roundtrip_verified=%s "
+        "temporary_artifacts_removed=%s",
+        result["algorithm"],
+        result["roundtrip_verified"],
+        result["temporary_artifacts_removed"],
+    )
 
 
 @app.middleware("http")
