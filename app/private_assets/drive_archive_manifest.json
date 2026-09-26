@@ -1,5 +1,5 @@
 {
-  "schema_version": "2026-09-26.1",
+  "schema_version": "2026-09-26.2",
   "root_drive_id": "1NYmOs9DRluSSbHeM568FDDEuA94MntuT",
   "root_title": "교육플랫폼_비공개_마스터DB_영업비밀",
   "policy": {
@@ -9,9 +9,9 @@
   },
   "inventory_counts": {
     "FOLDER_INDEXED": 17,
-    "ARCHIVE_INSTALLED": 67,
+    "ARCHIVE_INSTALLED": 70,
     "CURATED_INSTALLED": 15,
-    "PENDING_SECRET_SCAN": 4,
+    "PENDING_SECRET_SCAN": 1,
     "REFERENCE_ONLY_BULK_BACKUP": 33,
     "REFERENCE_ONLY_DRIVE": 58
   },
@@ -180,8 +180,12 @@
       "mime_type": "application/vnd.google-apps.document",
       "source_size_bytes": 14171,
       "modified_time": "2026-09-20T19:08:59.046Z",
-      "server_storage_state": "PENDING_SECRET_SCAN",
-      "provider_policy": "never_send"
+      "server_storage_state": "ARCHIVE_INSTALLED",
+      "provider_policy": "never_send",
+      "archive_file": "drive_archive/1Z0xxPbhHzFLgkt971W8YIHdbYqKbOY4pOfnrZf-e_Ac.docx",
+      "git_blob_sha": "436b7e48f986bca115271aa341a90dfa4a654691",
+      "secret_scan_state": "READABLE_TEXT_SCAN_NO_CREDENTIAL_PATTERN_20260926",
+      "archive_export_mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     },
     {
       "kind": "file",
@@ -567,8 +571,11 @@
       "mime_type": "text/plain",
       "source_size_bytes": 4293,
       "modified_time": "2026-09-20T15:06:23.762Z",
-      "server_storage_state": "PENDING_SECRET_SCAN",
-      "provider_policy": "never_send"
+      "server_storage_state": "ARCHIVE_INSTALLED",
+      "provider_policy": "never_send",
+      "archive_file": "drive_archive/1lSTr5SD21aOhNrJ8LO4JxZqsf_CHdrQi.txt",
+      "git_blob_sha": "99edfe9105cdc3c44656b85e03a2203e4d12d0fb",
+      "secret_scan_state": "READABLE_TEXT_SCAN_NO_CREDENTIAL_PATTERN_20260926"
     },
     {
       "kind": "file",
@@ -821,8 +828,11 @@
       "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "source_size_bytes": 44078,
       "modified_time": "2026-09-15T09:43:30.575Z",
-      "server_storage_state": "PENDING_SECRET_SCAN",
-      "provider_policy": "never_send"
+      "server_storage_state": "ARCHIVE_INSTALLED",
+      "provider_policy": "never_send",
+      "archive_file": "drive_archive/1AWGwLZBy4SmMhn0SEoOB6OW3cKRjp4ER.docx",
+      "git_blob_sha": "ea596e99581f2d73fba40e214518ff240394c0d4",
+      "secret_scan_state": "READABLE_TEXT_SCAN_NO_CREDENTIAL_PATTERN_20260926"
     },
     {
       "kind": "file",
