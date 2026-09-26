@@ -108,7 +108,6 @@ async def verify_with_provider(
             result = _parse_result(response.output_text)
             return {
                 "provider": normalized,
-                "model": settings.openai_model,
                 **result,
             }
         finally:
@@ -127,7 +126,6 @@ async def verify_with_provider(
             result = _parse_result(response.text)
             return {
                 "provider": normalized,
-                "model": settings.gemini_model,
                 **result,
             }
         except GeneratorNotConfigured:
@@ -161,7 +159,6 @@ async def verify_with_provider(
             result = _parse_result(text)
             return {
                 "provider": normalized,
-                "model": settings.anthropic_model,
                 **result,
             }
         except GeneratorNotConfigured:
