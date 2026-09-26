@@ -8,6 +8,7 @@ from app.training.gpt_oss_plan import (
 )
 from app.training.models import (
     ConsentState,
+    PatentClearanceState,
     RightsState,
     SourceClass,
     TrainingDataStatus,
@@ -37,6 +38,7 @@ def eligible_envelope(trajectory_id="t-1"):
         source_class=SourceClass.FIRST_PARTY_TUTORING,
         rights_state=RightsState.CONFIRMED,
         consent_state=ConsentState.CONFIRMED,
+        patent_clearance=PatentClearanceState.CLEARED,
         contains_personal_data=True,
         deidentified=True,
         learner_pseudonymous_id="learner-A",
