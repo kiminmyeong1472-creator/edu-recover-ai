@@ -19,6 +19,7 @@ from app.services.control_plane import (
     ProviderHeld,
     assert_provider_allowed,
     control_status,
+    evaluate_provider,
     notebook_tasks,
 )
 from app.pilot_page import PILOT_HTML
@@ -55,7 +56,7 @@ class VerifyProblemRequest(BaseModel):
 
 class GenerateQuestionsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider: Literal["openai", "gemini", "claude"] = "openai"
+    provider: Literal["openai", "gemini", "claude"]
     source_text: str = Field(..., min_length=1)
     count: int = Field(default=20, ge=1, le=50)
     subject: str = "영어"
@@ -126,24 +127,83 @@ async def health_check() -> dict[str, str]:
     }
 
 
+def _provider_secret_configured(provider: str) -> bool:
+    return {
+        "openai": settings.openai_api_key is not None,
+        "gemini": settings.gemini_api_key is not None,
+        "claude": settings.anthropic_api_key is not None,
+    }[provider]
+
+
+def _provider_model(provider: str) -> str:
+    return {
+        "openai": settings.openai_model,
+        "gemini": settings.gemini_model,
+        "claude": settings.anthropic_model,
+    }[provider]
+
+
+def _provider_ready_for_teacher(provider: str) -> bool:
+    configured = _provider_secret_configured(provider)
+    try:
+        decision = evaluate_provider(provider, "generate")
+        control_allowed = decision.allowed
+    except RuntimeError:
+        control_allowed = False
+    privacy = provider_privacy_status()
+    privacy_allowed = bool(
+        privacy.get("providers", {})
+        .get(provider, {})
+        .get("call_allowed_by_privacy_gate", False)
+    )
+    return bool(configured and control_allowed and privacy_allowed)
+
+
 @app.get("/ai-status", tags=["authoring"])
 async def ai_status() -> dict[str, Any]:
-    """Report provider configuration without exposing any API secret values."""
+    """Teacher-safe provider readiness. Detailed configuration is owner-only."""
     return {
-        "automatic_generation_endpoint": "/generate-questions",
-        "openai": {
-            "configured": settings.openai_api_key is not None,
-            "model": settings.openai_model,
+        "provider_selection_required": True,
+        "providers": {
+            provider: {"ready": _provider_ready_for_teacher(provider)}
+            for provider in ("openai", "gemini", "claude")
         },
-        "gemini": {
-            "configured": settings.gemini_api_key is not None,
-            "model": settings.gemini_model,
-        },
-        "claude": {
-            "configured": settings.anthropic_api_key is not None,
-            "model": settings.anthropic_model,
-        },
-        "default_provider": "openai",
+    }
+
+
+@app.get("/owner/ai-status", tags=["owner"])
+async def owner_ai_status(_: None = Depends(require_owner)) -> dict[str, Any]:
+    """Owner-only provider configuration/control/privacy diagnostics without secret values."""
+    privacy = provider_privacy_status()
+    rows: dict[str, Any] = {}
+    for provider in ("openai", "gemini", "claude"):
+        try:
+            decision = evaluate_provider(provider, "generate")
+            control = {
+                "allowed": decision.allowed,
+                "state": decision.state,
+                "reason": decision.reason,
+                "control_epoch": decision.control_epoch,
+            }
+        except RuntimeError as exc:
+            control = {
+                "allowed": False,
+                "state": "CONTROL_CONFIGURATION_ERROR",
+                "reason": type(exc).__name__,
+                "control_epoch": "UNAVAILABLE",
+            }
+        rows[provider] = {
+            "configured": _provider_secret_configured(provider),
+            "model": _provider_model(provider),
+            "control": control,
+            "privacy": privacy.get("providers", {}).get(provider, {}),
+        }
+    return {
+        "provider_selection_required": True,
+        "providers": rows,
+        "strict_provider_zdr_required": privacy.get("strict_provider_zdr_required", True),
+        "platform_chat_history_forwarded": False,
+        "provider_calls_are_stateless": True,
     }
 
 
