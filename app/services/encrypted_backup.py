@@ -69,6 +69,9 @@ def _decode_master_key(raw: str) -> bytes:
     try:
         if value.lower().startswith("hex:"):
             key = bytes.fromhex(value[4:].strip())
+        elif len(value) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in value):
+            # Accept the common bare 64-hex-character form as a 32-byte key.
+            key = bytes.fromhex(value)
         else:
             if value.lower().startswith("base64:"):
                 value = value[7:].strip()
