@@ -118,7 +118,8 @@ PILOT_HTML = r"""
               <tr><td>Socratic Trap API</td><td><span class="badge good">실행</span></td></tr>
               <tr><td>자료 파일 영구저장</td><td><span class="badge warn">연동 전</span></td></tr>
               <tr><td>AI 자동출제 API</td><td id="autoGenStatus"><span class="badge warn">서버 상태 확인 중</span></td></tr>
-              <tr><td>시험지 DOCX 자동출력</td><td><span class="badge good">실행</span></td></tr>\n              <tr><td>HWP 직접출력</td><td><span class="badge warn">미지원 · 복사/붙여넣기 안내</span></td></tr>
+              <tr><td>시험지 DOCX 자동출력</td><td><span class="badge good">실행</span></td></tr>
+              <tr><td>HWP 직접출력</td><td><span class="badge warn">미지원 · 복사/붙여넣기 안내</span></td></tr>
             </table>
           </div>
         </div>
