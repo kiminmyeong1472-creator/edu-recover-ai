@@ -6,6 +6,7 @@ on:
       - "app/training/**"
       - "tests/test_training_plane.py"
       - "tests/test_trade_secret_engine.py"
+      - "tests/test_trade_secret_backup_runner.py"
       - "requirements.txt"
       - ".github/workflows/training-plane-tests.yml"
   workflow_dispatch:
@@ -29,3 +30,4 @@ jobs:
         run: |
           python -m unittest tests.test_training_plane -v
           python -m unittest tests.test_trade_secret_engine -v
+          python -m unittest tests.test_trade_secret_backup_runner -v
