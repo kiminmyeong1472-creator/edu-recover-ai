@@ -10,7 +10,10 @@ import app.services.context_overlay  # installs task-scoped provider context bui
 from app.services.human_ai_charter import CHARTER
 from app.services.owner_basic_auth import require_owner
 from app.services.teacher_view import build_teacher_html
-from app.services.private_asset_registry import private_asset_integrity_snapshot
+from app.services.private_asset_registry import (
+    drive_archive_inventory_summary,
+    private_asset_integrity_snapshot,
+)
 from app.services.privacy_guard import ProviderZDRHeld, privacy_status as provider_privacy_status
 from app.services.control_plane import (
     ProviderHeld,
@@ -165,6 +168,7 @@ async def owner_authoring_assets(_: None = Depends(require_owner)) -> dict[str, 
     """Owner-only detailed server asset manifest and integrity state."""
     return {
         "runtime_assets": get_asset_manifest(),
+        "drive_archive": drive_archive_inventory_summary(),
         "private_assets": private_asset_integrity_snapshot(),
     }
 
