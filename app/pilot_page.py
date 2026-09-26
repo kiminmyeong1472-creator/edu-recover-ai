@@ -334,22 +334,17 @@ async function refreshAiStatus(){
   const cell=document.getElementById("autoGenStatus"),badge=document.getElementById("providerBadge");
   try{
     const r=await fetch("/ai-status");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);
+    const providers=d.providers||{};
     const parts=[
-      "OpenAI "+(d.openai?.configured?"연결됨":"준비중"),
-      "Gemini "+(d.gemini?.configured?"연결됨":"준비중"),
-      "Claude "+(d.claude?.configured?"연결됨":"준비중")
+      "OpenAI "+(providers.openai?.ready?"사용 가능":"준비중"),
+      "Gemini "+(providers.gemini?.ready?"사용 가능":"준비중"),
+      "Claude "+(providers.claude?.ready?"사용 가능":"준비중")
     ];
-    const anyReady=Boolean(d.openai?.configured||d.gemini?.configured||d.claude?.configured);
-    const privacy=d.privacy_gate?.providers||{};
-    const zparts=[
-      "A "+(privacy.openai?.call_allowed_by_privacy_gate?"ZDR확인":"ZDR미확인"),
-      "B "+(privacy.gemini?.call_allowed_by_privacy_gate?"ZDR확인":"ZDR미확인"),
-      "C "+(privacy.claude?.call_allowed_by_privacy_gate?"ZDR확인":"ZDR미확인")
-    ];
-    if(cell) cell.innerHTML="<span class='badge "+(anyReady?"good":"warn")+"'>"+parts.join(" · ")+"</span><div class='muted'>개인정보보호 게이트: "+zparts.join(" · ")+"</div>";
+    const anyReady=Boolean(providers.openai?.ready||providers.gemini?.ready||providers.claude?.ready);
+    if(cell) cell.innerHTML="<span class='badge "+(anyReady?"good":"warn")+"'>"+parts.join(" · ")+"</span>";
     if(badge){
-      badge.className=d.openai?.configured?"badge good":"badge warn";
-      badge.textContent=d.openai?.configured?"AI 출제 에이전트 연결됨":"AI 출제 에이전트 연동 준비중";
+      badge.className=anyReady?"badge good":"badge warn";
+      badge.textContent=anyReady?"AI 출제 에이전트 사용 가능":"AI 출제 에이전트 준비중";
     }
   }catch(e){
     if(cell) cell.innerHTML="<span class='badge warn'>상태 확인 실패</span>";
@@ -389,7 +384,7 @@ async function generateQuestions(){
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok){out.textContent="자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
     workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;persist();
-    out.textContent=d.provider+" / "+d.model+" · "+d.count+"문항 생성 완료. 문항 작업실에서 교사가 확인·수정하십시오.";
+    out.textContent=providerLabel(d.provider)+" · "+d.count+"문항 생성 완료. 문항 작업실에서 교사가 확인·수정하십시오.";
     await showCrossVerifyPrompt(d.provider, Number(d.count)||workspace.items.length);
   }catch(e){out.textContent="자동출제 요청 실패: "+e.message;}
 }
@@ -405,10 +400,10 @@ async function showCrossVerifyPrompt(originProvider, generatedCount){
   try{
     const r=await fetch("/ai-status");const status=await r.json();
     const providers=[
-      ["openai","ChatGPT / OpenAI",status.openai?.configured],
-      ["gemini","Gemini",status.gemini?.configured],
-      ["claude","Claude",status.claude?.configured]
-    ].filter(([id,,configured])=>id!==originProvider&&configured);
+      ["openai","ChatGPT / OpenAI",status.providers?.openai?.ready],
+      ["gemini","Gemini",status.providers?.gemini?.ready],
+      ["claude","Claude",status.providers?.claude?.ready]
+    ].filter(([id,,ready])=>id!==originProvider&&ready);
     providers.forEach(([id,label])=>{const o=document.createElement("option");o.value=id;o.textContent=label;select.appendChild(o)});
     if(!providers.length){
       message.textContent+=" 현재 연결된 다른 AI가 없습니다.";
