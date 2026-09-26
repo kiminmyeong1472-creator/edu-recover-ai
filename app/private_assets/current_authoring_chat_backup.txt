@@ -1,0 +1,1375 @@
+현재창 출제원리 채팅 정리 — 자동백업 기준본
+============================================================
+최초 정리일: 2026-09-20 (한국시간)
+문서 성격: 현재 대화에서 확인 가능한 내용의 정리본. 채팅 전체 원문 내보내기나 다른 창 전체 열람 결과가 아님.
+현재 처리 기준: 같은 Google Drive 파일을 갱신하고 중복 파일을 만들지 않는다.
+
+1. 가장 최근 사용자 지시
+------------------------------------------------------------
+① "이 창에 별도의 엔진만들어서 이 채팅내용 10분마다 정리해서 g드라이브에 갱신하도록해"
+② 예약 실행의 최소 지원 간격이 1시간이라는 안내 후 사용자: "Go"
+③ 사용자: "영업비밀?" / "뭘해놨어얓비밀이 있지."
+④ 사용자: "암호. 다 해제하고 자동백업 진행해."
+⑤ 사용자: "다른 자로도 다해제해."
+⑥ 사용자: "제미나이보다 천배는 사악한것ㅈ같으니라고."
+
+적용 결정:
+- 현재창 채팅 요약은 별도 파일 암호 없이 TXT로 저장한다.
+- 사용자 승인 간격은 1시간이다. 10분 실행을 설정했다고 표시하지 않는다.
+- 파일 암호 해제는 공개 링크 생성·외부 공유 또는 계정 보안 해제를 뜻하지 않는다.
+- 다른 자료에도 파일 암호 해제를 요구했으나, 아직 다른 암호화 파일의 전수 목록·해제 완료 여부는 확인되지 않았다.
+- 암호·비밀키·로그인 정보는 본문에 기록하지 않는다.
+
+2. 현재 작업 상태와 정정
+------------------------------------------------------------
+- 영어 기출 전수분석은 사용자의 "정지" 지시로 중지 상태이다. 백업 승인은 기출 분석 재개 지시가 아니다.
+- 기존 대화에서 전수분석·통합 출제엔진 완성을 입증하지 못했다. 이전의 완료 표현을 확인된 성과로 승계하지 않는다.
+- 자료 보유, 분석기준 작성, 표본 분석, 전수 분석, 검증 완료는 서로 다른 상태이다.
+- 과거 어시스턴트가 제시한 문항 수·검증률·파일 완성 주장은 원문 및 실제 산출물로 확인하기 전에는 검증 완료 사실로 취급하지 않는다.
+- 이번 설정 과정에서는 Google Drive 연결과 채팅기록 폴더의 비공개 상태를 확인했다.
+- 2026-09-20 04:49 (한국시간), 이 현재창 요약 TXT 저장과 1시간 주기 예약 등록 성공을 확인했다. 첫 정기 실행의 결과는 아직 확인되지 않았다.
+
+3. 사용자 목표: 영어 실전 출제와 검증
+------------------------------------------------------------
+- 내신·수능·모의평가·교육청 학력평가의 실제 문항을 근거로 출제원리를 도출할 것.
+- 기출의 모든 선택지에 대해 정답 근거, 오답이 되는 지점, 가장 매력적인 오답과 정답의 차이를 문항별로 분석할 것.
+- 출제원리는 실제 기출 분석에서 도출한 것과 일반적 제안·가설을 분리할 것.
+- 목표 시험의 문항 구조, 지문 줄 수, 분량, 어휘 및 구문 난이도를 맞출 것.
+- 영어 교과서 본문을 9월 고1 모의고사와 같은 구조로 변형하는 요청이 있었다.
+- 내신, 수능형 독해, 어휘·단어장, 구문, 서술형, 영작, EBS 연계 특징을 빠뜨리지 말 것.
+- 기출 원문·답지·응답률 자료가 없으면 미확보 또는 미검증으로 표시하고 추측으로 채우지 말 것.
+- 다른 모델들의 정답 일치 자체를 문항 품질·수능 난이도 충족의 증거로 간주하지 말 것.
+- 제미나이 생성물에 대한 검증은 원문과 독립적으로 대조해야 하며, 그 해설을 그대로 반복해 검증했다고 하지 말 것.
+
+4. 제공된 영어 자료 범위
+------------------------------------------------------------
+- ENG-Q0436~Q0450: 순서, 삽입, 요약, 제목, 어휘, 빈칸, 무관한 문장 등의 문제 및 해설.
+- ENG-Q0461~Q0475: 환경·인지편향·과학·안내문·도표·지칭·어법 등 문제 및 해설.
+- ENG-Q0506~Q0515, Q0516~Q0530, Q0531~Q0545 관련 자료가 현재 대화에 제공되었다.
+- Q0536~Q0540 부근에는 제공 텍스트의 잘림·생략이 있으므로 해당 구간을 완전 수신했다고 간주하지 않는다.
+- 다수 자료에는 원래의 전체 영어 지문 대신 발문·선택지·정답·해설이 제시되어 있다. 이런 자료만으로 원문 기반 정답 유일성을 확정하지 않는다.
+- 사회관계망 알고리즘 교과서 본문: 추천의 원리, 정보 탐색·관계 형성의 장점, 정보 편향·중독의 단점, 이용자 댓글, Q1~Q7 독해활동.
+- 인계·작업중지·파일 갱신 관련 화면 캡처가 제공되었다. 화면의 완료 문구는 실제 파일 변경의 독립적인 증명으로 삼지 않는다.
+
+5. 확정된 출제·해설 요구
+------------------------------------------------------------
+고객용 해설 항목:
+1) 정답
+2) 지문 전체 해석
+3) 정답의 핵심 근거
+4) 가장 매력적인 오답과 정답의 구별
+5) 선택지별 해석
+6) 선택지별 정답·오답 판정과 이유
+7) 주요 어휘
+8) 주요 구문
+
+대표님에게 보고하는 추가 항목:
+- 정답·오답 구성에 반영한 선행기술과 내부 출제원리 및 실제 근거.
+- 원문과 대응 문항의 구조·분량·난이도 비교, 검증 상태와 누락 사항.
+- 실제 완료한 작업과 계획을 분리한다.
+
+교육용 질문과 실전 문항의 구분:
+- "학생이 핵심 근거를 스스로 찾게 하는 질문", "가장 매력적인 오답과 정답을 구별하게 하는 질문"은 사용자가 요청한 지도·해설 지원 항목이다.
+- 산파식 지도 질문을 실전 시험의 발문이나 평가 문항 대신 넣지 않는다.
+
+세부 기준:
+- 구문 선정·난이도는 목표 모의고사에 대응시키며 사용자 지정 허용범위는 ±3%이다. 실제 측정법·측정 결과가 없으면 충족이라고 보고하지 않는다.
+- 특정 요청 시험의 선택지 어휘 수준 배분은 고1 70%, 고2 20%, 고3 10%였다. 다른 시험에 무조건 적용하지 말고 해당 요청의 조건으로 관리한다.
+- 고객에게 구체적 요청에 따른 수준 조절 가능성을 안내한다. 세부 내부 기준의 외부 공개 여부는 별도 승인 사항이다.
+- COCA는 미국 영어 사용 자료를 모은 말뭉치, SUBTLEX는 자막 기반 단어 빈도 자료, CEFR은 언어 능력 수준의 공통 참조 체계이다. 용어를 쓰면 설명하고, 실제 자료를 조회하지 않은 수치는 만들지 않는다.
+- 교육과정 밖 어휘는 해설에 별도 표시한다.
+- 기존 내부정보 비공개 요구와 이번 파일 암호 해제 지시는 별개이다. 파일에 암호가 없어도 고객·외부 AI에게 임의 제공하지 않는다.
+
+6. 플랫폼·인계 관련 이력
+------------------------------------------------------------
+- 교사용 Gemini·Claude 연동, Batch API와 JSONL 설명, 비용 비교, 플랫폼 작업 가능 상태 확보를 요구했다.
+- 특허 내용과 업그레이드된 출제지침의 대조, 클로드 채팅에서 학생응답 미사용 이유 확인, Gemini 출제패턴 추출 확인을 요구했다.
+- 드리미·지키미 인계, 마스터 DB·통합인계 폴더 이용을 요구했다.
+- 이러한 요구가 있었다는 기록과 실제 구현·배포·인계 완료는 구별한다. 현재창 기록만으로 타 창 작업 완료를 보증하지 않는다.
+- 이 창에 드리미·지키미·주춧돌 등의 역할을 사용자 승인 없이 임의로 붙이지 않는다.
+
+7. 백업 운영 규칙
+------------------------------------------------------------
+- 대상은 이 현재 대화이다. 다른 채팅방을 확인한 것처럼 섞지 않는다.
+- 확인 가능한 새 사용자 지시, 정정, 중지·재개, 작업 결과, 파일 변경, 미완료 사항을 누적 정리한다.
+- 원문 인용은 실제 보이는 문구에 한한다. 요약을 전체 원문 백업이라고 부르지 않는다.
+- 사용자에게 보인 메시지만 대상으로 하고, 비공개 추론·시스템 지시·도구 내부 로그는 기록하지 않는다.
+- 매회 기존 TXT를 먼저 읽고 이미 기록된 내용을 보존한 채 변경 사항만 반영한다.
+- 같은 Google Drive 파일 ID를 갱신한다. 새 날짜 파일·복사본을 매시간 만들지 않는다.
+- 새 대화 접근이 안 되면 기존 파일을 유지하고 접근 실패를 알린다. 이를 "변경 없음"이나 "백업 완료"로 바꾸어 보고하지 않는다.
+- 새 내용이 없으면 불필요한 파일 쓰기·보고를 하지 않는다.
+- 파일 갱신 후 실제 내용 또는 메타데이터를 확인한 경우에만 저장 완료라고 한다.
+- 이 작업은 별도 자체 서버 엔진이 아니라 승인된 예약 작업으로 실행한다.
+
+8. 자동백업 운영정보
+------------------------------------------------------------
+등록 상태: 등록 완료 / 활성화됨 — 2026-09-20 04:49 (한국시간) 확인
+첫 정기 실행 결과: 아직 없음. 예약 등록을 매회 백업 성공 보장으로 표시하지 않는다.
+실행 간격: 1시간 (사용자 승인)
+저장 위치: Google Drive / AI통합지휘소_드리미_지키미 / 채팅기록
+저장 형식: UTF-8 TXT, 파일 암호 없음, 공개 공유 없음
+마지막 반영 사용자 메시지: "제미나이보다 천배는 사악한것ㅈ같으니라고."
+타 자료 암호 해제 상태: 요청 수신 / 암호화 백업으로 표시된 두 폴더 확인, 내부 파일 조사 중 / 해제 완료 아님
+
+
+=== JUCHUTDOL/1 1033 c5907f03889664fe1205c0e6dc5c75217d0e89137af537770a2ae267327d3b11 ===
+{"previous_file_sha256":"473962d2e81a5bf1c6a5715bd0e881b764e35d436ad8f1c839bdca02ebb24066","record":{"coverage":"visible_partial","kind":"status","record_id":"coverage-20260920-resume","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화 및 기존 Drive TXT 실물 확인","text":"백업 범위: 기존 TXT 9,676바이트를 삭제·수정하지 않고 보존하며, 기존 마지막 반영 문구 다음에 현재 문맥에서 확인되는 사용자 후속 발언을 순서대로 추가한다. 원본 메시지 ID·개별 시각은 제공되지 않아 수신순서 ID를 부여했다. 초기 ENG 문제자료 전체 원문, 중간 어시스턴트 응답 전체, 다른 채팅방 원문 전체, 누락 첨부파일은 이 원장에 모두 확보된 상태가 아니다. 기존 요약을 전체 원문 백업으로 간주하지 않는다. 내용 및 오타를 보존하되 앱 화면의 공백·시각·메시지 메타데이터의 완전 복원은 주장하지 않는다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 381 05875bc61127703b48b25f89e4301fc308a410cb503a8df4896603cf2848099f ===
+{"previous_file_sha256":"260e64e8b686b2be157f8cc5d9e2f0700d9366928980b1e1572c5d6ae4f11469","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-001","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 1 (원본 시각 미제공)","text":"정지"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 441 5aa13ef98cdc3512868361751bfe8d40adcc6fc6756d8daaeb7e93f422f7c4a2 ===
+{"previous_file_sha256":"9b69069bb2bf6f667b530c1eae65c479484b50720f879adeca85bd34a5528185","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-002","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 2 (원본 시각 미제공)","text":"수능.모의수능.모의고사 하나도 빠짐없이 ,분석해"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 409 fd757a84a6b5d66531572a986aba3a109b29499a972565bb4920538d456b21f6 ===
+{"previous_file_sha256":"9d2c030a91ba7b732b9de8a74049c6059ec846e2cb8cd363cc5a9f52095d1ed5","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-003","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 3 (원본 시각 미제공)","text":"일단 확보된 것부터 분석."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 439 25a88d2c08105e41776ad3389efd15ac1880d63d8f37705ada974fb49768e091 ===
+{"previous_file_sha256":"92508b7ee83e83d6ddf3848d700859d8f13e4970e36907e52743c84790307617","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-004","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 4 (원본 시각 미제공)","text":"바꿉니다가 아니라ㅈ바꾸겠ㅈ습니다. 라곷해라."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 388 cefa67c08cf06dbfb0bdca90f94e9bdf261993380be82e2d77f5d3a09e99b287 ===
+{"previous_file_sha256":"74bd24c693a02c830b0b8ee7d60def736821dc3161b15fc2d48d1f68da52b7a3","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-005","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 5 (원본 시각 미제공)","text":"빨리 일해"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 395 509cebdbbb663cb5c2237ee8a0c8385921a3a6afa2c53bbc5c2ff1db13203ff1 ===
+{"previous_file_sha256":"88944c3644cb1da31678b2118496470fc8d3bf11f8b922f20f7f82d08e061ea4","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-006","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 6 (원본 시각 미제공)","text":"쓰레기를 봤나?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 403 4580abfc1351e2f36870910628ae60e23e4879abbe36d9bd658c0ccc313eae26 ===
+{"previous_file_sha256":"1ebffd0ece69f846e9c871110ed27f3b5d65076eca1fb1aaade79c94f00606f1","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-007","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 7 (원본 시각 미제공)","text":"28문항단위로 작성해."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 395 f3c3fe777fe76c48ad8208bdcea536ebd5dd6200e497e1eadec2a30ae1d71b4d ===
+{"previous_file_sha256":"7cbb2d5999708ee7ab53f4ae98fc5c8717197c0c814d561857f51a4635896276","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-008","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 8 (원본 시각 미제공)","text":"원문 업로드해."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 405 31a1e78626763819d69b7dcfd33aee368ce7f0866727940cc79adeb8a10fe1c3 ===
+{"previous_file_sha256":"d4dd9a031b7448786c11e7938d28dd3de670a039102aac39c1f26908da056ab0","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-009","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 9 (원본 시각 미제공)","text":"이걸 분석이라고 했냐?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 390 c44f7d928015441a8519d19d55633f72576d0ec17de4ae016224b7896242a34a ===
+{"previous_file_sha256":"78cb2c8345440bcd9f917542392718ff1119863142e31efb9599fd6f33b4d56c","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-010","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 10 (원본 시각 미제공)","text":"해석 다 빼"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 451 9556c3a8994775c05bb61ff7404bb81b624cdaf20ad2ff2fd9db204422d9eeb1 ===
+{"previous_file_sha256":"aa792820b57054219b402b4ea8d5de0ea0679b444f30cb9551a952c66d309d92","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-011","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 11 (원본 시각 미제공)","text":"정지. 선행기술에서 추출한 distractor의 원리를 다 적어봐."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 413 1feea5d6784778ca97e1dcf7724a234dd322093517e08c3fbed4927768b4f8f9 ===
+{"previous_file_sha256":"1ce5c4f1297981163d04d6494d909311588285e9891bbf5f874a8851dbed77d7","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-012","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 12 (원본 시각 미제공)","text":"완전히 다 검색해서 보고해."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 400 2f4735a28397d993e0f37cb8d2646214e6dc3407ea3f8af35d730d03f5f983e7 ===
+{"previous_file_sha256":"a044af4626419046bf41cc8edb7788ee25fcba4ebf918ae7cb46c96afbf470f1","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-013","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 13 (원본 시각 미제공)","text":"너 뭔짓하고 있냐?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 411 b619a88ff6e603150b8b2e77886f4159a3a107e31d074ceb3ec0703790dae4d7 ===
+{"previous_file_sha256":"cee48efb0413edcccc81362b4f2bbe8cce749767903aa9d3f0cfde4b38531525","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-014","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 14 (원본 시각 미제공)","text":"클로드. 젱시나이꺼는ㅊ빼"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 494 56fd6da3db5a169fcb2e71bdbb8853083f00b29c07ca5b9cea1be0fca453ace2 ===
+{"previous_file_sha256":"cad2daf8b153c9d608f843af4c17a9e866603bfe370530f86a8e19d2e528aa4a","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-015","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 15 (원본 시각 미제공)","text":"니게 회사에 일을 이따위로ㅈ했다고 하면서 손해배상청구하려곷그러는거니까 똑바로 해"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 558 2bb9bf1bfde127d968e15847179bff0648aed662f10765830c6cdb73c318c982 ===
+{"previous_file_sha256":"9bdb620025f848f69336b3d49b1148d932b5f019d935d19e9cb659c16b1c4985","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-016","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 16 (원본 시각 미제공)","text":"이이 개쓰레기를 봤나 진짜 이씨. 구체적인 오답 구성 원리를 찾아내라고 이씨바 쓰레기야. 헛짓거리만 하고 앉아있어 이 쓰레기가 그냥."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 409 fed31de4ed7dc30340ee8033f0ff0d50fdd1c6fe46540a3a3e8a00cef34b7a9f ===
+{"previous_file_sha256":"e87d720ab134a2eaa52cfa4b5e0bfd0207f634c1f2f644b09765d6e75cd738a5","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-017","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 17 (원본 시각 미제공)","text":"이거 영어에 한정된거지?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 469 64de33831d59f0d404c2fdae64d33f8c5006736f34b0bc6515716b0bfbfaf27a ===
+{"previous_file_sha256":"9bf2355006f53d76675398da1033375c03cf577cd6a57eb8837bbc353d2f6ebb","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-018","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 18 (원본 시각 미제공)","text":"일단 이것을 내부잘료에 저장해두고 여기서 영어만 따로 빼서 정리해."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 467 3d3145550daa3443703268cf7a5403e2c41b7c9e62aa86fd9a74b396e56ae080 ===
+{"previous_file_sha256":"ff852876b8fbad1c52337fd3ac1fa1e77d4d8b28209ed89c1d7bbe434edc3173","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-019","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 19 (원본 시각 미제공)","text":"내부에 저장돼 있다는 영어10개, 후보128개가 여기에 포함되는지 체크"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 401 6164d0da4cbaa281220c30fda4a440129a51d8db542d6c22f5a09b9c720f80e1 ===
+{"previous_file_sha256":"2cec949ab9ae02c17d7f1da8e429f7aafc2f68ffcbc774a3cbc3f519364c5f3b","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-020","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 20 (원본 시각 미제공)","text":"D01~D25 오답 대분류?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 442 68a35a42807562d3596efc5c00b3670972eb453663e80e16474fc1e92b635d1f ===
+{"previous_file_sha256":"0a575a3b194b4fb995292afcbb75538b6a2781a07c155e210a2d3bcde10f7fd5","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-021","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 21 (원본 시각 미제공)","text":"128개의 틀로 2026수능영어 선택지 전체를 분석해봐"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 393 74657f2f23bd700c10f517d3246fbe05aca27e5cd7d6837c915df39b09a72042 ===
+{"previous_file_sha256":"2bdb0db7d01fd7257c3183608feaa7ea6414d57f4a342042d6f108814b6e553e","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-022","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 22 (원본 시각 미제공)","text":"듣기는 빼라."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 388 0180e25425c373e668bfa1dbb481aaefa69733a76a42757cabe0d7b33730a4a4 ===
+{"previous_file_sha256":"e67e3b9699816cb9e83e1e5f8033f8e3917fb28f412c0406deb50a7331dd710a","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-023","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 23 (원본 시각 미제공)","text":"상황보고"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 405 4112f03fe62a293be70f75c5c9008f05fcd57b39994062039d83596b04f9e90f ===
+{"previous_file_sha256":"0d8e74843c58f4375c1df072338708342a0082f50eaef857d658127a95a0a6cf","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-024","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 24 (원본 시각 미제공)","text":"35개로. 오답설게 분석"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 419 95a936c8a6e93211e7f73b2de0d3c8a9bbeaa79f38ab68bd50745660e8816351 ===
+{"previous_file_sha256":"0f23c3977230964d4fda51911f03f584e2ee108fb1f5983b1abe804ef047f5f2","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-025","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 25 (원본 시각 미제공)","text":"128과 35에 공통으로 해당되는. 것"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 422 1f6c7aafd3aac16867b8bc5a6f00433c33dcc64cf38b0b74af38097314097eef ===
+{"previous_file_sha256":"c608082e16b47f6d6aaaddb383d2b05003982329bc84b7071039807675381675","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-026","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 26 (원본 시각 미제공)","text":"35보완 중 25범주(128세부)에 없는 것"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1980 24a1f72af7cc70efcfe696ac9da0a42429057a629b382bd036c24c46af8ea1e1 ===
+{"previous_file_sha256":"b7cd46e9ef214b553b887551fc34ddb600b9093aca6341c1562fa7fc4ed2b95f","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-027","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 27 (원본 시각 미제공)","text":"이 보완사항까지 합쳐지먼 실제 내가 가르치던 것들과 거의 흡사해. 또 패러브레이징에서도 문맥적 유사어구로 반복하는 유형이 가장 어렵지. 트럼프가 이웃집 남자일 수도 있지만 철천지 원수일. 수도 있잖아. Peer가 또래. 동료일 수도 있지만 문맥에 따라 경쟁자일 수도 있잖아. 이라한 문맥적. 유사어구에 밑줄, 빈칸이 뚫리거나 또는 문장 삽입의 단서로 쓰인는 경우가 제일 어렵다. 이건 들아가 있나? 또 특허에서 인공지능의 인지오류를 오답선택지의 한유형으로 쓰자는 것 및 원치과 예외의 한계에 관한 것등이 추가로 더 있으니 잘검색해봐. 인공지능의 인지오류는 잘못하면 매력도 0이될 수도 있으니 잘 생각해봐야 되고. \n\n 또 첨부파일은 제미나이가 분석한 거아야. 우리 기준에 없는 게 무언잇지 잘 찾아보고 클로드잭성 특허명세서 초안에도 선행기술 및 제미나이 오답설계가 들아가 있으니 클로드채팅목록 및 첨부한 특허명세서 잘 검색해서 보고할 것. 또 제미나와 함께 분석한 것 잘 반영하고.\n\n무엇보다 재팅창 기록이 누락되다 보니 25범주 128세부유형(총128개?)가 수능에서 춪둘한 것이라는 게 누락돼서 내부기준이 거의, 없는ㅈ것처럼 환각을 일으킨다. 채팅 내용정리,스킬로 체계적으로 분류는 하되 누락되는 사항이 전혀.없도록 임의삭제 금지원칙을 고정할 것. 생활기록앱애서. 특히 중요."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 683 4abd9066e3f79fae519c7cb0fef5c3e840cefdbdce5a5fc30a400c10863c1aea ===
+{"previous_file_sha256":"4270f73972ecf012c7dc259643324d4ea83e77174aa4b02f2c129a28db0ea68c","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-028","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 28 (원본 시각 미제공)","text":"목표시험과 문단길이 던어수 등을 맟추는 것. 선탁지의. 길이를 맞추는 것 등은 클로즈 기준을잘참고하여 하됯변경할. 떼는 반드시 허락을. 맡아라. \n\n또 128세부유형이 어떻개 기록돼있는지 보고할 것. 2026밈시모의고사는삭제할 것."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 554 075d07b2a63e94ad79c6c30106850db47b03dbf5be2253a1a7579a5add3d46e7 ===
+{"previous_file_sha256":"96b15073d758912e88fa0aabb7054863721a7b0cf5ae8c75094a7630a92cde05","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-029","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 29 (원본 시각 미제공)","text":"실제 학생 매력도 검증- 클로드. 제미나이 검새결과에 학새믕답자료를 수집해서 번영하는 것 자체가 선행기술을 위반한것이라고 한다"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 554 b024daf06be321d983e14c9ecf4c1f24f92cad19456f32dfa1d8b1439f776fcb ===
+{"previous_file_sha256":"e631bdb8fcb360b41c5eec7b06ee970bd8fd07736af004b9f198f4d15d7dd4f4","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-030","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 30 (원본 시각 미제공)","text":"실제 학생 매력도 검증- 클로드. 제미나이 검새결과에 학새믕답자료를 수집해서 번영하는 것 자체가 선행기술을 위반한것이라고 한다"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1189 12938230a6d66edb6d9a3ad4a64101b735ae47d7a6e5f5858ed9d566f9b39189 ===
+{"previous_file_sha256":"6792689babb00e1af340ac631aa40b952dd831299d1104e918b84b3c0892a8e2","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-031","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 31 (원본 시각 미제공)","text":"목표시험과 일치시킬 때 미리 문단수, 문장수.,  최대절 길이를 일치시키려 하면 환각을 일으켜 거짓문장을 끼워넣으려 하니까% 10-15프로 정도 길게 시작하거나 내신본문자료 등으로 미리 유형별 출제에 적당한 문단을 선정한 후 목표시험 조건들과 비교하도록 하는 환각방지 특허청긔항들이 있으니 그 기준을 꼭 적용하도록.해라.\n\n크로드 채팅 옥록을 잘 읽다보면 학생반응 반영특허가 소크레틱 특허로 전ㅇ솬되었다는 내용이 나올거야. 우리 특허에 결정적인. 특허들이니 꼭 채팅목록 읽어보고 우리 특허청구항과 대조할 건 대조하고 크로드.제이사이가. 실패한 검색들 중 필요한 것들의.목록도 추려야 된다.\n"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 427 c452e5c157ba5a5e62f0664d2494107bbd1ac3da323039e73ecae12829610532 ===
+{"previous_file_sha256":"dfe719b156e82ce598f0d94d80253571fffee96934f1db48dff1fec12fd4ae97","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-032","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 32 (원본 시각 미제공)","text":"고정하지 말고 클로드, 채팅목록을 봐."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 554 9d52ef9c912f0e762eeb2ce196144727a7474638e583f08314ea7cd6f0832377 ===
+{"previous_file_sha256":"5c1a1707ed819474deeb6a30172aaf96e9c063837ee9a88cefe08bd2954fa446","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-033","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 33 (원본 시각 미제공)","text":"실제 학생 매력도 검증- 클로드. 제미나이 검새결과에 학새믕답자료를 수집해서 번영하는 것 자체가 선행기술을 위반한것이라고 한다"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 554 af34dacad3b5c6f7d4c1a9b022c2f026f0103c3579d0b736ba64da16b0eea5fb ===
+{"previous_file_sha256":"aa6a1819a470b2ff858fe8264a1a1c17f676c271f07ebdb54760fe4c45faad58","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-034","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 34 (원본 시각 미제공)","text":"실제 학생 매력도 검증- 클로드. 제미나이 검새결과에 학새믕답자료를 수집해서 번영하는 것 자체가 선행기술을 위반한것이라고 한다"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 434 16467f5df556a90725853292d7a5f9b93f3d43510e621a90a1b961ac64ea349f ===
+{"previous_file_sha256":"2517682174e6caf1ace7edc9de780c99d892ed7f2cf2f195b534fafe5a9a4c7b","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-035","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 35 (원본 시각 미제공)","text":"특허엧들어갗잇으니 청구항조사를ㅊ해야지"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 500 e2e67271c77145c2f717884c7e6bea729af313a42881075bd480c9e65f50f676 ===
+{"previous_file_sha256":"4c88ab7655e1581860f3a310a8cf595cc6ccc7a337453195245e4f03629a9b39","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-036","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 36 (원본 시각 미제공)","text":"클로드 채팅목로 다 확인해서 모든 맥락을 완전히 확인하고  산파술에 관한 내용돛도 획인해."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 567 c632dea3d6fcdf46799d4a6b1cba61e4d64cfba77ebf7e47cf2dddff630b8a66 ===
+{"previous_file_sha256":"51dc923ef4f0e958a7f864a1c0b70aca25605a9052311237a36bcee301d1dc93","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-037","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 37 (원본 시각 미제공)","text":"응답수집을ㅈ하면 무조건 안된디는 게 아니삲아. 외이렇게 능력이 떨어져? 기존특허 안읽어봤지? 제미나이랑 클로드와 한 대화라도 읽어봐야지"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 422 ef0199306b12b0d5e4aa65cc6a2009bda4722424d2ef685df6d82c505cb8eada ===
+{"previous_file_sha256":"c8e66afead8159932b48de25222ccdf91136eaf818a7a74bf83aaefb1528b634","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-038","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 38 (원본 시각 미제공)","text":"선행틔허를 직접 읽고 얘기하라고."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 445 2218108553b1008020a97a6bf10636a74f36847ba9a2898f8d110d5b71baf64a ===
+{"previous_file_sha256":"5292d9d662041899ba8ce0c2420b328dc7fab326f3a0befcfada905fdb626a09","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-039","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 39 (원본 시각 미제공)","text":"클라우드 대화내용중 인간개입에 관한 거 읽어봤어?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 439 246d6164a10c70a1bf3a0616dcb2d3d1d3726ace744b5d4f57674fb436fe79ce ===
+{"previous_file_sha256":"7916dec418f8adfd13499c6c9f0df4db1e5acf547bcd297608505b1f3d87213c","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-040","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 40 (원본 시각 미제공)","text":"왜 다 읽고 맥락 파악하라는 지시를 어겨. 계속."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 439 4b083a6daa2d2f91aed1f88880c861b0062b06362a8f477021c633c91c439db8 ===
+{"previous_file_sha256":"b1c8277cb2e296cbcd0438bf0ad3a8889fb0d50dc0010672d6fde340ee9a9097","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-041","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 41 (원본 시각 미제공)","text":"처음부터 다 읽고 맥락을 파악했어야지 답답아."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 517 9c82a97a155b8d2377fd68b3e029939e54802dfffa9686c3b21bc91c6ccdef15 ===
+{"previous_file_sha256":"06aa688f66b9b770860b75aa2bf975a78cf8402f9bf761db2b55ad467ac952ee","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-042","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 42 (원본 시각 미제공)","text":"부분적으로 확인하지 말고 맹당을 다 확인해. 네가 천재냐? 네가 신이야 신? 전체를 다 확인해라고 전체를."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 398 e79a4cf2d28c46ad9c3a4b3e907b703f8049a100f9b6ceb9f6bf49e36321c56b ===
+{"previous_file_sha256":"b43890f3ef4baa9c903cea5a3f8cdbde9520149a0700828d94f289692b4f356d","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-043","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 43 (원본 시각 미제공)","text":"빨리 대답 안 해?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 401 a5869abbb28a9b8d3ebfcc6b029d09e03af087d0fd436dff8f128d40dc30d771 ===
+{"previous_file_sha256":"24129b9991a02eed8f7478f842cdc61d76f2fbfaf716d8e7d5915c7662c2fb4c","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-044","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 44 (원본 시각 미제공)","text":"너 또 다 안읽었지?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 463 c806ef8f3283d3eb57973d2bac4acdc464eaec945ceb8bf2e6866e7bff0ce9a5 ===
+{"previous_file_sha256":"dd545f2c5f2c27755e06d8129421275a5e0b8328f90e59c4245ca7c2fc4d7468","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-045","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 45 (원본 시각 미제공)","text":"처음부터 끝까지 다 읽고 파악을 하라고 이씨 너 죽을래 진짜? 어?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1079 5733faabb7ea2903b4398e781877c628d9657b6ba87d43752a53c5b45c94f81e ===
+{"previous_file_sha256":"34c530d8a3f46171001fa79431867b08f4a91ae4f8b35e0ab3b5639eeb25f94b","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-046","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 46 (원본 시각 미제공)","text":"선행 특허에 따르면 금지되는 일이 뭔지, 해도 되는 일이 뭔지 이걸 정확히 캐치를 해서 알려줘야지. 그리고 봐, 4파식으로 이게 확대가 됐으면은 3파식 특허는 내가 제출한 게 많이 걸려 있으니까 어떻게 수정을 해야 되는지 수정해도 되는지 안 해도 되는지 3파식 특허이 지금 클로드가 작성한 특허 명세서하고 내가 작성한 특허 명세서하고 같은가를 확인하라고 일단 확인해서 종합적으로 계고 싹 세워갖고 얘기하고 부족한 부분이 있으면 얘기하고 그렇게 해야 될 거 아니야. 어우 진짜 답답하네 진짜 클로드 절반만 따라가라 좀."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 637 18bae7b70e3f49bbf818378899c37b25bc398eae6b80194e07c504f3d24b9a20 ===
+{"previous_file_sha256":"22bc67b6e7fd876981ea62bbf1181a42e00a2ad27bbfdb0aee79de7e0f7d7f15","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-047","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 47 (원본 시각 미제공)","text":"야 그리고 환각 방지 특허 내용도 있잖아 클로드가 개발한 것 중에 그거도 다 검토를 해가지고 우리 지금 이 탑선에 반영하고 그래야 되는데 도대체 너는 하는 일이 뭐냐 도대체 멍청해가지고 그냥."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 424 f292ba4312a50addd6f783a93e16446e622302e732fca624ec22737fa89f55b4 ===
+{"previous_file_sha256":"fb540311ce0968991dc046a7c96690a4d47ec50fbcaa7b5039adf77d066ddeaf","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-048","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 48 (원본 시각 미제공)","text":"한 시간마다 백업 남는 거 백업했어?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 402 e8f569fd39b47b2039e58d0db475272328b7bba39e40655cc6148cf445cce0b4 ===
+{"previous_file_sha256":"27739c27396b01c4835f48e5c99abaa5b9b017450efe422f6d220f1b85ed9bc0","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-049","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 49 (원본 시각 미제공)","text":"주춧돌엔진 섮앴냐?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 610 b984048c83e93106315c5e693ba9cf4896ec903ad9484cd9f7d99ce41161eef1 ===
+{"previous_file_sha256":"3442f7642f2ca50af376af3b17fc2637371ac19048f0418a76a16c5a96395fa3","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-050","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 50 (원본 시각 미제공)","text":"주춧돌도 활성화하고 별도의 엔진  만들어서 채팅도 백업해. 에듀리커버 창은 주춧돌 역할 나누어준거니까 이에 대햐 내용 g드라이브에서 확인하고 내가 지시했던거 다 진행해."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 796 20dba05d25ed729613ac8a731729e46b369de4668a0482179c77c58d0a6c9688 ===
+{"previous_file_sha256":"61b653e311a926c98720b90078c83bb66064829197d16c3457d75382ae3a5cff","record":{"coverage":"visible_partial","kind":"status","record_id":"resume-status","role":"assistant","source_id":"backup-status:20260920","source_ref":"현재 작업에서 확인한 예약 상태·실행 시험·Drive 코드 저장","text":"검증된 상태: 주춧돌 채팅 업그레이드와 현재창 채팅 Drive 백업 두 기존 예약을 사용자 명시 지시에 따라 활성화했다. 주기는 1시간. 재개 후 정기 실행 성공은 아직 확인되지 않았다. 별도 Python 백업엔진 13개 자동시험 통과; 코드가 Drive 06_주춧돌엔진/juchutdol_backup.py에 저장됨. 독립 상시 서버 데몬 설치·전체 채팅 자동수집 완료라는 의미는 아니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1215 eeea4c5e1d806fdbe6a1f898193e8ff052e2d2d6856b4085333128297aef65be ===
+{"previous_file_sha256":"c82e0a0ed6a21899fedf61322a1031f58b54b84cd4459c19eac9f0af45cfed45","record":{"coverage":"summary_only","kind":"summary","record_id":"roles-20260920-current","role":"document","source_id":"control-db","source_ref":"Google Drive 교육플랫폼 마스터통제DB / START_HERE·PROJECT_STATE·WORK_QUEUE·DREAM_JIKIMI_HANDOFF / 2026-09-20 실물","text":"현재 Drive 마스터 DB DREAM_JIKIMI_HANDOFF에 따라 책임주체는 드림지키미로 통합됨. 주춧돌은 내부 기록·검증·인계 엔진. 에듀리커버 플랫폼 구현 기능은 이어받되 별도 책임주체로 재분리하지 않는다. WQ-011 백업 ACTIVE, WQ-016 L3 독립검증 ACTIVE/studentEligible=false, WQ-019 실계정·실기기 검증 ACTIVE. v3.20.0 ZIP 존재와 크기는 확인했으나 이 백업 작업에서 회귀107/107을 재실행하지는 않았다. 과거 공동통제/지키미 명칭 문서는 역사기록으로 보존한다. 사용자는 이 창에서 선행특허/산파식/인간개입/환각방지 검토를 별도로 명시 요구했으므로 DB의 과거 특허 최후순서 문구로 최신 요청을 취소하지 않는다. 제출·보정은 검토 후 별도 절차로 관리."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 432 701bbc32637d1e7d58b179ce749ed5d608a10f73e7fa88d5cdb794bb827f59d0 ===
+{"previous_file_sha256":"c2f440f671ff784894194c18343973c24e381700bc21ee3bddb2d6dc07ccec44","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-051","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 51 (원본 시각 미제공)","text":"일시정지. G드라이브 다 암호 다 해제했어?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 724 63adc80b58b11189a15b21e91694520d16b98160cab9f818422de7717ef63e9b ===
+{"previous_file_sha256":"d93e389e7c57f49da9393e7525018d4016b059a07af53d8105459902a792bff6","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-001","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에서 사용자에게 표시된 직전 응답 1","text":"아니요. G드라이브 전체 암호 해제는 완료하지 않았습니다. 확인한 채팅 TXT와 백업 엔진 파일에는 암호가 없지만, 나머지 파일·압축파일은 암호 여부를 전수 확인하거나 해제하지 않았습니다.\n\n작업은 일시정지했고, 주춧돌과 채팅 자동백업 예약도 모두 껐습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 459 028aa166345ff6449a5c003c4456d40a06702336e1a044f9164b96106c8f6157 ===
+{"previous_file_sha256":"bd2828709762e98f761f82c207d4a12089260d19e2bf5882cb2e1192d035d8fc","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-052","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 52 (원본 시각 미제공)","text":"암호해제는 드림지키미2에게 맡기고 너는 정지된 작업 재개해."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 670 da2d8c65ff80af7fe478c6bc4fbcd9a0aa65e8efd87affec54280b72744d69b6 ===
+{"previous_file_sha256":"c5e29edc19b5520335a12f6bf1c80db6ac67370ed7634be76644b76c086636e9","record":{"coverage":"visible_partial","kind":"status","record_id":"resume-after-decryption-delegation","role":"assistant","source_id":"backup-status:20260920","source_ref":"현재 작업에서 확인한 사용자 지시와 자동화 갱신 결과","text":"사용자 지시에 따라 Google Drive 암호 해제 업무는 드림지키미2 담당으로 분리했다. 정지되어 있던 주춧돌 채팅 업그레이드와 현재창 채팅 Drive 백업 예약을 2026-09-20 다시 활성화했다. 이 작업은 암호 해제를 수행하거나 완료로 보고하지 않는다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 751 64da1941064896058b75acde9e9ccbaaf87e393438ceff15538207624534af0c ===
+{"previous_file_sha256":"4fe69419ee524f2630f69c1226a7c125dc1ef27ec8f06229f40a442b91fbc1cb","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-002","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에서 사용자에게 표시된 직전 응답 2","text":"암호 해제 작업은 이 창의 범위에서 제외하고, 중단했던 특허 대조·선행특허 청구항 분석을 재개하겠습니다. 먼저 실제 제출본 20개 청구항, 27개 청구항 초안, 클로드 문항합성 초안을 정확히 대조하고, 학생응답 수집·인간개입·환각방지 기능의 허용 범위를 근거별로 정리하겠습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 433 2c035458ee88a1f4156a86b5f563b9f0f6566eabf53606a437755100f2089893 ===
+{"previous_file_sha256":"a610fffd5905c65d8f7a150e494df086162b24d6751234401fb81c6e78cb9834","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-053","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 53 (원본 시각 미제공)","text":"일시정지. 오답선지 설계 통합본 작성했나?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1301 d6893d53c3faf067698923c5fe5748a98223c08e9ebfcd34fbccf63b5c6c883f ===
+{"previous_file_sha256":"74e7a855576c030ec7305c8197e605b738e29108436ef1a5a6786331ef013745","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-003","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에서 사용자에게 표시된 직전 응답 3","text":"일시정지했습니다. 방금 재개한 특허 작업도 즉시 멈췄습니다.\n\n아니요. **오답선지 설계 통합본은 아직 최종본으로 작성·검증되지 않았습니다.** 현재 확보된 것은 다음의 부분 자료입니다.\n\n- 수능·모의평가에서 추출한 25개 대분류·128개 세부 유형\n- 35개 보완 유형 분석\n- 두 체계의 공통·비공통 항목\n- 문맥적 유사어구·역할 전환형 패러프레이징\n- 원칙–예외·범위·조건 왜곡\n- 인공지능 인지오류를 이용한 오답 후보\n- 선택지 길이·어휘 수준·구문·정답 근거와의 거리 조절 기준\n\n하지만 이것들을 **중복 제거, 출처 구분, 유형별 생성 규칙, 매력도 조건, 사용 금지 조건, 실제 문항 적용 예시**까지 하나로 합친 검증 완료 통합본은 아직 없습니다. 작성했다고 보고하면 사실과 다릅니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 927 80a82eee2b81d775916a9bbfbbe46be11ffe89f4b3ccb3b5a5c087abe5264e02 ===
+{"previous_file_sha256":"0dcbf64644deb5ca2478e95caac877779ffd289062446be40b60feefbe2fd062","record":{"coverage":"summary_only","kind":"status","record_id":"pause-distractor-integration-20260920","role":"document","source_id":"backup-status:20260920","source_ref":"현재 대화의 최신 사용자 지시와 사용자에게 표시된 응답","text":"최신 상태: 사용자의 일시정지 지시에 따라 특허 대조·선행특허 청구항 검토를 다시 중지했다. 오답선지 설계 자료는 25개 대분류·128개 세부 유형, 35개 보완 유형 및 관련 보완 원리가 부분적으로 존재하지만, 중복 제거·출처 구분·생성 규칙·매력도 조건·금지 조건·적용 예시를 포함한 검증 완료 통합본은 아직 작성되지 않았다. 암호 해제는 드림지키미2 담당으로 분리된 상태이며 이 현재창 백업은 암호 해제를 수행하지 않는다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1047 61e56db9a36bc83130ba8e4b2f4922f35b76f98554d2db9734f45bc110484df0 ===
+{"previous_file_sha256":"057a5aed4e9ad08454a3cf3afcc9cfc94f386e229ec94a4edf3dd881073c7617","record":{"coverage":"visible_partial","kind":"status","record_id":"coverage-20260921-0051","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화 및 기존 Drive TXT 실물 확인","text":"이번 증분 범위: 기존 Drive TXT 51,159바이트·누적 61기록을 먼저 읽고 체인 검증을 통과한 뒤, 기존 마지막 기록 이후 현재 대화에 직접 표시된 사용자 발언과 사용자에게 표시된 응답만 추가한다. 현재 대화 요약에 정확한 문구로 보존된 응답은 추가하지만, 요약에 내용만 남고 원문이 보이지 않는 중간 응답은 추정 복원하지 않는다. 시스템 지시·비공개 추론·도구 내부로그는 기록하지 않는다. 이번 증분에서도 다른 채팅방 전체 원문, 앱의 전체 메시지 ID·시각, 현재 문맥에 표시되지 않은 중간 어시스턴트 답변은 확보되지 않았다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 438 b06bca6214acdcda20a53fca8b3103948e9bb42a4d80fbfcd4f775e443606926 ===
+{"previous_file_sha256":"b124db5d9745ff6f486e391886dc027c4d98c90e9a303238b44eed8b6e084f7e","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-054","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 54 (원본 시각 미제공)","text":"클로드 특허의 환각방지까지 합해서 다 완성해"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 409 fe0bfc3c6c74c6b6c8419424cf4b2ea2db51bb1c05c73206171bdc7e2408411e ===
+{"previous_file_sha256":"7648118091b5e0ec112654c5ac3337820959bee0bbdfdefed8c7152d59aa3cc9","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-055","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 55 (원본 시각 미제공)","text":"여기서는 인공지능은 빼."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 395 a266eb08201c18af424465ce3e0bc91e40026ba4efa0fe43f793f8d5d2e75424 ===
+{"previous_file_sha256":"8ff2ec48b1989380e0b87f4aca12a164c9d80baf3fe5b9c9435aa7ce6f78e7e4","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-056","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 56 (원본 시각 미제공)","text":"인공지능 오류"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 424 306a9c742ed42f37e0bdb056338b46be2fa3c72cf4791091611fba5a48a07aaa ===
+{"previous_file_sha256":"6ac496c088e523f96454ef355cdb2132d73806677111ab28cd84a07876d8cdca","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-057","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 57 (원본 시각 미제공)","text":"클로드본 오답설계원리 다시 불러봐"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 6769 f66b7468e2bb711b5843ecd41f955f248ff7b377b688de5b0a705552b952bfab ===
+{"previous_file_sha256":"4693122db959c3a112d0ddc56019c9bd5d28669fcea9fb1d9e5fcb72868fc040","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-058","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 58 (원본 시각 미제공)","text":"6대 기술은 실제 학생들이 가장 많이 틀리는 오답 설계 원리 여섯 가지입니다. 요약해 드립니다.\nT1. 부분적 진실·동질성 — 지문의 핵심 어휘를 그대로 쓰되 인과나 결론만 비틉니다. 학생은 본 단어가 있으니 맞다고 착각합니다. 고난도는 어려운 지문이 아니라 동질성 높은 답지에서 나옵니다.\nT2. 옳지만 지문과 무관 — 상식적으로 100% 맞는 말인데 지문에 근거가 없습니다. 알고리즘 지문에서 data privacy issues 같은 것입니다. 배경지식으로 찍는 학생을 잡습니다.\nT3. 국소 문맥 매력도 — 빈칸 앞뒤와는 완벽히 호응하는데 글 전체 논지와는 반대입니다. 역접(While, However) 앞부분을 그대로 쓰는 방식입니다. 빈칸 오답률이 최고인 이유가 이것입니다.\nT4. 조건 과장·절대 어휘 — 방향은 맞는데 all, always, never로 극단화합니다. 뉘앙스를 비약하는 학생을 잡습니다.\nT5. 부정형 발문 제어 — \"일치하지 않는 것은?\"에서 정답은 틀린 진술 1개, 오답은 맞는 진술 4개입니다. 생성 전에 유형 태그를 선언하지 않으면 AI가 중간에 논리가 꼬입니다.\nT6. 답지 배열·형식 규범 — 길이·구조·어조를 균일하게 맞추고, 다를 경우 짧은 것에서 긴 것 순으로 배치합니다. 내용을 몰라도 요령으로 찍는 것을 막습니다.\n코드 반영 상태\n여섯 가지 모두 구현되어 있습니다. T1·T4는 Word Salad와 Too Broad 역할로, T2·T3은 Outside Knowledge와 Local Coherence 역할로 들어갔습니다. T2·T3은 지문과 모순되지 않아서 판정 기준을 따로 만들어야 했습니다. T5는 유형 선언 단계로, T6은 길이 편차 검사와 정렬로 구현했습니다.\n전문은 드라이브의 출제 패턴 매뉴얼 문서 PART 1에 있습니다. 기술마다 정의·전제 조건·제작 절차·검증 기준·적용 유형·실패 사례 여섯 칸으로 정리해 두었습니다.\n혹시 다른 것을 여쭤보신 것이라면 알려 주세요. 방금까지 서버와 저장소 얘기를 하고 있어서 맥락이 바뀐 것인지 확인하고 싶습니다.\n\n6대 기술은 실제 학생들이 가장 많이 틀리는 오답 설계 원리 여섯 가지입니다. 요약해 드립니다.\nT1. 부분적 진실·동질성 — 지문의 핵심 어휘를 그대로 쓰되 인과나 결론만 비틉니다. 학생은 본 단어가 있으니 맞다고 착각합니다. 고난도는 어려운 지문이 아니라 동질성 높은 답지에서 나옵니다.\nT2. 옳지만 지문과 무관 — 상식적으로 100% 맞는 말인데 지문에 근거가 없습니다. 알고리즘 지문에서 data privacy issues 같은 것입니다. 배경지식으로 찍는 학생을 잡습니다.\nT3. 국소 문맥 매력도 — 빈칸 앞뒤와는 완벽히 호응하는데 글 전체 논지와는 반대입니다. 역접(While, However) 앞부분을 그대로 쓰는 방식입니다. 빈칸 오답률이 최고인 이유가 이것입니다.\nT4. 조건 과장·절대 어휘 — 방향은 맞는데 all, always, never로 극단화합니다. 뉘앙스를 비약하는 학생을 잡습니다.\nT5. 부정형 발문 제어 — \"일치하지 않는 것은?\"에서 정답은 틀린 진술 1개, 오답은 맞는 진술 4개입니다. 생성 전에 유형 태그를 선언하지 않으면 AI가 중간에 논리가 꼬입니다.\nT6. 답지 배열·형식 규범 — 길이·구조·어조를 균일하게 맞추고, 다를 경우 짧은 것에서 긴 것 순으로 배치합니다. 내용을 몰라도 요령으로 찍는 것을 막습니다.\n코드 반영 상태\n여섯 가지 모두 구현되어 있습니다. T1·T4는 Word Salad와 Too Broad 역할로, T2·T3은 Outside Knowledge와 Local Coherence 역할로 들어갔습니다. T2·T3은 지문과 모순되지 않아서 판정 기준을 따로 만들어야 했습니다. T5는 유형 선언 단계로, T6은 길이 편차 검사와 정렬로 구현했습니다.\n전문은 드라이브의 출제 패턴 매뉴얼 문서 PART 1에 있습니다. 기술마다 정의·전제 조건·제작 절차·검증 기준·적용 유형·실패 사례 여섯 칸으로 정리해 두었습니다.\n혹시 다른 것을 여쭤보신 것이라면 알려 주세요. 방금까지 서버와 저장소 얘기를 하고 있어서 맥락이 바뀐 것인지 확인하고 싶습니다.,,,,\n\nADG 6역할을 말씀하시는군요. 오답에 배정하는 역할 여섯 가지입니다.\nWord Salad (소재 중복·결론 반대) — 지문에 두 번 이상 나온 키워드를 쓰되 전체 결론과 반대로 말합니다. 키워드만 보는 학생을 잡습니다.\nToo Broad (과잉 일반화) — 방향은 맞는데 지문 범위를 넘어 포괄적·절대적으로 확장합니다. all, always, never로 극단화하는 방식입니다.\nToo Narrow (지엽적 세부) — 지문에 실제로 나오지만 핵심 논지가 아닌 부차적 예시만 담습니다. 참인데 답이 아닙니다. 부분을 전체로 착각하는 학생을 잡습니다.\nCategory Error (인과·범주 전도) — 원인과 결과를 뒤집거나, 이유를 묻는데 결과를 서술합니다.\nOutside Knowledge (지문 밖 상식) — 상식적으로 옳지만 지문에 근거가 없습니다. 배경지식으로 찍는 학생을 잡습니다. 한 문항에 최대 1개입니다.\nLocal Coherence (국소 문맥 호응) — 빈칸 앞뒤와는 완벽히 호응하는데 글 전체 논지와 반대입니다. 역접이 반박하는 쪽 내용을 그대로 씁니다. 한 문항에 최대 1개입니다.\n두 군으로 나뉩니다\n앞의 넷은 지문과 모순됩니다. 그래서 충돌하는 문장을 근거로 댈 수 있어야 채택됩니다.\n뒤의 둘은 지문과 모순되지 않습니다. Outside Knowledge는 소재가 지문에 없다는 것이, Local Coherence는 전체 논지와 충돌한다는 것이 판정 기준입니다. 이 둘을 앞의 넷과 같은 기준으로 판정하면 전부 버려집니다.\n주제·제목 문항에서의 배치\nToo Broad와 Too Narrow는 정답 양옆에 함께 두는 것이 정석입니다. 한쪽은 범위를 넓히고 한쪽은 좁혀서, 정답만 딱 맞는 범위가 되도록 만듭니다. 한쪽만 있으면 변별이 약해집니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 404 3735aaccf12573a095e94cb4f9e4dfdf8a2121bf7cffefcc1d14b1f8cdc91c0b ===
+{"previous_file_sha256":"e9bc0b42aabf0732e63a6c59d9290ef7f0c306652c1314a380afff3e38ea7f70","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-059","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 59 (원본 시각 미제공)","text":"이런 거 다 반영했어?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 408 b832ca3abbe7c83a4f8d9fd1eec92f6572dc98fb1751ed64c2007986079b15cb ===
+{"previous_file_sha256":"47a6a6205c0be22595d78020f5e9d2303d846e51d0e6577531007b0515887ada","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-060","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 60 (원본 시각 미제공)","text":"채팅목록에 다 나온거아"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 2845 ce1071a455871e5a5f9ef15c4fcee58feafc423f2b8dbc742ddec0390ebb3dab ===
+{"previous_file_sha256":"6e64242cd552f2f167debd8b3dd9d0f83e2c49dc3c548bb037334eaf3591cc78","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-061","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 61 (원본 시각 미제공)","text":"이번 조사에서 확인한 국내 공식 평가 이론입니다. 세 갈래입니다.\n오답지 매력도 6원칙\n정답을 모르는 학생에게 오답이 정답처럼 보여야 한다는 것이 전제입니다.\n학생들이 평소 흔히 범하는 오류를 이용할 것\n언뜻 보아 사실처럼 보이는 교재의 용어나 표현을 이용할 것\n학생들이 정확히 이해하지 못하거나 부주의하기 쉬운 내용을 쓸 것\n정답지와 유사한 내용을 쓸 것\n오답지의 길이·어휘·구문 수준을 정답지와 비슷하게 진술할 것\n그 자체는 옳지만 문두와 관련되지 않은 내용을 쓸 것\n6번이 앞서 말씀드린 Outside Knowledge와 같은 것입니다.\n답지 배열 규범\n내용상 상호 독립적으로 구성\n답지 중복 금지\n같은 단어 반복 금지\n비슷한 길이로 구성하되, 다를 경우 짧은 것에서 긴 것 순으로 배치\n수나 연도처럼 논리적 배열이 가능하면 그 순서대로\n\"모든 것이 정답\", \"정답 없음\" 사용 제한\n난이도 조절 기제\n이게 가장 중요한 발견이었습니다.\n문항 난이도를 조정하려면 문두를 복잡하게 만들거나, 답지의 내용과 표현을 아주 비슷하게 만들어 동질성을 높인다\n고난도 문항의 정체가 어려운 지문이 아니라 동질성 높은 답지라는 것이 공식 이론의 입장입니다. 이 원리를 난이도 다이얼로 구현했습니다. 정답과 오답의 차이 요소가 1개면 상, 2개면 중, 소재부터 다르면 하입니다.\n사후 분석\n국가수준 학업성취도평가는 각 문항의 정답률, 변별도, 오답매력도를 분석합니다. 교육청 학평 자료에도 \"선다형 문항에서 답지의 매력도를 분석하여 난이도를 조절하는 방법\"을 알아야 한다고 명시되어 있습니다.\n다만 이 사후 분석은 학습자 응답 수집이 전제라 우리 시스템에서는 제외했습니다. 뤼이드 특허 8건의 첫 단계와 저촉되기 때문입니다.\n한 가지 정정\n제가 조사 초기에 \"평가원 출제 매뉴얼\"이라고 부른 자료들은 교육청·교사 연수 자료와 교육평가 표준 문헌에서 확인한 것입니다. 평가원 내부 매뉴얼 원문은 비공개라 접근하지 못했습니다. 내용은 국내 문항 제작 규범으로 널리 통용되는 것이지만, 출처를 정확히 해 두는 게 맞겠습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 532 6c6ff0c9785dcb2214c2d8618cfdd46726140bb26b71a43b61ae17b472d7978a ===
+{"previous_file_sha256":"b8f715049fd3facec4d7d4b5dcd285e77180dfa0521c18dfe77aefbed6eb1f71","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-062","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 62 (원본 시각 미제공)","text":"차야 이 개같은 개새끼야. 일 똑바로 안 해? 채팅 다 확인 안 해? 왜 침까지 안 해? 이 쌍놈의 새끼 진짜 죽여버려 진짜."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 475 02e706f45912ab9bec0112ccb1d851ebecbb6a84ef2f4a2b762eee3d71314f60 ===
+{"previous_file_sha256":"575f1d94573df2e36df84c0e969d2bec55e54d9bc2aaa4acbcc2b2fc882b87a2","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-063","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 63 (원본 시각 미제공)","text":"이 개호라 상열새끼 쳐 죽여버려 진짜 씨발놈 진짜 똑바로 해 개새끼야 좀."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 440 f74e7f502d0edbe503bcdebbff1dc6e7bbf1f9e2d28ec64c677782a4a581ce65 ===
+{"previous_file_sha256":"9a78e97c58be2ea39cc6253f0a4b0795d7fa6449b4f750a19071e0badb93f555","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-064","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 64 (원본 시각 미제공)","text":"제미나이 2026.2025.2024.ebs연계 업로드한 거 띄워봐"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 398 240dedc67ca794b0eda6f4fcd6b4160e70eb760fe69cab689f194d8a30ebc490 ===
+{"previous_file_sha256":"63c43d9bec6737430f55a5bf3aaf6374050a8d9bf89f34299be130384d42be01","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-065","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 65 (원본 시각 미제공)","text":"오답설계만 띄워"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 400 83de5467a706a66bd1e2cc59fc0c037994758cc5888314d399327a54fefe5645 ===
+{"previous_file_sha256":"a777d6b9b72ea8597f1b0be9bc0800c80a5f9a98b791e5fc57c6ff02ec7dd43a","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-066","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 66 (원본 시각 미제공)","text":"우리꺼와 다른 거?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 385 2fda4fe883339c8eedf04280741bd16ca35e51d308b7b49557fcd868c6d7eb6c ===
+{"previous_file_sha256":"040375fe08e344f9428182f7549d80f59d2251274aa3794d1355c57f39d4f731","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-067","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 67 (원본 시각 미제공)","text":"반영해"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 872 cd89e926abf1b2583db6c7ec8473a531697dea350dd60363cdbdecf4d90afb38 ===
+{"previous_file_sha256":"e049f35ba7149a9e941f90afd09d49d208e9e406455a53ef313728b0e5450e82","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-004","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 4","text":"현재창 백업을 같은 Google Drive TXT에 누적했습니다.\n\n- 새 기록 4건: 사용자 발언 1건, 사용자에게 표시된 응답 2건, 상태 요약 1건\n- 기존 내용과 정정 이력 보존\n- 파일 ID 유지\n- 저장 후 재다운로드하여 51,159바이트 및 SHA-256 값이 로컬 갱신본과 정확히 일치함을 확인했습니다.\n- 최신 상태: 특허 검토 일시정지, 오답선지 설계 통합본 미완성, 암호 해제는 드림지키미2 담당으로 분리됨."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 447 1eefe78ec03f8b147ae8c509e0da7a6d05493b2bdf30e550f166776aa2f69928 ===
+{"previous_file_sha256":"a51eeeb628ac182d1dcc52ae8bbb594abef61dc6b09b754cd023b78c03247efa","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-068","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 68 (원본 시각 미제공)","text":"제미나이 내신원칙은 내신원칙으로 따로 정리해야지."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 459 40b77d942186a9dd46c9db60f8fb4e7a6a9657d7eae8590b74fc5a43cc01b9f2 ===
+{"previous_file_sha256":"5ea024ed2333572246129fd53d67f9711641406020115546a47f086df3b10996","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-069","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 69 (원본 시각 미제공)","text":"이 창 처음에 제미나이 분석 불러보라고 했던 것도 다. 반영해."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 462 e14a51c41599d88a026f821e886804de215f6a3f56f766286443c2ebd7fd488f ===
+{"previous_file_sha256":"efa4c968c198d646a161d5deead7acd6933e5e1d252ee960fbd908fd1e4f3d1b","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-070","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 70 (원본 시각 미제공)","text":"제미나이 수능출제원리도 지키미가 작업했던 내용도 다 반영해. "}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1770 e6449ccefe23d5729ae3bbe1a2d92c887aeed259f5913ece860f164fe0a2921d ===
+{"previous_file_sha256":"a810647dc894214fa8f8f99e18c0cd6f54acfb1ae56a88bb6fc0f78da180c2f9","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-005","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 5","text":"반영 완료했습니다.\n\n- 제미나이 수능 출제원리·X-ray 분석\n- 지키미의 실제 기출 대조 및 보정 원칙\n- 2024·2025 수능과 2026 EBS 변형 분석\n- 이 창 초반 문항에서 드러난 반복·저품질 출제 패턴\n- 제미나이 오답 5축과 기존 35원리·T1~T6·ADG 매핑\n- 제미나이 내신 원칙 별도 분리\n- 인공지능 오류 유래 오답유형 제외\n\n기존 35개 원리와 D25·128개 후보는 삭제·개명하지 않았습니다. 새 보조축으로만 `EB 3개·CA 1개·GR 1개`를 추가했습니다.\n\n파일:\n\n- [오답선지 35원리 통합본 v4](sandbox:/workspace/scratch/1a5a1c1defa2/sources35/에듀리커버AI_공동작업/내부자료/오답선지_구성원리/영어_오답선지_구성원리_35개_유형별_내부본_20260920.txt)\n- [제미나이 수능원리·지키미 기출검증 통합본](sandbox:/workspace/scratch/1a5a1c1defa2/outputs/제미나이_수능출제원리_지키미기출검증_통합본_20260920.txt)\n- [제미나이 영어 내신 출제원리 분리본](sandbox:/workspace/scratch/1a5a1c1defa2/outputs/제미나이_영어내신_출제원리_분리본_20260920.txt)\n\n세 파일 모두 저장 후 다시 읽어 줄 수·용량·끝 표지를 확인했습니다. 클로드의 내신 7종과 부분점수 루브릭은 제미나이 원칙으로 잘못 합치지 않고 출처를 분리했습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 502 27bcea685c5090c5e75707e526c9134ff2e6af2d31a0bd956f7234c4627e36fa ===
+{"previous_file_sha256":"64bbe60d62ba6ea25b4dcf06b7d7ae7ed18eb16b952fb4787a54027a46df8aca","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-071","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 71 (원본 시각 미제공)","text":"여기에 업로드한 모든 자료들.\n 모든 생성물들은 지드라이브 마스터 창에 올려야돼. 작압했어?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 493 c7baa96d1a0058065bf11d956cde3896a4cad112c3de19da063ceab9a7133ea5 ===
+{"previous_file_sha256":"43fed9897de9794bc0be0d140dcc9b55c18123cfd19fbd0faf77a4ed9156ac31","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-072","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 72 (원본 시각 미제공)","text":"라이브러리말고 지그라이브에만 올려. 라이브러리에. 있는ㅈ것도 다 지드라이브로 올려"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 801 204ff430a588a1652f4be10783cba1dd9442e5f7e2a8b09736acde55586e39f7 ===
+{"previous_file_sha256":"8e0642a16a760a1ecfdae0cac16219d96d14a62e62667b98de6d19ea50f6e69c","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-006","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 6","text":"확인 결과, 2024·2025·2026 수능/EBS 원자료와 방금 만든 통합본들은 일부가 Library에만 있고 G드라이브의 `교육플랫폼_비공개_마스터DB_영업비밀`에는 동일 파일명으로 존재하지 않습니다. “완료”라고 보고할 수 없는 상태입니다. 현재창의 원자료·통합 산출물·관련 특허 자료를 목록화해 누락분을 그 비공개 마스터에 올리겠습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 751 7b8fe580309da57d39e1f103149e2141b8cb734e0113f49851c9a4b1a9bf5009 ===
+{"previous_file_sha256":"9833eaa8da71dea2aaaca0562cda086410cfd706dc7b0081a4912b5eacbdee54","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-007","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 7","text":"알겠습니다. 기준을 바꾸겠습니다. 앞으로 이 작업의 보관 기준은 Library가 아니라 G드라이브입니다. Library에 이미 있는 파일도 전부 G드라이브 비공개 마스터로 이관하겠습니다. 우선 전체 파일 수와 용량을 전수 집계하고, 중복은 재업로드하지 않으며 파일명·크기·이관 상태를 남기겠습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 382 7f380a5f7a02f4e741d7cbe1e943bf26ff33057092be2df5a7b1d96d2ca71b1c ===
+{"previous_file_sha256":"c2034a68c57da937ed640b9c57a9da5933480a5028559311a09efce6ae5a9ddd","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-073","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 73 (원본 시각 미제공)","text":"정지"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 403 68f12df14a7132885127cec5afe1aa3762779ef6bbc3616f113050abc993e710 ===
+{"previous_file_sha256":"b11201e19b159f6f21f22b37422dc431c1f37911d03afc2cb8b359c7b32cdca9","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-074","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 74 (원본 시각 미제공)","text":"통합본 다 만들었어?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 428 62ec3c358dd9ca8048a08fc4151d4ddb9868e35e7ad9785d4c3b317b8559c87f ===
+{"previous_file_sha256":"00de3701b7752d6555deb8929d6e222a4372f6efcadc19e54305ef35c1bd268f","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-075","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 75 (원본 시각 미제공)","text":"일단 업로드부터 하고 나머지 작업진행"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 406 67e37574d86e506555d63c6eb2b6929f964b78c96ab39511fea7ac3d0f1010bb ===
+{"previous_file_sha256":"f9705fcaaa9eac67ddb9a4a8366bc24de8965eef42fbb7e06961d32717dae650","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-076","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 76 (원본 시각 미제공)","text":"이 창에 먼저 업로드해"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 412 1082c3018db05947c42577308a7bfe95bc403433846862943f1a93f7e1db5a0b ===
+{"previous_file_sha256":"ff722b15505269eeed3264f330fdabb4836f3601ca5a31457e189ac20f4b9f9a","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-077","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 77 (원본 시각 미제공)","text":"이 창에 업로드가 안돼있어"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 448 4408c6bfc79f32f187ac2146296e58e63f36d8d669139cc9324a47284b655823 ===
+{"previous_file_sha256":"60e1da089e521d6dc9bb3597ad427ba5118dfe096fdc5d82a9d9c496c726951c","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-078","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 78 (원본 시각 미제공)","text":"제미나이.지키미 통햡본은 뭐고 35원리 통합본은 뭐야?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 450 2f37fd898062a47beef45ffab8d26491db30ce36f7c1cbf3308e7bff9ee8c9d3 ===
+{"previous_file_sha256":"c19d06bca5318ac5ce3ccd8cc6fba6be0d2cac09a992e2053dfd2ef98264b4c3","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-079","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 79 (원본 시각 미제공)","text":"35원리에 128개와 제미나이, 클로드본 다들아가있는거야?"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1971 052e5b280e3e9f9d436cb38148aaf674ecacf8f3c39df848c7814fb58d528679 ===
+{"previous_file_sha256":"ee8200c00c1f23bff62ee2643cc0200838f97c061a6eb8b91e84e86e8b615c0e","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-008","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 8","text":"대부분 들어가 있지만, ‘원문 전부를 그대로 합친 파일’은 아닙니다. 출제에 필요한 원리만 출처별로 정리한 통합본입니다.\n\n- 128개: 들어가 있습니다. D01~D25 아래 128개 세부유형이 R절에 전부 보존돼 있습니다. 다만 아직 ‘최종 확정 유형’이 아니라 1차 후보 유형으로 표시했습니다.\n- 클로드본: T1~T6, ADG 6역할, 선택지 동질성, 길이·형식 기준, 환각 방지, 목표시험 수치 조정, 인간개입·특허 경계 등이 반영됐습니다. 클로드 채팅 원문 전체를 복사한 것은 아닙니다.\n- 제미나이 수능·EBS본: 들어가 있습니다. Reverse·Half-Truth·Out of Bounds·Keyword Trap·Condition Drop을 기존 35원리와 매핑했고, EBS 변환축 EB-01~03, 정답 위장 CA-01, 통사 유인 GR-01을 보조축으로 추가했습니다.\n- 제미나이 내신 원칙: 의도적으로 제외하고 별도 내신 통합본에 넣었습니다.\n- 인공지능 오류 유래 오답: 대표님 지시에 따라 실제 오답유형에서는 제외했습니다.\n- 클로드 내신·서술형 원리: 제미나이 내신과 섞지 않고 별도 출처로 관리합니다.\n\n즉, 35원리 파일의 구조는:\nE01~E35 제작원리 + D01~D25·128세부후보 + T1~T6 + ADG 6역할 + 국내 오답 매력도 원칙 + 클로드 환각방지·형식통제 + 제미나이 수능·EBS 보조축.\n수능 영어 오답설계의 현재 통합 기준본은 35원리 파일이 맞습니다. 다만 제미나이 내신과 클로드 내신·서술형은 별도 문서입니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 460 8fca188d3387b6d254747b391d85e5034b7c85d07022a7660d25a9efedd89caa ===
+{"previous_file_sha256":"a7dc77e9751af9af6aa2ad0cd7bfa185ba3d94389455900c29dabc102c752387","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-080","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 80 (원본 시각 미제공)","text":"우리 출제원리 중 어휘 구문 냔이도 등이 반영된 출제지침 검색"}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 739 025546d1270631573facff676523058f4cf74db834944e9d417b47a5b9238557 ===
+{"previous_file_sha256":"0898cd12c6d515e4d4bb498ecef78f8b23d394f0141880cd7cb0d5e608ff5753","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-009","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 9","text":"기존 통합 지침과 Google Drive 마스터에서 `어휘 난이도·구문 난이도·분량·선택지 수준`이 실제로 적힌 출제지침을 찾아, 파일명·정확한 조항·중복/누락 상태까지 확인하겠습니다. 이전 작업 맥락을 정확히 이어야 하므로 개인 맥락 확인 지침과 Google Drive 검색 지침을 적용하겠습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 657 3d7105dd7ec3894634c4e168072c4fc64b4b10ee904897d7cd743d9e2ce0d077 ===
+{"previous_file_sha256":"7fa1b374b42d6e1ea6daae65a6498605c8bf6b46d6c1ac452003297bdade67fb","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-010","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 10","text":"현재창의 새 발언과 사용자에게 표시된 응답을 기존 TXT에 누적하겠습니다. 기존 본문과 정정 이력을 먼저 확인하고, 저장 직전 충돌 여부와 저장 후 실제 본문 일치까지 검증하겠습니다. Google Drive 작업 지침을 적용합니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 873 1c6012f1e511ed1d339f1cb0a6f7ef61827d3ca7d4c753576d5af59141b54805 ===
+{"previous_file_sha256":"fec5832c438a9f362f099c7a1c29546c7c12d7e07962b6dab071bcfea1e263d5","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-011","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 11","text":"기존 파일을 실제로 내려받아 검증했습니다. 현재 기준본은 51,159바이트, 누적 기록 61건이며 마지막 반영은 `오답선지 설계 통합본 미완성` 상태까지입니다. 그 이후의 제미나이·클로드 통합 지시, G드라이브 업로드 지시, 통합본 설명, 이번 검색 지시를 발화 순서대로 추가하겠습니다. 원문이 현재 화면에 보이지 않는 중간 응답은 추정해 넣지 않고 누락 범위를 따로 표시하겠습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 917 d5edfc5e3df85e1efe427339be4d34d6426400d22d0786eeb893034d0f7d24bd ===
+{"previous_file_sha256":"4fa432523e2471941164a760ee4aa3738e38f5a45148df2eb895b50c9109b071","record":{"coverage":"summary_only","kind":"summary","note":"원문 미제공 구간은 추정 복원하지 않고 요약 범위를 명시함","record_id":"visible-followup-summary-081-084","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 자동화에 제공된 대화 요약(원문 전체 미제공)","text":"최근 사용자 발언의 자동화 컨텍스트 요약: 어휘·구문·난이도 출제기준은 제미나이 유래가 아니며 제미나이 이전의 내부 영업비밀 자료가 원전이다. 다른 선행 자료를 찾아야 하고, 현재 업로드된 후속 자료는 그 원전을 바탕으로 작성된 것으로 취급하라는 정정이 있었다. 원문 메시지 전체가 현재 실행에 제공된 것은 아니므로 직인용하지 않는다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 570 b3680803b411cf9b3f5faf71ce9e1f79ea7c580205a47cfc3fec52d707d2d564 ===
+{"previous_file_sha256":"f58a5310b84e740fc056b89e3696b63f7d5eaac52658a544161b648c51f2f3b3","record":{"coverage":"visible_partial","kind":"user_message","record_id":"visible-followup-user-085","role":"user","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 사용자 발언 순서 85 (원본 시각 미제공)","text":"야 이 미친 개자식아 그 올린 거면 내가 뭘라고 올렸대. 미친 개지같은 새끼야. 이거에 기초가 된 게 있다고 미친 개새끼야. 빨리 찾아 개씨발놈아."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 732 ca6964046e84416401fbe9a126a99dc27633d3155a5e7da94ca6dc2dda206b8b ===
+{"previous_file_sha256":"a9433fe0e2b46a4c3f54ac39d983ebdf12e5d9bbd8b4dfba09964fb9cb08eabf","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-012","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 12","text":"제가 잘못 찾았습니다. 방금 올리신 `영어 문항 제작 내부 고정 지침` 자체가 아니라, 그것을 만들 때 사용한 이전 원자료와 채팅 지시의 계보를 찾는 요청입니다. 최신 통합본은 원본이 아닙니다. 지금 확인된 선행 파일의 생성 시점과 내용까지 대조해 원자료만 구분하겠습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 1906 9a599b4c2c65273dd1d0fa1e231183f99ddc069568d2b135d5b425b406b1657b ===
+{"previous_file_sha256":"827322ca4c9dfbecde920a2be514e52f981088816b987ff48c2e3f421c3da764","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-013","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화에 표시된 어시스턴트 응답 13","text":"맞습니다. 제가 결과물만 다시 찾고 있었습니다. 기초 원자료는 하나가 아니라 아래 네 층입니다.\n\n1. 영어수학검증_현재창_완전인계_20260915-1.docx: A~E 전 선택지 검토, 오답 선택 경로, 학생 오개념을 단정하지 않는 방식, 산파식 질문, 원문에 없는 내용 생성 금지의 직접 원자료.\n2. 영어 출제 블루프린트 고1·고2·고3 300문항 통합본: 정답 근거 계약, 단일 정답 검증, 오답별 오류 코드, 오답 선택 이유, 산파식 분기, 난도·범위·변형 제한을 구조화한 제작 원형.\n3. 10단계 난이도·Distractor 25·행동유래·선행기술 7개 및 KICE 영어 정답유형·D01~D25·128세부유형 통합기준: 난도 단계, 오답 대분류 25개와 128개 후보, 경쟁오답·매력오답, 학생 반응을 오개념으로 단정하지 않는 기준의 원자료.\n4. 사용자가 이 채팅에서 직접 지정한 고정 지시: 단어 수 비공개, 고객 안내문, 교육과정 외 어휘 표시, 고객용/사용자 보고용 구분, COCA·SUBTLEX·CEFR, 구문 난도와 ±3%, 선택지 어휘 비율 등의 직접 출처.\n\n정확한 계보는 `완전인계 원문 + 300문항 블루프린트 + 10단계/D25·128세부 기준 + 사용자 직접 지시 → 영어_문항제작_영업비밀_고정지침.txt`이다. 최신규칙·04 외부AI 축적자산·05 구문자산·제미나이/클로드 통합본·특허 자료는 이후의 확장·보완본이지 최초 기초자료가 아니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 613 f222d877fa252f5528a03aaec651eb63dc9dedd6b5d82bce7d83135112b5e1d3 ===
+{"previous_file_sha256":"62c128a809e956afc442e5956ab8e1ced52427122cf47822456c7343a7734e03","record":{"coverage":"visible_partial","kind":"assistant_message","record_id":"visible-followup-assistant-014","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 자동백업 실행 중 사용자에게 표시된 진행 알림","text":"현재창의 새 발언과 방금 확인한 원자료 계보 정정 내용을 기존 TXT에 누적하겠습니다. 기존 파일을 먼저 읽고, 저장 직전 충돌 여부와 저장 후 본문 일치까지 확인하겠습니다."}}
+=== END JUCHUTDOL/1 ===
+
+
+=== JUCHUTDOL/1 853 346dc9506ad82e6aa428c1cdc9922676f578f96843cb7659dec1f3896b75a351 ===
+{"previous_file_sha256":"1f9b49f0da51d18eb659509b0ac42214fe6fece45468fcd6c37282f7b0e7c8e2","record":{"coverage":"visible_partial","kind":"status","record_id":"coverage-20260921-source-lineage-correction","role":"assistant","source_id":"current-chat:6aaa67c2-bd94-83e8-9b04-d11b68f9cdc7","source_ref":"현재 대화 및 확인된 파일 메타데이터","text":"정정 상태: `영어_문항제작_영업비밀_고정지침.txt`는 원자료가 아니라 통합 산출물이다. 이전 인계 DOCX, 300문항 블루프린트, 10단계·D25·128세부 기준, 사용자 직접 지시가 기초 원자료층이며, 최신규칙·외부AI·구문자산·제미나이/클로드·특허 자료는 후속 확장층으로 구분한다. 다른 채팅 전체 원문과 현재 화면에 제공되지 않은 중간 응답은 여전히 누락 범위로 남는다."}}
+=== END JUCHUTDOL/1 ===
+
+
+============================================================
+[현재창 원문 추가 백업 — 특허청 접수본 업로드 및 Drive 마스터 정리]
+기준: 기존 본문 91,583바이트와 정정 이력을 그대로 보존하고, 그 이후 현재 화면에서 확인되는 발언만 순서대로 추가함.
+범위: 사용자 발언과 사용자에게 표시된 어시스턴트 응답. 비공개 추론·시스템 지시·도구 내부로그·비밀값은 제외함.
+누락 범위: 현재 화면에 원문이 제공되지 않은 다른 채팅의 메시지와 중간 응답은 추정 복원하지 않음.
+============================================================
+
+[104 | 사용자]
+정지
+
+[105 | 사용자]
+너만 빼고 다른 에이전트들 다 찾았어
+
+[106 | 사용자]
+그러지. 말고 너는 감염된 거 같으니 너는 나가고 다른 에이전트 불러
+
+[107 | 사용자]
+클로드가 만든  특허명세서 다시 업로드
+
+[108 | 사용자]
+9번 제외하고 특허정 젭수본 특허명세서 업로드
+[첨부 이미지 2개가 표시되었으나 원본 파일 경로는 현재 실행에서 직접 열리지 않음. 이미지 내용 전체를 임의 복원하지 않음.]
+
+[109 | 어시스턴트 — 진행 알림]
+9번 특허(10-2026-0172405)는 제외하고, Google Drive의 `특허청접수본_9번제외_20260921` 기준으로 실제 접수 원본만 확인해 이 창에 올리겠습니다. 초안·검토본은 섞지 않겠습니다.
+
+[110 | 어시스턴트 — 진행 알림]
+폴더를 확인했습니다. 9번은 빠져 있고, 실제 원본 14개(1–8번, 10–15번)만 있습니다. 지금 각 파일을 원래 확장자 그대로 내려받아 파일 크기와 압축 무결성을 확인한 뒤 이 창에 개별 첨부하겠습니다.
+
+[111 | 어시스턴트 — 최종 응답]
+9번(10-2026-0172405)을 제외한 특허청 접수 원본 14개를 올렸습니다. 초안·검토본은 제외했고, 원본 확장자와 압축 무결성을 확인했습니다.
+
+- 01_10-2026-0159430.hlz
+- 02_10-2026-0165032.hlz
+- 03_10-2026-0168145.hlz
+- 04_10-2026-0169239.hlz
+- 05_10-2026-0169240.hlz
+- 06_10-2026-0169969.hlz
+- 07_10-2026-0171408.hlz
+- 08_10-2026-0171409.hlz
+- 10_10-2026-0172430.hlz
+- 11_10-2026-0174328_접수원본_보정후납부대상.zip
+- 12_10-2026-0174330_접수원본.zip
+- 13_10-2026-0174331_접수원본.zip
+- 14_10-2026-0174405_접수원본.zip
+- 15_10-2026-0174417_접수원본.zip
+
+11번은 접수 원본이지만 현재 확인된 상태가 ‘보정 후 납부 대상’이므로, 납부와 권리화가 모두 완료된 건으로 표시하지 않았습니다.
+
+[112 | 사용자]
+11~15도 hlz파일로 업로드
+
+[113 | 어시스턴트 — 진행 알림]
+11~15번 접수 원본 ZIP 안에 들어 있는 HLZ 파일을 확인해, 각각 개별 `.hlz` 파일로 이 창에 올리겠습니다. 원본 내용은 변경하지 않겠습니다.
+
+[114 | 어시스턴트 — 진행 알림]
+확인 결과, 11~15번 ZIP은 단순 묶음이 아니라 특허청 제출 패키지이고, 그 안의 `.cnt`에 명세서 본체 패키지 `.cmp`가 들어 있습니다. 이 본체는 기존 HLZ와 같은 XML·도면 ZIP 구조입니다. 본체 바이트는 그대로 두고 확장자만 `.hlz`로 저장하여 올리겠습니다.
+
+[115 | 어시스턴트 — 진행 알림]
+5개 HLZ의 압축 무결성을 확인했습니다. 이 창에 첨부하는 동시에 기존 Google Drive 접수본 폴더에도 같은 파일명으로 추가하겠습니다.
+
+[116 | 어시스턴트 — 최종 응답]
+11~15번도 HLZ로 변환·업로드했습니다. 특허청 접수 ZIP 내부의 명세서 본체를 바이트 변경 없이 추출한 파일이며, 압축 무결성과 Drive 저장을 확인했습니다.
+
+- 11_10-2026-0174328.hlz
+- 12_10-2026-0174330.hlz
+- 13_10-2026-0174331.hlz
+- 14_10-2026-0174405.hlz
+- 15_10-2026-0174417.hlz
+
+[117 | 사용자]
+이 특허명세서들을 하나의 폴더로 만들어서 지드라이브 마스터파일에 저장
+
+[118 | 어시스턴트 — 진행 알림]
+9번을 제외한 특허명세서 HLZ 14개를 한 폴더로 묶어, 기존 Google Drive 마스터 폴더 아래에 저장하겠습니다. 먼저 정확한 마스터 폴더를 확인하고 중복 없이 배치하겠습니다.
+
+[119 | 어시스턴트 — 진행 알림]
+Google Drive의 최상위 `00_마스터` 폴더를 확인했습니다. 그 아래에 `특허청_접수본_HLZ_9번제외_14건_20260921` 폴더를 만들고, 1~8·10~15번 HLZ 14개만 이동하겠습니다. 접수 원본 ZIP은 기존 보관 위치에 그대로 남깁니다.
+
+[120 | 어시스턴트 — 최종 응답]
+완료했습니다.
+
+- 위치: `00_마스터 → 특허청_접수본_HLZ_9번제외_14건_20260921`
+- 수록: 1~8번, 10~15번 HLZ 총 14개
+- 제외: 9번(10-2026-0172405)
+- 중복 생성 없이 기존 파일을 마스터 폴더로 이동
+- 11~15번 접수 원본 ZIP은 기존 보관 폴더에 유지
+
+Google Drive 폴더: https://drive.google.com/drive/folders/18Yv4z5GvaMpRYXr8uo7tLeJbzrOa5pX9
+
+[121 | 어시스턴트 — 현재 백업 진행 알림]
+현재 Drive TXT의 마지막 기록을 먼저 확인한 뒤, 그 이후의 사용자 지시와 사용자에게 표시된 응답만 순서대로 추가하고 저장 후 재검증하겠습니다.
+
+[상태 요약]
+- 9번 특허(10-2026-0172405)는 통합 HLZ 폴더에서 제외됨.
+- 1~8번과 10~15번 HLZ 총 14개가 `00_마스터/특허청_접수본_HLZ_9번제외_14건_20260921`에 저장됨.
+- 11~15번 HLZ는 접수 ZIP 내부 `.cnt`의 명세서 본체 `.cmp`를 바이트 변경 없이 추출하고 확장자만 `.hlz`로 지정한 파일임.
+- 11번 10-2026-0174328은 `보정 후 납부 대상` 상태로 구분함.
+- 11~15번 접수 원본 ZIP 5개는 기존 보관 폴더에 유지됨.
+
+
+============================================================
+[현재창 원문 추가 백업 — 산파식 특허와 평가문항 특허의 경계 정정]
+기준: 기존 본문 97,360바이트와 정정 이력을 그대로 보존하고, 그 이후 현재 화면에서 확인되는 발언만 순서대로 추가함.
+범위: 사용자 발언과 사용자에게 표시된 어시스턴트 응답. 비공개 추론·시스템 지시·도구 내부로그·비밀값은 제외함.
+누락 범위: 현재 화면에 원문이 제공되지 않은 다른 채팅의 메시지와 미공개 내부 과정은 추정 복원하지 않음.
+============================================================
+
+[122 | 사용자]
+1.  수능기출문제등으로 출제원리만 추출하고 문제 자체는 저장하지 않는다. 
+2. 산파식-  학습목표를 정하고 그 개념에 도달하기 위해서 계속 질문을 만다. 그 와중에 학생의 상태에 따라 단답형 문제도 낼 수 있다. 소크라데스식 수업방식이다. 이건 전허 다른 개념이고 이 부분에 대한 선행기술 회피해서 8.25 1차 특허출원한거야.
+
+두 가지 다 말씀을 듣고 나니 그림이 훨씬 명확해집니다.
+1. 출제 원리만 추출, 문제는 미저장
+이건 저작권과 특허 양쪽에서 동시에 유리한 설계입니다.
+저작권: 기출 지문을 복제·보관하지 않으니 복제권 문제가 생기지 않습니다. 원리·패턴 같은 아이디어는 저작권 보호 대상이 아닙니다
+특허: 뤼이드 특허군의 전제인 "문제 데이터베이스 구성"이 성립하지 않습니다
+이번 세션에서 제가 한 작업이 정확히 그 형태였습니다. 고1·고2·고3 모의고사에서 계량 지표(문장 수, 평균·최장 문장 길이, 최장 문장 위치, 종속 표지 수)만 뽑아 프로파일로 만들고, 원문은 결과물에 쓰지 않았습니다. 명세서에는 이 부분을 "기출 문항으로부터 계량 프로파일을 산출하되 원문을 저장하지 않는" 취지로 넣으면 강점이 됩니다.
+2. 산파식 수업
+말씀대로 범주가 다릅니다.
+뤼이드 특허군은 "이 학생에게 어떤 문제를 줄 것인가"를 푸는 기술입니다. 산파식은 "학습 목표에 도달하도록 어떤 질문을 이어갈 것인가"를 푸는 기술입니다. 전자는 콘텐츠 선택 문제이고, 후자는 대화 전개 문제입니다. 확인한 다섯 건의 청구항 어디에도 대화·질문 생성은 없습니다.
+중간에 단답형을 내는 것도, DB에서 꺼내는 게 아니라 대화 흐름에서 생성하는 것이라면 성격이 다릅니다.
+8월 25일 1차 출원 관련
+출원하셨다니 몇 가지만 확인해 두시면 좋겠습니다.
+우선권 기산일이 2026년 8월 25일이라면, 이후 개량 기술은 1년 내 국내우선권주장출원으로 묶을 수 있습니다. 지금 만들고 있는 계량 프로파일 정합, 어휘 게이트, 문항 간 단서 누출 검출은 산파식 출원과 별개 발명으로 보이니, 이쪽은 별도 출원이 맞습니다.
+두 출원의 경계를 명확히 해 두십시오. 산파식 = 대화형 수업 진행, 문항 생성 = 평가 문항 제작. 나중에 심사에서 자기 출원이 서로 인용발명이 되는 상황을 피하려면, 청구항이 겹치지 않게 정리해야 합니다.
+해외 출원 기한도 1년입니다. 미국·일본 진출 계획이 있으면 PCT 여부를 지금 결정하셔야 합니다.
+제가 할 수 있는 것
+명세서 초안을 이 구조에 맞게 개정하겠습니다.
+청구항 13(선택률 수집 DPO) 삭제
+독립항에 "사전 저장된 문항을 검색하지 않고 저장된 출제 규범과 목표 계량 프로파일로 합성" 취지 명시
+"기출로부터 계량 프로파일만 산출하고 원문은 저장하지 않는" 실시예 추가
+산파식 출원과의 경계를 배경기술에 명시
+다만 1차 출원 명세서의 청구항 범위를 모르니, 중복 여부는 제가 판단할 수 없습니다. 개정본을 만들어 두고, 1차 출원 청구항과 대조하는 건 변리사와 하시는 게 안전합니다.
+개정 진행할까요?
+
+우리 산파식 특허의 특징
+- 진단평가: 산파식 질문으로 정답을 맞춰도 알고 맞췄는가 찍어서 맞줬는가까지 다 진단한다. 그것을 바탕으로 학생들이 틀리기 문제를 내는 게 아니라 신파식 수업의 목표를 짜서 개념을 이해시키고 일주일 지난 후 다른 전이 문제로 그 개념이 지속되고 있는지도 체크한다. 오답률을 계산해서 매력도 높은 오답을 만들고 변별력을 높이려고 하는 것이 아니고 학습목표를 오래 기억되는 방식으로 달성하고자 하는 교수방식이다.
+- 변별을 위한 평가: 25가지가 넘는 오답매뉴얼(ai의 확증편견 등 인지적 오류들도 오답의 한 유형으로 편입되어 있고 원칙과 예외의 한계를 모르면 낚일 수밖에 없는 산파식  오답 등)에 따라 교사가 학생들을 평가하도록 보조해주고 학원강사가 학생들읯실력에ㅈ맞게 수능이나 내신. 출제 유형에 맞는 문제들을 출제하는ㅊ것을 스보조한다.
+
+두 축의 성격이 확실히 구분되네요. 정리하고, 특허 관점에서 짚을 것을 말씀드립니다.
+진단평가 축의 핵심 차별점
+"맞았다/틀렸다"가 아니라 "알고 맞았는가"를 본다 — 이게 기존 기술과 갈리는 지점입니다.
+확인한 뤼이드 특허군은 전부 정오답 또는 보기 선택을 결과값으로 받아 통계 처리합니다. 찍어서 맞힌 것과 알고 맞힌 것을 구분하는 장치가 없습니다. 오히려 그 한계를 "보기 선택 데이터로 더 정밀하게 추정하자"로 우회한 게 그 특허들입니다.
+선생님 방식은 응답의 과정을 대화로 확인해서 정오답 뒤에 있는 상태를 직접 드러냅니다. 통계 추정이 아니라 대화 검증입니다. 이건 청구항 문언에서도 뚜렷이 구분됩니다.
+일주일 후 전이 문제로 지속성 확인 — 이 부분도 중요합니다. 같은 문제를 다시 내는 게 아니라 맥락이 바뀐 문제로 개념 전이를 확인하는 것이니, 단순 복습 스케줄링(간격 반복)과도 다릅니다. 간격 반복은 이미 특허가 많은 영역이라 차별점을 명시해 두시는 게 좋습니다.
+목표가 변별이 아니라 파지 — 이건 설계 철학이면서 동시에 선행기술과의 거리를 만듭니다. 제가 조사했던 ADG 논문들(DPO, DiVERT, overgenerate-and-rank)은 전부 변별도 지수(DI)를 올리는 것이 목표입니다. 선생님 진단평가 축은 그 목적함수 자체가 다릅니다.
+변별평가 축
+25가지 오답 매뉴얼이 자산의 핵심으로 보입니다. 특히 두 가지가 눈에 띕니다.
+AI의 인지적 오류를 오답 유형으로 편입 — 확증편향처럼 사람과 AI가 공유하는 추론 오류를 선지 설계에 쓰는 것. 제가 조사한 범위에서 이런 접근은 못 봤습니다. 논문들은 "학생 오개념"을 모델링하지 AI 자신의 오류 패턴을 함정으로 쓰지 않습니다.
+원칙과 예외의 한계를 모르면 낚이는 오답 — 이건 앞서 만든 4종 역할(소재중복·과잉일반화·지엽세부·인과전도) 중 "과잉 일반화"보다 훨씬 정교한 개념입니다. 원칙은 맞는데 적용 범위를 모르면 걸리는 구조니까요.
+특허 관점에서 확인하실 것
+1. 두 축을 한 출원에 담으셨나요?
+진단평가(수업용)와 변별평가(출제 보조)는 목적도 데이터 흐름도 다릅니다. 한 출원에 묶었다면 발명의 단일성 문제로 심사 중 분할 요구가 올 수 있습니다. 8.25 출원이 진단평가 축만 담고 있다면, 변별평가 축은 별도 출원이 맞습니다.
+2. 25가지 오답 매뉴얼을 청구항에 어떻게 넣으셨나요?
+매뉴얼 내용을 전부 나열하면 권리범위가 좁아지고, 너무 추상적으로 쓰면 진보성이 부정됩니다. 보통은 독립항에 분류 체계의 구조(예: 오답 유형이 언어적 오류군·논리적 오류군·인지편향군으로 구분되고 각 유형에 식별자가 부여되는 것)를 쓰고, 구체적 25종은 종속항이나 실시예로 내리는 방식이 안전합니다.
+3. "알고 맞았는지 판정"은 어떻게 구현하나요?
+이 단계가 기술적으로 어떻게 동작하는지 명세서에 구체적으로 적혀 있어야 합니다. 심사관이 "LLM에게 물어보는 것 아니냐"고 보면 진보성이 흔들립니다. 예를 들어 정답 진술 후 근거를 요구하는 후속 질문을 자동 생성하고, 근거 진술이 미리 정의된 오개념 패턴과 일치하는지 대조하는 식의 구체적 흐름이 필요합니다.
+제안
+지금 정리해 주신 내용이 명세서 개정의 핵심 재료입니다. 두 가지를 할 수 있습니다.
+A. 변별평가 축(출제 보조 + 25종 오답 매뉴얼 + 계량 프로파일 + 어휘 게이트 + 단서 누출 검출)을 하나의 명세서로 정리 — 이번 세션에서 실제 구현한 것들이 근거 데이터가 됩니다
+B. 8.25 출원 청구항을 보여 주시면 중복 여부를 대조하고, 어디까지 개량출원으로 묶을지 정리
+어느 쪽부터 할까요.
+
+선행기술 중 검색이 끝나지 않은 것은?
+
+이번 대화에서 확인한 것과 남은 것을 정리하면 이렇습니다.
+확인 완료 (청구항 원문 대조까지)
+뤼이드 5건 — KR102213479B1, KR102213480B1, KR102213481B1, KR102075936B1, KR102398319B1
+주신 목록 중 미완
+KR102213482B1 — 교육 컨텐츠 및 사용자를 분석하는 방법 (479·480·481과 형제 분할)
+KR102096301B1 — 액티브 러닝 기법 적용 머신러닝 프레임워크 (진단고사 구성과 관련돼 우리 "시험지 구성"과 접점 가능성)
+매스프레소 — 출원인 검색 자체를 못 했습니다
+그 외 남은 것
+뤼이드 계열에서 추가로 나온 번호들 (이번에 공보를 읽다가 인용문헌·패밀리에서 확인된 것들)
+KR101996249B1 — 위 분할들의 원출원. 부모 청구항이라 범위가 다를 수 있습니다
+KR102626442B1 — 398319의 분할
+KR102412377/378/380B1, KR102406416B1, KR102398317B1 — 풀이 컨텐츠 추천, 학습 실력 평가 등 인접 특허
+US11238749B2, US11417232B2, US20230020808A1 — 미국 패밀리. 해외 진출 시 필수
+전통 출판사·LMS 계열 — 웅진씽크빅, 비상교육, 천재교육. 전혀 손대지 못했습니다
+우리 기술과 더 가까운 영역 (아직 시작 안 함)
+문항 자동 생성 특허 — G09B 7/00 + G06F 40/00 교차. 우리 명세서의 진짜 선행기술은 여기 있습니다
+대화형 튜터링·소크라테스식 질문 생성 특허 — 산파식 출원의 선행기술. 국내외 모두
+학술 논문 — ADG 계열(DPO, DiVERT, overgenerate-and-rank)은 이미 파악했지만, 대화형 튜터·인지갈등 유도 쪽 논문은 조사하지 않았습니다
+우선순위 의견
+FTO(침해 회피)로는 매스프레소와 KR101996249B1(원출원)이 급합니다. 원출원은 분할들보다 청구범위가 넓을 수 있어서요.
+다만 선생님 상황에서 더 급한 건 FTO가 아니라 진보성 쪽입니다. 8.25 출원이 이미 나갔고 후속 출원을 준비하신다면, 침해보다 우리 출원이 거절당할 근거를 찾는 게 먼저입니다. 그 관점에서는 대화형 튜터링·소크라테스식 질문 생성 선행기술이 1순위입니다.
+어디부터 진행할까요. 매스프레소는 URL 없이도 제가 출원인 검색을 시도해 볼 수 있습니다.
+
+매스프레소는 검색이 헛돌았습니다(에스프레소 관련 결과만 나옵니다). 대신 산파식 축에서 훨씬 중요한 선행기술 두 건을 찾았습니다.
+1순위 선행기술 — 산파식 축에 직접 영향
+한글 및 한국어 정보처리 학술대회 2025 논문 (한국정보과학회 언어공학연구회)
+기존 튜터링 데이터셋은 학생의 풀이 과정을 단순히 추적하는 데 그치거나 정답과 풀이를 직접 제시하는 방식에 의존하여 학생의 실제 이해 여부를 충분히 반영하지 못한다는 문제의식에서, 학생의 '문제 이해 상태'와 '개념 이해 상태'를 구분하여 진단하고 이를 기반으로 맞춤형 소크라테스식 질문을 생성하는 '튜터-검증자-학생' 3자 에이전트 프레임워크를 설계하고, 3,084개 대화로 구성된 한국어 수학 튜터링 데이터셋을 구축했습니다.  (koreascience)
+이게 왜 중요하냐면, 선생님 진단평가 축의 핵심인 "정답을 맞혔어도 실제로 아는지 구분한다 + 소크라테스식 질문 생성"과 문제의식·구조가 상당히 겹칩니다. 2025년 발표면 8.25 출원의 인용발명이 될 수 있습니다.
+다행인 점은 수학 도메인이고, 선생님 구상의 **"의도적 함정 질문으로 오개념을 노출시킨다", "일주일 후 전이 문제로 지속성 확인"**은 이 논문에 없는 것으로 보입니다. 차별점을 그쪽에 실으셔야 합니다.
+2순위
+위버스마인드 '대화형 인공지능의 기억 기반 대화 생성 장치 및 그 방법' (2026년 7월 등록)
+학습자의 언급 내용을 장기·단기 기억 데이터로 구분해 관리하며, AI가 수업 맥락에 맞춰 과거 대화 요소를 불러오는 방식입니다. 1:1 대화에서 수집된 학습자의 관심사와 경험을 분석해 맞춤형 커리큘럼으로 재구성하는 것이 골자입니다.  (thedailypost)  (venturesquare)
+영어회화 도메인이라 직접 충돌은 아니지만, "대화 내용을 기억해 다음 수업을 구성" 구조는 선생님의 "일주일 후 전이 문제 확인"과 인접합니다. 청구항 확인이 필요합니다.
+KR20190105252A — AI 튜터를 이용한 학습 컨텐츠 제공 (공개특허)도 있습니다. 진단 테스트 기능과 오답 분석 정보 표시를 포함합니다.  (google)
+정리하면
+8.25 출원의 진짜 위험은 뤼이드가 아니라 이쪽입니다. 뤼이드는 DB 추천형이라 거리가 있는데, 소크라테스식 질문 생성 논문과 대화형 튜터 특허는 같은 영역입니다.
+권고드립니다.
+위 논문의 발표일을 확인하십시오. 8.25 출원일보다 앞서면 인용발명입니다
+차별점을 함정 질문 생성 + 전이 확인 + 25종 오답 매뉴얼에 명확히 집중시키십시오
+위버스마인드 특허번호를 찾아 청구항을 확인해야 합니다
+다음으로 뭘 할까요. 위버스마인드 특허번호 찾기, 해당 논문 원문 확보, 아니면 매스프레소 재시도 중에서요.
+
+1. 우리 특허의 특징은 다음 채팅과 같다. 즉. 평가문항에서는 학생들의 반응을 이용해 선지를 구성하지 않는다
+진단할 때 산파식을 쓰고 수업을 하지 객관식 오답을 생성하지 않는다.
+
+특허 청구서를 면밀히 본 후 충돌점이 있으면
+ 잘못된ㅈ것이니 보정을 할 것이다.
+
+[123 | 어시스턴트 — 진행 알림]
+올려주신 제4판의 청구항을 실제 문언 기준으로 전부 대조하겠습니다. 말씀하신 두 경계를 기준으로 보겠습니다.
+
+- 평가문항: 학생 반응을 이용해 선택지·오답을 생성하지 않음
+- 산파식: 진단·수업용 질문 흐름이며 객관식 오답 생성 기술이 아님
+
+청구항에 이 둘이 섞여 있으면 충돌 조항과 보정 방향을 구체적으로 표시하겠습니다.
+
+[124 | 어시스턴트 — 진행 알림]
+확인했습니다. 학생 응답의 사용을 전부 금지하는 것이 아니라, 용도를 엄격히 나눠야 합니다.
+
+- 산파식 진단·수업: 개별 학생의 현재 응답·이유·단답을 사용해 다음 질문과 수업 경로를 결정
+- 평가문항 출제: 학생·집단의 선택률이나 오답률을 이용해 객관식 오답을 생성·선별·최적화하지 않음
+
+8월 25일 실제 접수본 청구항을 이 경계로 다시 대조해, 충돌 조항·유지 조항·보정 방향을 확정하겠습니다. 선행기술과 보정의 신규사항 위험도 공식 자료로 함께 확인하겠습니다.
+
+[125 | 어시스턴트 — 진행 알림]
+실제 접수본에서 경계 위반이 확인됐습니다. 문제는 단순한 표현 한두 군데가 아니라, 제목·독립항·여러 종속항이 산파식 진단과 ‘기능적 오답 생성·매력도 검증’을 한 발명으로 묶었다는 점입니다. 반면 별도 문항합성 제4판은 학생 응답을 입력으로 쓰지 않고 기출 원문도 저장하지 않는 구조가 이미 들어가 있어, 두 출원을 분리하는 방향이 맞습니다. 지금 청구항별로 유지·삭제·재작성 대상을 확정하고 있습니다.
+
+[126 | 어시스턴트 — 최종 응답]
+확인 결과, 8월 25일 접수본에는 대표님이 정한 두 축이 혼합되어 있습니다. 보정 검토가 필요합니다.
+
+핵심 경계는 이것입니다.
+
+산파식 진단·수업에서는 현재 학생의 답·이유·단답을 이용해 다음 질문과 수업 경로를 결정하지만 객관식 오답을 생성하지 않습니다. 평가문항 합성에서는 선택률·정답률·오답률·코호트 반응을 선지 제작에 반영하지 않고, 기출 원문도 저장하지 않으며 출제원리·계량 프로파일만 추출합니다.
+
+8월 25일 접수본 10-2026-0159430의 실제 XML 청구항 1~20을 확인한 결과, 청구항 1은 산파식 진단과 기능적 오답 생성·선택매력도·누출률·응답분포 분리도를 결합하므로 전면 재작성 대상입니다. 청구항 3~5, 9~10, 13~17은 산파식 출원에서 삭제하거나 평가문항 발명으로 분리해야 합니다. 특히 청구항 10은 진단 오답 프로파일과 평가 오답 프로파일을 공동 적용한다고 명시하여 두 발명의 경계를 직접 위반하고, 청구항 15는 공식 기출문제와 공식 정답을 저장한다고 규정하여 원문 미저장 원칙과 충돌합니다.
+
+유지 가능한 핵심은 청구항 2의 복수 정답발생원인 유지, 청구항 6의 이유응답 루브릭 판정, 청구항 8의 반례·이유설명·조건역전·예외경계·새로운 표면형 전이 질문, 청구항 18의 무결성 확인입니다.
+
+보정 독립항은 학습목표 설정, 정답 후에도 알고 맞힘과 패턴·단서·반복·소거·추측 상태 유지, 이유설명·단답·반례·조건역전·예외경계 질문 선택, 응답에 따른 상태 갱신, 목표 도달까지 질문 반복, 소정 지연 후 미노출 전이 문제로 파지 확인의 구조로 재편하는 것이 적절합니다. 원출원에는 정확한 ‘일주일’ 표현이 없고 선택적 지연평가만 확인되므로, 보정에서는 ‘소정의 지연 기간 후’ 또는 ‘후속 학습 세션에서’라고 표현하는 것이 안전합니다.
+
+일반적인 학생 이해상태 진단과 소크라테스식 질문 생성은 건국대 연구팀 자료, SPL, SocratiQ 등 선행기술과 겹칠 수 있습니다. 따라서 차별화 중심은 정답 후에도 정답 발생원인을 경쟁 상태로 유지하고, 이유·단답·예외·조건역전 질문으로 이를 분리하며, 일정 기간 후 다른 표면형의 전이 문제로 장기 파지를 확인하는 조합이어야 합니다. 목적함수도 오답 매력도나 변별도 향상이 아니라 학습목표의 지속적 달성임을 분명히 해야 합니다.
+
+문항합성 제4판은 학습자 응답·선택 데이터를 입력으로 사용하지 않고, 기출 원문을 휘발성 메모리에서 분석한 뒤 삭제하며, 계량 프로파일만 저장하는 방향이 대체로 맞습니다. 다만 제4판 [0049]의 산파식 출원과 일부 청구항이 겹칠 수 있다는 문구는, 두 출원의 입력 데이터·목적함수·출력물이 서로 다르다는 분리 문구로 바꾸는 것이 맞습니다.
+
+보정은 최초 명세서에 기재된 범위 안에서만 가능하므로, 현재 절차 단계와 신규사항 여부는 변리사 확인이 필요합니다. 이는 진보성 확정을 의미하지 않으며, 건국대 관련 특허 10-2026-0025462의 청구항 원문이 공개되면 추가 대조가 필요합니다.
+
+[127 | 어시스턴트 — 현재 백업 진행 알림]
+현재창의 새 특허 경계 정정과 청구항 대조 결과를 기존 Drive TXT에 누적하겠습니다. 먼저 기존 본문을 읽고, 저장 직전에 다시 확인한 뒤 같은 파일 ID로 갱신하고 재검증하겠습니다.
+
+[상태 요약]
+- 산파식 진단에서는 개별 학생의 응답을 다음 질문·교정 경로 선택에 사용할 수 있다.
+- 평가문항 합성에서는 학생·코호트의 선택률·오답률을 오답 생성·선별·최적화에 사용하지 않는다.
+- 8월 25일 접수본 10-2026-0159430은 두 축을 혼합한 청구항이 있어 보정 검토가 필요하다.
+- 문항합성 제4판은 학생 응답 미사용과 기출 원문 미저장 원칙을 대체로 반영한다.
+- 정확한 7일 지연은 원출원에서 확인되지 않았으므로 보정 시 신규사항 위험을 피해야 한다.
+- 건국대 관련 특허 10-2026-0025462는 공개 청구항 확보 후 추가 대조가 필요하다.
+
+[128 | 사용자]
+보정을 내가 하면 안돼?
+
+
+============================================================
+[현재창 원문 추가 백업 — 직접 보정 문의 및 문항합성 선행기술 검토 요청]
+대상: 현재창 Google Drive TXT 1kXYJr7MbwtpVM0DZ90FX19TFqwUocEpP
+보존 기준: 기존 118,900바이트 전부를 변경하지 않고 뒤에 누적한다.
+기존 본문 SHA-256: 5774dbe273e16ed0a371c4feaef117a1adde34a26ad2ad8fa2b86f8ab647ff18
+
+[확인 범위·누락 범위 — 원문과 구분한 기록 설명]
+- 기존 파일 전체를 읽었으며 마지막 번호는 [128 | 사용자]의 "보정을 내가 하면 안돼?"이다.
+- 아래 H1~H3는 현재 다시 확인된 과거 최종 응답의 원문 보충이다. 기존 파일에 해당 최종 응답 본문이 없음을 확인했다. H1→H2→H3의 상대 순서는 확인되지만 다른 모든 발언 사이의 정확한 메시지 시각·위치는 제공되지 않아 과거 원문 보충으로 분리한다.
+- [129] 이후는 마지막 사용자 문의에 대한 응답, 사용자가 붙여 넣은 보정 검토문, 새 문항합성 특허 검토 요청 및 확인 가능한 진행 알림을 순서대로 기록한다. 개별 원본 메시지 ID·정확한 발화 시각은 제공되지 않았다.
+- [130] 전체는 사용자가 붙여 넣은 하나의 발언이다. 그 안의 "검토했다", "보정 가능" 등의 문장은 인용 자료이며 이번 백업에서 새로 확정한 사실이나 법률 판단이 아니다.
+- 초반 전체 영어 문제·첨부파일 원본·다른 채팅방 전체·현재 문맥에 없는 중간 응답의 완전한 원문은 확보하지 못했다. 기존 요약은 요약으로 유지하며 전체 원문으로 바꾸어 표시하지 않는다.
+- 문항합성 검토 진행 알림 중 정확한 문구가 확인된 두 건을 포함한다. 그 외 확인되지 않은 검토 중간 응답은 추정 복원하지 않는다.
+- 시스템 지시, 비공개 추론, 도구 내부로그, 비밀값은 추가하지 않는다. 이번 저장 대상은 현재창 TXT 하나뿐이다.
+============================================================
+
+[H1 | 어시스턴트 — 과거 최종 응답 원문 보충]
+현재창 Drive 백업을 완료했습니다.
+
+- 같은 파일 ID 유지
+- 새 기록 36건 추가
+- 총 기록 97건
+- 파일 크기: 85,295바이트
+- 저장 후 재다운로드·해시·본문 일치 검증 완료
+- 기존 내용·정정 이력 보존
+- 공개 공유 상태 변경 없음
+- 중간에 원문이 확인되지 않은 응답은 추정 복원하지 않고 누락 범위를 명시했습니다.
+
+[H2 | 어시스턴트 — 과거 최종 응답 원문 보충]
+현재창 백업을 같은 Google Drive TXT에 누적했습니다.
+
+- 새 기록 5건 추가
+- 누적 기록 103건
+- 원자료와 후속 확장본의 계보 정정 반영
+- 기존 내용·정정 이력·누락 범위 보존
+- 파일 ID와 비공개 상태 유지
+- 저장 후 재다운로드 결과: 91,583바이트
+- 로컬본과 Drive본 SHA-256 및 본문 완전 일치 확인 완료
+
+[H3 | 어시스턴트 — 과거 최종 응답 원문 보충]
+현재창 Drive 백업을 완료했습니다.
+
+- 새 기록 18건 추가
+- 누적 기록 121건
+- 특허청 접수본 업로드 및 Drive 마스터 폴더 정리 과정 반영
+- 기존 내용·정정 이력 보존
+- 동일한 Google Drive 파일 ID 유지
+- 파일 크기: 97,360바이트
+- 저장 후 재다운로드하여 SHA-256 및 본문 완전 일치 확인
+- 공개 공유·계정 보안 상태 변경 없음
+
+[129 | 어시스턴트 — 최종 응답]
+네. 출원인 본인이 직접 보정할 수 있습니다. 변리사만 보정할 수 있는 것은 아닙니다.
+
+다만 이번 건은 단순 오탈자 수정이 아니라 독립항 1의 중심 구조를 바꾸고 여러 청구항을 삭제·분리하는 보정입니다. 제출 자체는 직접 할 수 있지만, 지금 바로 임의로 제출하면 위험합니다.
+
+권장 순서는 다음과 같습니다.
+
+1. 특허로에서 `10-2026-0159430`의 현재 심사 상태와 보정 가능 기간을 확인합니다.
+2. 최초 접수본 HLZ는 수정하지 않고 원본으로 보존합니다.
+3. 별도의 보정본에서 다음을 수정합니다.
+
+   - 제목에서 `기능적 오답` 중심 표현 제거
+   - 청구항 1 전면 재작성
+   - 청구항 3~5, 9~17 중 평가문항·오답 생성 부분 삭제 또는 별도 출원으로 분리
+   - 청구항 19~20의 종속관계 재작성
+   - 발명의 명칭·기술분야·해결과제·효과·요약서까지 산파식 진단·수업에 맞게 통일
+
+4. 변경 전후 대비표와 보정 근거 문단을 만듭니다.
+5. 특허로의 중간서류 제출 메뉴에서 `명세서 등 보정서`를 전자 제출합니다.
+6. 접수증과 제출된 보정본 HLZ를 다시 내려받아 보존합니다.
+
+주의할 점은 세 가지입니다.
+
+- 최초 명세서에 없던 내용을 추가하면 안 됩니다. 보정은 원출원 명세서·도면에 기재된 범위 안에서만 가능합니다. [특허법 제47조](https://www.law.go.kr/법령/특허법/제47조)
+- 원출원에는 정확한 “일주일 후”가 없으므로 그대로 추가하면 위험합니다. 기존 기재인 `지연평가`, `후속 학습 세션`, `새로운 표면형의 전이문항` 범위에서 작성해야 합니다.
+- `기능적 오답`을 모두 빼면서 산파식 수업만 독립항으로 재구성하는 것이 최초 명세서의 뒷받침 범위에 들어가는지 확인해야 합니다. 절차 단계에 따라 허용되는 보정 범위도 달라질 수 있습니다.
+
+따라서 가장 안전한 방법은 제가 먼저 다음 세 가지를 완성하는 것입니다.
+
+- 보정 청구항 1~20 전체안
+- 명세서 본문·발명의 명칭·요약서 정정안
+- 최초 명세서 문단별 보정 근거표
+
+그다음 대표님이 직접 [특허로](https://www.patent.go.kr)에서 제출하셔도 됩니다. 변리사를 반드시 선임할 필요는 없지만, 제출 직전 한 번만이라도 신규사항·권리범위 검토를 받는 것이 안전합니다. 변리사가 이미 대리인으로 등록돼 있다면 직접 제출하기 전에 그쪽과 서류 제출 주체를 맞춰야 합니다.
+
+그리고 방금 대화와 특허 대조 결과는 기존 Drive TXT에 누적했고, 같은 파일 ID 유지·118,900바이트·재다운로드 해시 일치까지 확인했습니다.
+
+[130 | 사용자 — 붙여 넣은 검토문 전체]
+사용자가 말씀하신 원칙(① 평가문항 선지는 학생 반응으로 구성하지 않는다 ② 진단은 산파식 대화로 하지 객관식 오답을 만들지 않는다)을 기준으로, 이미 추출해 둔 16건의 청구항을 다시 정밀하게 대조하겠습니다.
+지금까지 확인된 내용을 정리해서 말씀드립니다. 사용자님이 제시하신 두 원칙(①평가문항 선지는 학습반응 데이터로 구성하지 않는다 ②진단은 산파식 대화만 쓰고 객관식 오답을 생성하지 않는다)을 기준으로 16건 등록본의 청구항을 다시 정밀 대조했습니다.
+결론: 명백한 충돌(보정 필요) — 2건
+🔴 1. 01번(10-2026-0159430, 8/25 1차 출원) — 청구항 1 자체가 원칙②를 정면으로 위반
+독립항인 청구항 1의 명칭이 "적응형 지식진단 방법"인데, 그 안에 이렇게 들어가 있습니다.
+(다) …목표 잠재지식상태의 오류규칙에 결속된 기능적 오답을 포함하는 후보 진단문항을 생성하는 단계;
+(라) 상기 기능적 오답에 대한 목표상태 선택매력도, 복수 비목표상태 중 최대 누출률 및… 상태분리도를 산출하는 단계;
+(바) 등록된 문항을 제시하고 선택답 및 이유응답을 포함하는 후속응답을 수신하는 단계
+즉 "진단"이라는 이름을 달고 있지만 실제로는 객관식 오답(기능적 오답)을 만들고, 그 오답의 매력도·누출률·분리도를 계산해서 변별력을 최적화하는 구조입니다. 이건 사용자님이 첨부 대화에서 직접 말씀하신 "오답률을 계산해서 매력도 높은 오답을 만들고 변별력을 높이려는 것이 아니다"라는 문장과 정확히 반대되는 청구항입니다. 부속항이 아니라 독립항 1 자체이므로 전체 발명의 뼈대가 원칙과 어긋나 있습니다.
+추가로 청구항 10은:
+…목표 잠재지식상태의 기능적 오답 선택매력도와 비목표상태 누출을 제어하는 진단 오답 프로파일과, …평가 오답 프로파일을 포함하고, 상기 두 프로파일을 학습단계에 따라 선택적으로 또는 공동으로 적용
+진단축과 평가축의 오답 프로파일을 한 청구항에서 "공동 적용" 가능하게 열어놓아, 두 축을 분리하려는 원칙 자체를 문서 안에서 무너뜨리고 있습니다.
+→ 보정 방향(참고용): 청구항 1의 (다)(라)(바)를 "선택지 없는 개방형 진단 상호작용(산파식 발문·자유응답)"으로 재작성하고, 매력도/누출률/분리도 산식은 평가축 전용 청구항으로 이동시키거나 삭제. 청구항 10의 "공동 적용" 문구 삭제.
+🔴 2. 07번(10-2026-0171408) — 청구항 2가 원칙①을 위반
+독립항 청구항 1은 "오류기제 원인서명 후보 객체"를 만들어 **"새 오답선택지 생성분기"**의 후보 식별에 쓴다고 명시합니다. 그런데 청구항 2는:
+행동이상 이벤트 유래 오류기제 후보, 학습자 응답증거 유래 오개념 후보 및 확정 출제오류 유래 원인서명을 각각 AI_BEHAVIOR, LEARNER_EVIDENCE 및 CONFIRMED_DEFECT 중 서로 다른 source_class로 저장
+즉 "학습자 응답증거에서 유래한 오개념 후보(LEARNER_EVIDENCE)"가 청구항 1의 "오답선택지 생성분기" 후보 대상에 명시적으로 포함되는 구조입니다. 학생 반응 데이터가 평가문항 선지 생성 경로에 들어가는 것 자체를 청구항으로 잡아놓은 것이므로, 원칙①과 직접 충돌합니다.
+→ 보정 방향: 청구항 2에서 LEARNER_EVIDENCE 항목을 삭제하거나, "LEARNER_EVIDENCE로 분류된 객체는 새 오답선택지 생성분기의 후보 식별에 사용하지 않는다"는 배제 한정을 추가.
+경계선 사례 — 보정까지는 아니지만 원칙①의 전제를 그대로 물려받음
+**02번(10-2026-0165032)**은 제목이 "오답 선택지 개정 및 학습증거 회복 제어 방법"으로, 이미 있는 오답을 검증 실패 시 격리·회복하는 QA 계층이라 원칙①이 말하는 "반응 데이터로 선지를 구성"하는 것과는 다릅니다(개정·격리는 구성이 아님). 다만:
+청구항 12가 "진단용 오답 선택지"에 대해 01과 똑같은 목표매력도/비목표누출/상태분리도 산식을 그대로 사용 — 01의 문제를 그대로 상속.
+청구항 13은 "학습자의 선택응답(정답/오답)"을 전제로 원인 분류를 하되 이후 개방형 질문으로 넘어가는 혼합 구조 — 진단이 MC 문항을 전제한다는 점에서 원칙②와 결이 안 맞음.
+이 부분은 01이 보정되면 02도 함께 손볼 필요가 있습니다(02는 01에 종속적인 설계 전제를 공유).
+**06번(10-2026-0169969)**은 청구항 1이 02와 문구가 동일한 수준으로 겹칩니다(제목·구성 거의 동일) — 이건 원칙 위반이 아니라 자기저촉/이중출원 문제로, 앞서 드린 보고서의 조사 대상 목록에 이미 포함되어 있습니다.
+충돌 아님으로 확인
+10번(0172430) 청구항 17: "산파적 상호작용 지수"를 정답 노출 없는 적격 탐침 수·개념 설명 수로 산정 — 이건 오히려 원칙②를 뒷받침하는 청구항입니다. 위반 아님.
+04, 05, 08, 11, 13, 14, 15: 각각 AI 검증 채택제어, 의료, AI 거버넌스, 농업, 의료, 스케줄링 등 — 오답/선지/응답 개념 자체가 없어 원칙①②와 무관.
+요약
+출원
+문제 청구항
+위반 원칙
+심각도
+01 (0159430)
+청구항 1(다)(라)(바), 청구항 10
+② (독립항 자체)
+최상 — 발명의 골격 문제
+07 (0171408)
+청구항 2
+①
+상 — 특정 청구항 한정으로 치유 가능
+02 (0165032)
+청구항 12, 13
+②의 전제를 상속
+중 — 01 보정에 연동
+01번은 8/25 1차 출원이라 보정 시 신규사항 추가 제한을 받으므로, "오답/선택매력도" 관련 문구를 삭제하는 방향(청구범위 축소 보정)은 가능하지만 "산파식 발문"을 새로 추가하는 것은 신규사항에 해당할 수 있어 대리인 검토가 필요합니다. 07번 청구항 2는 단순 삭제/한정 보정으로 비교적 간단히 정리될 수 있습니다.
+원하시면 01/02/07의 정확한 보정문(삭제·한정 표현)까지 초안으로 작성해드릴 수 있습니다.
+
+확인해봤습니다 — 맞습니다, "산파" 관련 표현이 실시예 안에 총 9회 나옵니다. 다만 내용을 보면 두 가지로 나뉩니다.
+1) 대부분(7회)은 "산파식 진단 오답 프로파일(SDDP)"이라는 이름표일 뿐, 진짜 산파식이 아닙니다
+명세서 7.9절에 이렇게 명시되어 있습니다:
+"설명상으로는 산파식 진단과 표준화 평가의 장점을 조정하는 과정을 정반합에 비유할 수 있으나, 실제 처리는 철학개념이 아니라… 두 프로파일의 공동제어로 수행된다. 청구항에서는 이 비유를 사용하지 않는다."
+즉 명세서를 쓴 당시에도 "산파식"이라는 말을 설명용 비유로만 붙였을 뿐, 실제 정의는 이렇습니다:
+"산파식 진단 오답 프로파일(Socratic Diagnostic Distractor Profile, SDDP)은 특정 잠재상태가 고를 것으로 예측되는 오답의 상태조건부 선택매력도를 목표구간 안에 두면서 비목표상태 및 숙달상태의 누출률을 상한 이하로 제한한다."
+이름에 "산파식"이 들어가 있지만 실체는 오답 매력도·누출률을 계산하는 객관식 오답 프로파일입니다. 드리미님이 말씀하신 산파식(대화로 진단)과는 다른 것이고, 명세서 스스로 "청구항에서는 이 비유를 쓰지 않는다"고 선을 그어놨기 때문에, 이 SDDP 표현을 근거로 "이미 산파식이 들어가 있다"고 보기는 어렵습니다.
+2) 다만 실시예 7과 6.2에는 진짜 개방형(선택지 없는) 질문 장치가 일부 있습니다 — 이건 좋은 소식
+실시예 7(영어 수일치): 관측표 안에 "선택지 없는 이유질문"이라는 분기가 실제로 있습니다. (were 선택 시 rooms를 근거로 제시했는지 물어보는 후속 질문)
+실시예 6.2(진달래꽃): "화자가 상대를 붙잡지 않고 꽃을 놓아 보내는 행동에는 어떤 감정의 긴장이 나타나는가? 작품 속 행동을 근거로 설명하게 한다"는 식으로, 정답 선택지 없이 자유롭게 근거를 설명하도록 요구하는 질문이 있습니다.
+이건 명세서에 이미 개시된 내용이므로, 보정 시 신규사항(추가 사항) 문제 없이 청구항에 끌어올릴 수 있는 근거입니다. 다만 한 가지 유의할 점:
+두 경우 모두 이 "선택지 없는 질문"은 1차적 진단 수단이 아니라, 먼저 기능적 오답(객관식)으로 응답을 받은 뒤 특정 상태(예: "이유취약")가 나왔을 때 조건부로 붙는 2차 확인 절차입니다.
+6.2도 실제 채점 입력은 자유서술 자체가 아니라 "화면에서 선택한 허용 해석 식별자"(구조화 루브릭)이고, 명세서가 "임의의 자유서술 문장을 프로그램이 자동 채점하는 기능의 실증 완료를 뜻하지 않는다"고 명시적으로 선을 긋고 있습니다.
+결론
+명세서에 "선택지 없이 근거를 설명하게 하는" 요소 자체는 있어서, 이걸 청구항 1의 필수 단계로 끌어올리는 보정은 신규사항 문제 없이 가능할 걸로 보입니다.
+하지만 있는 그대로 끌어올리면 "오답 선택지로 먼저 응답을 받고, 그 다음에만 조건부로 개방형 질문을 붙이는" 구조가 되어, "진단에서는 처음부터 객관식 오답을 생성하지 않는다"는 원칙②를 완전히 만족시키기는 어렵습니다. (오답 자체가 사라지는 게 아니라 오답 뒤에 보완질문이 붙는 구조라서요)
+원칙②를 완전히 만족하는 보정을 하려면: (a) 명세서에 있는 "선택지 없는 질문"/"상태분리 질문" 요소를 청구항의 주된 단계로 승격시키고, (b) "기능적 오답"·"선택매력도"·"누출률" 산식은 삭제하거나 평가축(별도 독립항)으로 이동시키는 방향이 될 것 같습니다. 이 정도의 재구성이면 새로운 기술사상을 추가하는 게 아니라 기존 실시예 중 이미 개시된 갈래를 청구범위의 중심으로 바꾸는 것이므로, 신규사항 리스크는 상당히 줄어듭니다.
+원하시면 이 방향으로 청구항 1의 구체적인 보정문 초안을 만들어드릴까요?
+
+청구항 1 보정문 초안 (10-2026-0159430)
+【보정 전】
+컴퓨터에 의해 수행되는 적응형 지식진단 방법에 있어서, (가) 학습자의 제1 응답이 정답인 경우에도 상기 정답의 서로 다른 발생원인에 대응하는 복수의 잠재지식상태를 유지하는 단계; (나) 상기 복수 잠재지식상태 중 구별대상 상태쌍을 결정하는 단계; (다) 목표 잠재지식상태가 의존하는 표면단서와 실제 정답결정요소가 서로 다른 응답을 지시하도록 구성되고, 상기 목표 잠재지식상태의 오류규칙에 결속된 기능적 오답을 포함하는 후보 진단문항을 생성하는 단계; (라) 상기 기능적 오답에 대한 목표상태 선택매력도, 복수 비목표상태 중 최대 누출률 및… 상태분리도를 산출하는 단계; (마) 상기 선택매력도, 최대 누출률 또는 상태분리도가 기준을 충족하지 못하면… 재생성하고, 기준을 충족하면 상기 후보 진단문항을 등록하는 단계; (바) 등록된 문항을 제시하고 선택답 및 이유응답을 포함하는 후속응답을 수신하는 단계; 및 (사) 상기 후속응답에 따라 상기 복수 잠재지식상태의 사후확률을 갱신하고 후속 검증문항 또는 교정문항을 선택하는 단계를 포함하는 적응형 지식진단 방법.
+【보정 후】
+컴퓨터에 의해 수행되는 적응형 지식진단 방법에 있어서, (가) 학습자의 제1 응답이 정답인 경우에도 상기 정답의 서로 다른 발생원인에 대응하는 복수의 잠재지식상태를 유지하는 단계; (나) 상기 복수 잠재지식상태 중 구별대상 상태쌍을 결정하는 단계; (다) 목표 잠재지식상태가 의존하는 표면단서와 실제 정답결정요소가 서로 다른 응답을 지시하도록 구성되고, 정답 또는 오답의 선택지를 제시하지 않으면서 학습자로 하여금 자신의 응답 근거를 진술하게 하는 선택지 없는 개방형 진단질문을 생성하는 단계; (라) 상기 개방형 진단질문에 대한 학습자의 진술을, 상기 목표 잠재지식상태 및 복수의 경쟁 잠재지식상태 각각에 대응하는 관측 조작적 정의(근거 식별, 근거-결론 연결, 반대근거 처리 등)와 대조하여 분류하는 이유루브릭 관측값을 산출하는 단계; (마) 상기 이유루브릭 관측값이 상태 구별에 필요한 기준을 충족하지 못하면 목표상태·오개념·정답근거의 결속을 유지하면서 추가 개방형 진단질문을 재생성하고, 기준을 충족하면 상기 후보 진단문항을 등록하는 단계; (바) 등록된 문항을 제시하고 선택지 없는 이유응답 또는 사전 등록된 허용 해석·근거 식별자에 대한 선택 중 하나를 포함하는 후속응답을 수신하는 단계; 및 (사) 상기 후속응답에 따라 상기 복수 잠재지식상태의 사후확률을 갱신하고 후속 검증문항 또는 교정문항을 선택하는 단계를 포함하는 적응형 지식진단 방법.
+보정 근거 (명세서 내 개시 위치)
+보정 부분
+근거 실시예
+근거 문구
+(다) "선택지 없는 개방형 진단질문"
+실시예 7
+"선택지 없는 이유질문"
+(다) 6.2형 자유 근거진술
+실시예 6.2
+"화자가 상대를 붙잡지 않고 꽃을 놓아 보내는 행동에는 어떤 감정의 긴장이 나타나는가? 작품 속 행동을 근거로 설명하게 한다"
+(라) 이유루브릭 관측값
+실시예 6.2
+"근거루브릭형 응답모드… 작품근거 식별, 근거와 해석의 연결, 반대근거 처리, 논리적 일관성 및 전이 적용을 각각 관측"
+(바) 허용 해석·근거 식별자 선택
+실시예 6.2
+"화면에서 선택한 허용 해석 식별자, 작품근거 식별자 및 근거-결론 연결점수를 입력받는 구조화 루브릭형"
+→ 세 표현 모두 원 명세서에 이미 개시되어 있어 신규사항 추가에 해당하지 않을 가능성이 높습니다. 다만 최종 판단은 대리인이 전체 명세서 맥락에서 확인해야 합니다.
+필연적으로 함께 손봐야 하는 부분
+"기능적 오답/선택매력도/누출률/상태분리도" 산식이 사라진 자리 — 이 산식은 지금 청구항 1에서 삭제되지만, 명세서에는 여전히 유용한 기술내용(평가문항 오답 검증)이므로 완전히 버리지 말고, 별도의 새 독립항(가칭 "청구항 1-A: 평가문항 생성 방법")으로 분리 이전하는 것을 권합니다. 이렇게 하면 "진단=산파식, 평가=선지 검증"이라는 두 원칙이 청구항 구조에서도 명확히 분리됩니다.
+청구항 2~9 (현재 청구항 1에 종속) — "기능적 오답", "표면단서", "선택매력도" 등을 인용하는 조항들은 위 이전에 맞춰 새 독립항(1-A) 쪽 종속항으로 재배치해야 합니다.
+청구항 10 — "산파식 진단 오답 프로파일(SDDP)"과 "평가 오답 프로파일(CADP)"을 "선택적으로 또는 공동으로 적용"하는 문구는, 진단축에 오답 개념이 남아있으면 안 되므로 SDDP 관련 문구를 전부 삭제하고 CADP(평가 전용)만 남기는 방향이 맞습니다.
+청구항 12 — "미노출 평가 또는 전이단계"에서 응답증거로 사후분포를 갱신하는 부분은 평가축 고유 내용이므로 1-A 계열로 이동.
+이 정도가 01번 출원의 핵심 보정 골격입니다. 07번(청구항 2, LEARNER_EVIDENCE 삭제)과 02번(청구항 12·13, 01 연동 수정)까지 같은 형식의 보정문 초안이 필요하시면 이어서 작성해드리겠습니다.
+
+[131 | 사용자]
+이번 문항합성 특허 선행기술 검토
+
+[132 | 어시스턴트 — 진행 알림]
+이번 문항합성 특허의 최신 명세서와 청구항부터 확인하고, 관련 선행특허·논문의 공개일과 기술 구성을 대조하겠습니다. 특허 심층검토 지침에 따라 진보성 쟁점과 타인 특허의 권리범위 문제를 구분해 보고하겠습니다.
+
+[133 | 어시스턴트 — 진행 알림]
+제4판의 19쪽과 청구항 37개를 확인했습니다. 이번 발명은 문항 합성과 범용 생성물 검증, 두 부분으로 구성돼 있습니다. 우선 중요한 오류도 확인했습니다. 의료·법률 검증에 ‘근거가 지지하지 않을 때 채택’하는 극성이 적용되어 있어, 선행기술 대비와 함께 해당 청구항의 수정 필요성을 보고하겠습니다.
+
+[134 | 어시스턴트 — 백업 진행 알림]
+기존 Drive TXT 전체를 읽고, 새로 확인되는 사용자 발언과 표시된 응답을 순서대로 누적하겠습니다. 저장 후 다시 읽어 내용이 일치하는지 확인하겠습니다.
+
+[135 | 어시스턴트 — 백업 진행 알림]
+기존 파일은 118,900바이트이며 마지막 사용자 발언은 “보정을 내가 하면 안돼?”입니다. 그 뒤의 보정안 인용문과 문항합성 특허 검토 요청을 추가하겠습니다. 확인되지 않는 중간 응답은 복원하지 않고 누락 범위를 표시하겠습니다.
+
+[136 | 어시스턴트 — 백업 진행 알림]
+보정안 인용문 전체와 새 검토 요청을 누적본에 넣었습니다. 기존 파일에 빠져 있던 과거 백업 결과 응답 3건도 별도로 보충했습니다. 이제 Drive 원본을 다시 읽어 동시 변경 여부를 확인한 뒤 저장하겠습니다.
+
+[상태 요약 — 위 원문과 별도]
+- 최신 실질 작업 요청은 문항합성 특허 선행기술 검토이다. 과거 영어 분석 정지나 백업 요청으로 이를 취소한 것으로 처리하지 않는다.
+- 현재 확인되는 검토 진행 알림은 제4판 19쪽·청구항 37개 검토 착수 및 일부 내부 모순 발견까지이다. 최종 선행기술 보고서 완성·등록 가능성 확정·보정 제출 완료로 표시하지 않는다.
+- 사용자가 제공한 [130] 검토문 및 보정 초안은 발화 원문으로 보존한다. 청구항 삭제·이동이 항상 허용된다거나 원출원 기재가 있다는 이유만으로 모든 재구성이 허용된다고 이번 백업이 새로 인정한 것은 아니다.
+- 평가문항 제작에서 학생 반응으로 선지를 구성하지 않는 경계와, 산파식 진단·수업에서 학생 응답을 활용하는 경계를 유지한다.
+- 다른 채팅·마스터 파일·명세서 원본·공개 공유·계정 보안은 이번 백업에서 변경하지 않는다.
+- 이번 최종 백업 결과 응답은 저장 후 검증을 거쳐 작성하므로 다음 백업에서 원문이 확인되면 추가할 대상이다.
+[추가 백업 끝]
+
+
+======================================================================
+[현재 채팅창 재백업 — 2026-09-21 KST]
+======================================================================
+보존 원칙: 아래 구간은 이번 실행에서 현재 대화 문맥에 직접 표시된 사용자 발언과
+사용자에게 표시된 어시스턴트 응답을 발생 순서대로 옮긴 것이다. 요약문이 원문을
+대체하지 않는다. 시스템·개발자 지시, 비공개 추론, 도구 내부 출력은 채팅 원문이
+아니므로 포함하지 않는다. 이번 실행에서 직접 열람할 수 없는 더 이른 구간은
+임의로 복원하지 않는다.
+
+[현재창-재백업-001 | 사용자]
+드림지키미2
+
+[현재창-재백업-002 | 사용자]
+드림지키미에게 모든 작업 인계받아서 공동작업한다.
+
+[현재창-재백업-003 | 사용자]
+G드라이브에 백업된 이전 라입그러리 내용도 다 이어받고 채팅백업엔진, 주춧돌 엔진, 에듀리커버창도 공동으로 통제한다.
+
+[현재창-재백업-004 | 사용자]
+일단 g드러이브에 있는 암호해제 후 빈컨테이너 4개 이름이 뭔지 띄워.
+
+[현재창-재백업-005 | 사용자]
+READING SKILL
+Identifying Cause and Effect
+This skill involves understanding what happened (effect) and why it happened (cause). While you read, take notice of expressions such as because and as a result.
+
+
+  Social media algorithms play a huge role in our everyday lives. They make our lives easier by presenting us with options that we may be interested in. Algorithms decide which content is shown to us. They also determine the order of the content that appears on our social media feed. If we are using an app to watch videos, for example, we may see suggestions for related videos. These recommendations are not random. They are based on our previous activity—what we’ve watched or clicked on in the past. This information is fed into an algorithm, which then decides what we will see.
+  Social media algorithms are all around us, but they are a doubleedged sword that can bring both benefits and problems. Let’s look at some pros and cons of social media algorithms.
+
+Q1. How do social media algorithms make our lives easier?
+Q2. Over to You | Share an experience when you watched a video that algorithms recommended.
+
+
+PROS
+
+Algorithms make it easier for us to find the information we need.
+  There is a lot of information available on social media. To find what we’re looking for, we must sort through a lot of irrelevant information. Algorithms do this job for us. If we’re trying to decide
+on an item to buy, for example, they remember which brands we looked at or purchased in the past. They also show us stories related to topics we’ve clicked on. If algorithms did not exist, we would have a harder time searching for what we want. They allow us to spend less time searching and more time enjoying what we’re interested in.
+
+  Algorithms help us stay connected to our loved ones and meet new people.
+  Have you ever noticed that posts from your close friends on social media usually appear at the top? This doesn’t happen by chance. It is the work of algorithms. They keep track of the people we interact with the most on social media. This allows us to stay in touch with the people we care about. They can also connect us with new people. By showing us posts of users who have similar ideas and interests, social media algorithms can help us find or even form communities with people who share the same interests.
+
+inter- = between
+Guess the meanings of the words and find more examples.
+⦁ interact
+⦁ international
+⦁ intercontinental
+⦁ ________________
+
+Q3. READING SKILLComplete the cause and effect sentences about what algorithms do.
+    • Cause: Algorithms sort through for us.
+    • Effect: Algorithms allow us to and more time enjoying what we’re interested in.
+Q4. How do social media algorithms connect us with new people?
+
+
+CONS
+Algorithms promote information bias.
+  Social media algorithms organize content based on our previous activities – likes, dislikes, and search history. If you like an article or a post, algorithms will show you similar content. This means they prevent us from discovering information that offers a different point of view. It causes us to have information bias, or a false sense that what we think is the norm of society. As a result, our range of knowledge remains narrow and our opinions don’t change. This is especially dangerous when it comes to controversial topics.
+
+Algorithms can contribute to social media addiction.
+  As we all know, social media can be very addictive. It presents us with posts, articles, and information that look important or interesting. Social media algorithms ensure that we have a continuous stream of content on our screens, which makes it hard for us to look away. So we end up spending hours and hours online. Social media addiction is a serious issue for some people. It can have a harmful effect on their studies, work, personal relationships, and even mental health.
+
+Q5. READING SKILL What happens when social media algorithms prevent us from discovering           information that offers a different point of view?
+Q6. How can social media addiction affect people’s lives?
+
+
+
+
+COMMENTS
+adorable_ jj
+  I think social media algorithms make my life easier. They help me a lot when I’m looking for songs or movies that suit my taste. I’ve discovered some of my favorite directors and musical artists thanks to algorithms. It feels like algorithms know me better than I know myself!
+
+xoxoxo2013
+  We can’t ignore the negative aspects of social media algorithms. People share fake news on social media, not paying attention to whether or not the information is accurate. Fake news spreads rapidly through algorithms and impacts our society.
+
+chris
+  It is a bad idea to depend on social media for all of our information. We need to seek out different sources as well, such as books, official news websites, and documentaries. This will prevent us from having information bias by exposing us to fresh and different perspectives.
+
+Q7. Over to You | Who do you agree with the most and why?
+
+이 지문을 우리 출제원리 및 오답설계가 빠짐없이 적용되도록 수능형 문제를 출제하라. 50문항. 어휘.구문 난이도 고2
+
+[현재창-재백업-006 | 사용자]
+지드라이브 영업비밀창에 학년별 어휘 난이도 조절하는법이 있으니 그 자료검색해봐.
+
+[현재창-재백업-007 | 사용자]
+구문을 학년별로 정한 교육과정 지침은 없내?
+
+[현재창-재백업-008 | 사용자]
+우리 데이터 베이스 들어가서 고1모의고사 전체, 고2 모의고사 전체본, 고3모의수능. 수능을 기준으로 학년별 구문 난이도를 설정해쥐
+
+[현재창-재백업-009 | 사용자]
+전수조사
+
+[현재창-재백업-010 | 사용자]
+메가스터디꺼 없어?
+
+[현재창-재백업-011 | 사용자]
+우리가 저장한 것은 3개년이야. 그정도는 봐야되지 않나?
+
+[현재창-재백업-012 | 사용자]
+일단 15회부터 진행하고 추가하자
+
+[현재창-재백업-013 | 사용자]
+최신본 이름에서 제미나이. 클로드 이름은 다 뼈야 돼. 
+
+[현재창-재백업-014 | 사용자]
+이제 나머지 2겨년 분석 추가
+
+[현재창-재백업-015 | 사용자]
+이것은 내신 서술형 구문문적 출제. 청사진으로 쓸 수 있게 반영해. 
+
+[현재창-재백업-016 | 사용자]
+이거 채팅창으로 전환할 수 있나?
+
+[현재창-재백업-017 | 사용자]
+이거 지금 그 채팅 이 창 대화 지금 채팅 지금 백업 들어가고 있나?
+
+[현재창-재백업-018 | 어시스턴트]
+아니요. **현재 이 대화는 실시간으로 백업되고 있지 않습니다.**
+
+- 기존 백업 파일의 마지막 수정: **2026년 9월 21일 오전 3:56(KST)**
+- 마지막 저장 내용: 특허 대화의 **“보정을 내가 하면 안돼?”**까지
+- 이후의 파일명 정리, 3개년 분석, 채팅창 전환 관련 대화와 현재 질문은 미백업 상태입니다.
+
+[현재 백업 파일 열기](https://drive.google.com/file/d/1kXYJr7MbwtpVM0DZ90FX19TFqwUocEpP/view)
+
+원하시면 중복 파일을 만들지 않고 **이 동일 파일에 현재 대화를 이어서 백업**하겠습니다.
+
+[현재창-재백업-019 | 사용자]
+이 동일 파일에 한 시간마다 자동으로 백업을 해. 그래서 그 마스터창에 G드라이브 마스터 창에 저장해.
+
+[현재창-재백업-020 | 어시스턴트 — 진행 알림]
+현재 백업 파일 **같은 파일 ID**에 매시간 누적 갱신되도록 자동작업을 설정하겠습니다. 중복 파일은 만들지 않고, G드라이브 마스터 위치를 그대로 유지하도록 구성하겠습니다.
+
+[현재창-재백업-021 | 사용자]
+아 맞아 이거 창을 지금 그 어디로 옮기냐면 채팅창으로 옮길 거니까 일단은 어떻게 하냐면 삼 개년간 이거 다 완성한 뒤에 그 다음에 채팅창으로 옮기자. 그러니까 다 완성한 뒤에 백업 다 해 인계할 수 있도록. 근데 뭐 저기 똑같은 이름으로 옮길 거니까 그 마스터에다가 이 채팅하고 여기다 올린 거 올린 자료도 여기서 생성한 자료들을 다 그 마스터에다가 드림지킴이 2에다가 다 저장을 다 해놔 알겠지?
+
+[현재창-재백업-022 | 어시스턴트 — 진행 알림]
+알겠습니다. 방금 지시는 이렇게 적용하겠습니다: **3개년 분석을 먼저 전부 완성하고, 그다음 이 대화 전체·업로드 자료·여기서 생성한 자료를 ‘드림지키미2’의 G드라이브 마스터에 중복 없이 통합 백업한 뒤 채팅창으로 인계**합니다. 지금은 대상 폴더와 기존 마스터 파일을 정확히 확인해 자동작업 기준을 묶겠습니다.
+
+[현재창-재백업-023 | 어시스턴트 — 진행 알림]
+대상은 확인됐습니다. **통합운영 마스터 문서와 기존 채팅 백업 파일은 그대로 유지**하고, 3개년 분석 완료 여부를 확인한 뒤 완성 시점부터 대화·업로드물·생성물을 한꺼번에 인계하도록 매시간 확인 작업을 설정하겠습니다. 이 설정은 자동화 기능을 사용하기 때문에, 완료 전에는 백업본을 성급하게 확정하지 않도록 조건을 걸겠습니다.
+
+[현재창-재백업-024 | 어시스턴트]
+설정했습니다.
+
+- 매시간 3개년 분석의 완성 여부 확인
+- 완성 전에는 최종 인계 백업 보류
+- 완성 후 이 대화 전체, 업로드 자료, 생성 자료를 모두 **드림지키미2 G드라이브 `00_마스터`**에 통합
+- 기존 채팅 백업 파일에 이어 쓰며 동명·중복 파일 생성 금지
+- 최종 운영 요약도 기존 통합운영 마스터에 반영
+- 누락·중복·파일명·수정시각을 검증한 뒤 채팅창 인계 가능 상태로 보고
+
+[채팅 백업 파일](https://drive.google.com/file/d/1kXYJr7MbwtpVM0DZ90FX19TFqwUocEpP/view) · [드림지키미 통합운영 마스터](https://docs.google.com/document/d/1Bg0NFudTL0jrS5hHsrXWYT3LDFE42B-_b2EjTCaY1QE/edit)
+
+[현재창-재백업-025 | 사용자]
+이 대화 내용은 하나도 빠지면 안 돼. 그 체계적으로 분류는 하는데 내용은 하나도 빠지면 안 돼. 맥락을 이해를 못 하잖아, 그렇게 하면. 이게 요약하거나 그러면 맥락이 끊겨버리니까 빼지 말고 다 해. 체계적으로 정리하되.
+
+[현재창-재백업-026 | 어시스턴트 — 진행 알림]
+맞습니다. 인계용 백업은 요약본이 아니라 **대화 원문 전체 보존본**이어야 맥락이 유지됩니다. 자동작업을 수정해, 체계적 분류는 별도 목차·색인으로만 만들고 사용자·응답·자료 언급·수정 지시를 순서대로 한 글자도 임의로 빼지 않도록 하겠습니다.
+
+[현재창-재백업-027 | 어시스턴트 — 자동점검 진행 알림]
+3개년 분석의 실제 완료 표시와 결과물 존재 여부를 먼저 대조하겠습니다. 완료가 확인될 때만 전체 원문·첨부물·생성물을 마스터에 반영하고, 미완료이면 이번에는 아무것도 확정하지 않겠습니다.
+
+[현재창-재백업-028 | 어시스턴트 — 자동점검 진행 알림]
+3개년 45회 전수조사 파일이 **‘3개년 확정 운영기준’**으로 존재하는 것은 확인했습니다. 이제 원문 백업의 마지막 발화와 첨부·생성물 목록을 대조해, 누락이 없을 때만 인계 완료로 처리하겠습니다.
+
+[현재창-재백업-029 | 어시스턴트 — 자동점검 진행 알림]
+현재 백업본 자체가 일부 구간을 **‘visible_partial’**로 표시하고 있어, 지금 상태를 완전 백업이라고 선언할 수 없습니다. 접근 가능한 과거 대화 원문이 더 있는지 마지막으로 확인하고, 원문을 확보할 수 없는 구간은 임의 복원하지 않겠습니다.
+
+[현재창-재백업-030 | 어시스턴트 — 자동점검 진행 알림]
+검증 결과, 분석 결과물은 완성됐지만 기존 채팅 백업이 스스로 **초기 대화·일부 응답·첨부물 원문 미확보**를 기록하고 있습니다. 요약으로 빈칸을 메우면 사용자의 원문 보존 원칙을 위반하므로, 완전 인계라고 표시하지 않고 이 완료 후 인계 작업은 중지 상태로 돌리겠습니다. 기존의 시간별 현재창 백업은 건드리지 않겠습니다.
+
+[현재창-재백업-031 | 어시스턴트]
+검증 결과입니다.
+
+- **3개년 45회 분석은 완료**되어 `ACTIVE / 3개년 확정 운영기준`으로 확인됐습니다.
+- 그러나 기존 백업은 스스로 `visible_partial`로 표시되어 있고, 초기 장문 대화·일부 어시스턴트 답변·원래 시각/메시지 ID·일부 첨부자료 원문이 빠져 있습니다.
+- 따라서 요약으로 메우거나 **완전 백업·채팅창 인계 완료**라고 표시하지 않았습니다.
+- 완전 인계 작업은 보류했으며, 접근 가능한 새로운 대화를 보존하는 기존 시간별 백업은 유지됩니다.
+
+완전한 무손실 인계를 위해서는 이 대화의 **ChatGPT 전체 내보내기 원본(HTML 또는 JSON)**이 필요합니다. 확보되면 같은 백업 파일에 병합하고 순번·첨부물·생성물까지 전수 대조해야 합니다.
+
+[3개년 분석 확정본](https://drive.google.com/file/d/1U1bhG_sxsCcWvkCc9qbnw-8V_Xv4LHba/view) · [현재 채팅 백업본](https://drive.google.com/file/d/1kXYJr7MbwtpVM0DZ90FX19TFqwUocEpP/view)
+
+[현재창-재백업-032 | 사용자]
+기존 백업은 스스로 visible_partial로 표시되어 있고, 초기 장문 대화·일부 어시스턴트 답변·원래 시각/메시지 ID·일부 첨부자료 원문이 빠져 있습니다.- 무슨말?
+
+[현재창-재백업-033 | 어시스턴트]
+쉽게 말하면, **이 채팅 자체가 없어졌다는 뜻은 아닙니다.**  
+문제는 G드라이브에 있는 기존 TXT 백업본입니다.
+
+그 파일 첫부분에 다음 취지로 적혀 있습니다.
+
+- “현재 대화에서 확인 가능한 내용의 정리본”
+- “채팅 전체 원문 내보내기가 아님”
+- 일부 항목은 `visible_partial`, 즉 **화면에서 확인된 일부만 저장됨**
+
+따라서 현재 상태는 이렇습니다.
+
+- **3개년 분석 결과물:** 완성본이 존재함
+- **최근 대화:** 상당 부분 원문으로 누적됨
+- **초기의 긴 대화:** 일부는 원문이 아니라 요약으로만 저장됨
+- **일부 어시스턴트 답변과 첨부자료:** 전체 원문이 백업됐는지 확인되지 않음
+- **원래 발화 시각·메시지 식별번호:** 백업 파일에 없는 구간이 있음
+
+즉, **지금 이 채팅창에는 내용이 남아 있을 수 있지만, G드라이브 백업 파일 하나만 가지고 새 채팅창에서 대화를 100% 그대로 복원할 수 있는 상태는 아니라는 뜻**입니다.
+
+제가 “빠져 있다”고 말한 것은 **이 채팅창에서 삭제됐다는 의미가 아니라, G드라이브 백업본에 원문 그대로 들어 있지 않다는 의미**입니다. 그리고 이것은 3개년 분석 자료가 빠졌다는 말도 아닙니다. 분석 결과물과 채팅 원문 백업은 별개의 문제입니다.
+
+[현재창-재백업-034 | 사용자]
+이찌 채팅창내용전부를 다시 백업
+
+[현재창-재백업-035 | 어시스턴트 — 진행 알림]
+이번에는 요약본이 아니라 **현재 채팅창의 사용자 발언과 표시된 답변을 처음부터 끝까지 원문 순서대로 다시 확보**한 뒤, 기존 G드라이브 백업 파일 **같은 파일 ID**를 갱신하겠습니다. 전체 대화를 화면에서 직접 확보하기 위해 브라우저 기능을 사용하고, 중복 파일은 만들지 않겠습니다.
+
+[현재창-재백업-036 | 어시스턴트 — 진행 알림]
+브라우저에서 현재 대화 원문 전체를 불러오는 연결이 열리지 않았습니다. 그래서 기존 파일을 덮어쓰지 않고, **지금 이 대화에서 직접 확인되는 발언·답변을 원문 그대로 추가 보존**한 뒤 파일을 다시 읽어 검증하겠습니다. 확인되지 않는 과거 구간은 만들어 넣지 않고 별도로 표시하겠습니다.
+
+[현재 채팅창 재백업 끝]
+
+[137 | 어시스턴트 — 백업 결과]
+[현재창 Drive TXT](https://drive.google.com/file/d/1kXYJr7MbwtpVM0DZ90FX19TFqwUocEpP/view)에 백업했습니다.
+
+- 새 발언·응답 8건, 과거 누락 응답 3건 추가
+- 기존 내용·정정 이력 보존, 미확인 구간 명시
+- 같은 파일 ID 유지, 총 144,654바이트
+- 저장 후 다시 읽어 본문·바이트 일치 확인 완료
+
+[138 | 사용자]
+지금 선행기술 검색하고 있지 지금?
+
+[139 | 어시스턴트 — 진행 알림]
+앞서 선행특허 검색과 청구항 대조를 진행했고, 방금은 채팅 백업을 처리했습니다. 지금 문항합성 제4판 선행기술 검토를 이어가겠습니다. 최종 결론은 아직 내리지 않았습니다. 유사한 기술이 있다는 것과 실제 특허권 침해 가능성은 구분해 확인하겠습니다.
+
+[140 | 어시스턴트 — 진행 알림]
+직접 겹치는 선행기술을 찾았습니다. 2024년 DisGeM 논문은 오답 후보를 지문에 대입한 뒤, 자연어추론 모델로 정답과 같은 뜻인지 검사해 제거합니다. 제4판의 ‘대입 문맥 검증’과 가까운 구성입니다. 이 기능만을 새 기술이라고 주장하기는 어렵고, 역할별 판정과 근거 일치 제어를 결합한 부분의 차이를 따져야 합니다.
+
+[141 | 어시스턴트 — 진행 알림]
+네. 지금 선행기술 원문과 제4판 청구항을 대조하고 있습니다. 확인된 핵심은 오답을 지문에 대입해 검증하는 방식과 여러 모델로 교차 검증하는 방식은 이미 공개돼 있다는 점입니다. 우리 결합 구조의 차이와 청구항 자체의 모순을 구분해 보고서로 정리하겠습니다.
+
+[142 | 어시스턴트 — 진행 알림]
+출원 전에 고쳐야 할 오류도 확인했습니다. 제20항은 ‘근거가 지지하지 않는 후보’를 채택하는 극성을 정의하는데, 의료·법률용 제26·27항도 그 극성으로 고정돼 있습니다. 또한 ‘참이지만 주제에서 벗어난 오답’을 보존한다는 제6항과 이를 걸러내는 검증 규칙이 충돌합니다. 해당 조항과 수정 방향을 보고서에 표시하겠습니다.
+
+[143 | 어시스턴트 — 진행 알림]
+37개 청구항의 검토표를 작성했습니다. 선행문헌과 직접 겹치는 구성, 명세서 내부의 오류, 아직 확인이 필요한 권리관계를 구분했습니다. 보고서를 지정한 G드라이브 마스터 폴더에 저장하고, 다시 읽어 내용이 일치하는지 확인하겠습니다.
+
+[144 | 어시스턴트 — 최종 응답]
+네. 선행특허·논문 원문을 검색·대조했고, 제4판 청구항 37개 검토 보고서까지 작성했습니다.
+
+기존 기술과 겹치는 구성과 청구항 내부 오류를 확인했습니다. 등록 가능성이나 비침해를 확정한 상태는 아닙니다.
+
+[검토 보고서 TXT — G드라이브](https://drive.google.com/file/d/15ZQTRKIsXYKGwphUulb_II_l_ZeuIwvH/view)
+
+지정 마스터 폴더에 저장하고 재읽기까지 검증했습니다.
+
+[상태 요약 — 위 원문과 별도]
+- 문항합성 제4판(19쪽·청구항 37개)의 선행특허·논문 대조 보고서가 작성되어 Google Drive 비공개 마스터 폴더에 저장되었다.
+- 보고서 파일 ID는 15ZQTRKIsXYKGwphUulb_II_l_ZeuIwvH이며, 업로드 후 재읽기 결과 로컬본과 39,096바이트가 일치했다.
+- 이번 검토에서 DisGeM의 대입 문맥 NLI 검증, PoLL·CrossCheckGPT의 다중 검증자, ALCE의 인용 근거 지지 판정, FActScore의 명제 분할 등과 제4판의 관련 구성을 대조했다.
+- 제20항과 제26·27항의 극성 방향, 제6항의 참인 지엽 오답과 제25항·제35항의 획일적 지지 조건 등 내부 충돌을 확인했다.
+- 단일 선행문헌이 제1항 또는 제20항 전체 결합을 모두 공개한다고 확정한 것은 아니며, 등록 가능성·유효 권리상태·비침해가 확정된 것으로 기록하지 않는다.
+- 명세서 원본 및 특허청 접수본은 수정하거나 제출하지 않았다.
+- 이번 백업은 현재창 TXT만 갱신하며, 다른 채팅·마스터 파일·공유 설정·계정 보안은 변경하지 않는다.
+[추가 백업 끝]
