@@ -1,7 +1,7 @@
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
@@ -25,6 +25,7 @@ from app.services.auto_generator import (
     generate_questions,
 )
 from app.services.provider_verifier import verify_with_provider
+from app.services.docx_export import build_exam_docx
 from app.services.socratic_trap import detect_socratic_traps
 from app.services.trust_chain import run_trust_chain
 
@@ -68,6 +69,12 @@ class VerifyWithProviderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: Literal["openai", "gemini", "claude"]
     problems: list[dict[str, Any]] = Field(..., min_length=1)
+
+
+class ExportDocxRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    exam: dict[str, Any]
+    items: list[dict[str, Any]] = Field(..., min_length=1, max_length=100)
 
 
 class ApplyTrapRequest(BaseModel):
@@ -304,6 +311,20 @@ async def verify_problem(payload: VerifyProblemRequest) -> dict[str, Any]:
 
     result = await run_trust_chain(payload.problems)
     return result.to_dict()
+
+
+@app.post("/export-docx", tags=["output"])
+async def export_docx(payload: ExportDocxRequest) -> Response:
+    """Build the current teacher workspace as a downloadable DOCX exam + answer sheet."""
+    document_bytes = build_exam_docx(payload.exam, payload.items)
+    return Response(
+        content=document_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": 'attachment; filename="edurecover_exam.docx"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.post("/apply-trap", tags=["socratic-trap"])

@@ -118,7 +118,7 @@ PILOT_HTML = r"""
               <tr><td>Socratic Trap API</td><td><span class="badge good">실행</span></td></tr>
               <tr><td>자료 파일 영구저장</td><td><span class="badge warn">연동 전</span></td></tr>
               <tr><td>AI 자동출제 API</td><td id="autoGenStatus"><span class="badge warn">서버 상태 확인 중</span></td></tr>
-              <tr><td>시험지 DOCX/PDF 자동출력</td><td><span class="badge warn">연동 전</span></td></tr>
+              <tr><td>시험지 DOCX 자동출력</td><td><span class="badge good">실행</span></td></tr>\n              <tr><td>HWP 직접출력</td><td><span class="badge warn">미지원 · 복사/붙여넣기 안내</span></td></tr>
             </table>
           </div>
         </div>
@@ -251,7 +251,7 @@ PILOT_HTML = r"""
       </section>
 
       <section id="preview" class="view">
-        <div class="hero"><div><h2>시험지 · 해설 미리보기</h2><p>현재 작업공간 문항을 시험지 형태로 확인합니다.</p></div><div class="row"><button class="btn ghost" onclick="renderPreview()">새로고침</button><button class="btn primary" onclick="window.print()">인쇄</button></div></div>
+        <div class="hero"><div><h2>시험지 · 해설 미리보기</h2><p>현재 작업공간 문항을 시험지 형태로 확인합니다.</p></div><div class="row"><button class="btn ghost" onclick="renderPreview()">새로고침</button><button id="docxExportBtn" class="btn primary" onclick="exportDocx()">DOCX 자동출력</button><button class="btn dark" onclick="window.print()">인쇄</button></div></div>
         <div class="grid c2">
           <div class="preview" id="questionPreview"></div>
           <div class="preview" id="answerPreview"></div>
@@ -295,6 +295,16 @@ PILOT_HTML = r"""
   </div>
 </div>
 
+<div id="hwpNoticeModal" class="modal-backdrop" hidden>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="hwpNoticeTitle">
+    <h3 id="hwpNoticeTitle">HWP 파일 안내</h3>
+    <p>HWP 파일은 현재 직접 지원하지 않습니다. 번거로우시겠지만 내려받은 DOCX 파일을 열어 내용을 복사한 뒤 한글(HWP)에 붙여 넣어 사용해 주세요.</p>
+    <div class="modal-actions">
+      <button id="hwpNoticeClose" class="btn primary" type="button">확인</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const titles={dashboard:"홈 대시보드",sources:"자료 관리",create:"새 시험 만들기",settings:"출제 설정",generate:"AI 자동출제",workspace:"문항 작업실",verify:"검증 센터",preview:"시험지 · 해설",archive:"보관함",system:"시스템"};
 let workspace=JSON.parse(localStorage.getItem("edurecover_workspace")||"null")||{
@@ -314,7 +324,7 @@ function showView(id){
   document.getElementById("pageTitle").textContent=titles[id]||id;
   if(id==="generate") refreshGenerationSummary();
   if(id==="workspace") renderItems();
-  if(id==="preview") renderPreview();
+  if(id==="preview"){renderPreview();showHwpNoticeOnce();}
   if(id==="archive") renderArchive();
   window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -491,9 +501,45 @@ async function runWorkspaceApi(path){
 function approveTeacher(){workspace.teacherApproved=true;persist();verifyBadge.className="badge good";verifyBadge.textContent="교사 검토 완료";}
 function renderPreview(){
   const q=document.getElementById("questionPreview"),a=document.getElementById("answerPreview");
-  q.innerHTML="<h2>"+escapeHtml(workspace.exam.name)+"</h2><div class='muted'>"+escapeHtml(workspace.exam.schoolLevel+" "+workspace.exam.grade)+"</div>"+workspace.items.map((it,i)=>"<p><strong>"+(i+1)+". "+escapeHtml(it.question)+"</strong></p><p>"+escapeHtml(it.passage)+"</p>").join("<hr>");
+  q.innerHTML="<h2>"+escapeHtml(workspace.exam.name)+"</h2><div class='muted'>"+escapeHtml(workspace.exam.schoolLevel+" "+workspace.exam.grade)+"</div>"+workspace.items.map((it,i)=>{
+    const choices=(it.choices||[]).map((choice,j)=>"<div>"+(j+1)+". "+escapeHtml(choice)+"</div>").join("");
+    return "<p><strong>"+(i+1)+". "+escapeHtml(it.question)+"</strong></p><p>"+escapeHtml(it.passage)+"</p>"+choices;
+  }).join("<hr>");
   a.innerHTML="<h2>정답 · 해설</h2>"+workspace.items.map((it,i)=>"<p><strong>"+(i+1)+". "+escapeHtml(it.answer)+"</strong></p><p>"+escapeHtml(it.explanation)+"</p>").join("<hr>");
 }
+function showHwpNotice(){
+  document.getElementById("hwpNoticeModal").hidden=false;
+}
+function showHwpNoticeOnce(){
+  if(sessionStorage.getItem("edurecover_hwp_notice_shown")==="1")return;
+  sessionStorage.setItem("edurecover_hwp_notice_shown","1");
+  showHwpNotice();
+}
+async function exportDocx(){
+  if(!workspace.items.length){alert("출력할 문항이 없습니다.");return;}
+  const btn=document.getElementById("docxExportBtn");
+  const original=btn.textContent;
+  btn.disabled=true;btn.textContent="DOCX 생성 중...";
+  try{
+    const r=await fetch("/export-docx",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({exam:workspace.exam,items:workspace.items})});
+    if(!r.ok){
+      const t=await r.text();
+      throw new Error("DOCX 출력 실패 ("+r.status+"): "+t);
+    }
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    const base=String(workspace.exam?.name||"EduRecover_시험지").replace(/[\\/:*?"<>|]+/g,"_").trim()||"EduRecover_시험지";
+    a.href=url;a.download=base+".docx";document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    showHwpNotice();
+  }catch(e){
+    alert(e.message);
+  }finally{
+    btn.disabled=false;btn.textContent=original;
+  }
+}
+document.getElementById("hwpNoticeClose").addEventListener("click",()=>{document.getElementById("hwpNoticeModal").hidden=true});
 function renderArchive(){
   const tb=document.getElementById("archiveRows");tb.innerHTML="<tr><td>"+escapeHtml(workspace.exam.name)+"</td><td>"+escapeHtml(workspace.exam.schoolLevel+" "+workspace.exam.grade)+"</td><td>"+workspace.items.length+"</td><td><span class='badge "+(workspace.teacherApproved?"good":"warn")+"'>"+(workspace.teacherApproved?"교사 검토 완료":"작업 중")+"</span></td></tr>";
 }
