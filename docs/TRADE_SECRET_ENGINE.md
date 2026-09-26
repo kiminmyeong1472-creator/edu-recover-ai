@@ -11,7 +11,9 @@ fail-closed 방식으로 결정한다.
 구현 파일:
 
 - `app/training/trade_secret_engine.py`
+- `app/training/trade_secret_backup_runner.py`
 - `tests/test_trade_secret_engine.py`
+- `tests/test_trade_secret_backup_runner.py`
 
 ## 분류
 
@@ -74,9 +76,14 @@ fail-closed 방식으로 결정한다.
 
 채팅기록은 `AssetKind.CHAT_TRANSCRIPT`일 때 `.txt` 저장형식을 지정한다.
 
-중요: 현재 모듈은 분류·라우팅·스케줄 판정 엔진이다. 실제 서버 파일쓰기와
-Google Drive 업로드는 별도 storage adapter가 이 계획을 실행해야 한다.
-실제 adapter 실행증거가 없으면 "30분 자동백업 운영완료"라고 보고하지 않는다.
+분류·라우팅·스케줄 판정은 `trade_secret_engine.py`가 담당하고,
+`trade_secret_backup_runner.py`는 필요한 서버/Drive adapter를 실제 호출하여
+백업 영수증을 검증한다. credential-bearing 자료는 raw-content 금지정책에 따라
+adapter에 원문 참조를 전달하지 않는다.
+
+실제 production 서버/Google Drive adapter의 자격증명 연결과 30분 scheduler 배포는
+별도 운영연동이 필요하다. 그 실행증거가 없으면 "30분 자동백업 운영완료"라고
+보고하지 않는다.
 
 ## 테스트
 
