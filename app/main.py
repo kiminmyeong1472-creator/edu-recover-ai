@@ -30,6 +30,7 @@ from app.services.auto_generator import (
 )
 from app.services.provider_verifier import verify_with_provider
 from app.services.docx_export import build_exam_docx
+from app.services.encrypted_backup import backup_encryption_status
 from app.services.socratic_trap import detect_socratic_traps
 from app.services.trust_chain import run_trust_chain
 
@@ -322,6 +323,12 @@ async def privacy_status(_: None = Depends(require_owner)) -> dict[str, Any]:
         ),
     })
     return status
+
+
+@app.get("/owner/backup-encryption-status", tags=["owner"])
+async def owner_backup_encryption_status(_: None = Depends(require_owner)) -> dict[str, Any]:
+    """Return backup-encryption readiness without exposing any secret value."""
+    return backup_encryption_status()
 
 
 async def _run_generation_channel(
