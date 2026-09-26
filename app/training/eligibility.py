@@ -5,10 +5,12 @@ from __future__ import annotations
 from app.training.models import (
     ConsentState,
     EligibilityDecision,
+    PatentClearanceState,
     RightsState,
     SourceClass,
     TrainingDataStatus,
     TrainingPurpose,
+    TrainingUseScope,
     TrajectoryEnvelope,
 )
 
@@ -17,15 +19,21 @@ _BLOCKED_SOURCES = {
     SourceClass.CHATGPT_APP_REQUEST,
 }
 
+_TUTORING_RESPONSE_BLOCKED_SCOPES = {
+    TrainingUseScope.ITEM_GENERATOR,
+    TrainingUseScope.DISTRACTOR_RANKER,
+}
+
 
 def evaluate_training_eligibility(
     item: TrajectoryEnvelope,
 ) -> EligibilityDecision:
     """Decide whether a trajectory may enter an owner-controlled dataset.
 
-    The default is fail-closed. External managed-AI outputs are blocked from
-    model training unless a future, separately reviewed policy explicitly
-    changes that contract boundary.
+    The default is fail-closed. In addition to rights/privacy/provenance,
+    first-party tutoring trajectories require explicit patent/FTO clearance.
+    Under the current design boundary, student-response tutoring data is not
+    admitted into item-generation or distractor-attractiveness training.
     """
 
     reasons: list[str] = []
@@ -38,6 +46,29 @@ def evaluate_training_eligibility(
                 "EduRecover training-rights boundary.",
             ),
         )
+
+    if item.source_class is SourceClass.FIRST_PARTY_TUTORING:
+        blocked_scopes = sorted(
+            scope.value
+            for scope in item.requested_use_scopes
+            if scope in _TUTORING_RESPONSE_BLOCKED_SCOPES
+        )
+        if blocked_scopes:
+            return EligibilityDecision(
+                status=TrainingDataStatus.REJECTED,
+                reasons=(
+                    "Student-response tutoring data is isolated from "
+                    "question-generation/distractor-attractiveness training "
+                    "under the current patent-boundary policy: "
+                    + ", ".join(blocked_scopes),
+                ),
+            )
+
+        if item.patent_clearance is not PatentClearanceState.CLEARED:
+            reasons.append(
+                "First-party tutoring data is on patent/FTO HOLD until "
+                "the Socratic tutoring boundary is explicitly cleared."
+            )
 
     if item.source_class is SourceClass.UNKNOWN:
         reasons.append("Source class is unknown.")
@@ -68,6 +99,7 @@ def evaluate_training_eligibility(
             status=TrainingDataStatus.QUARANTINED,
             reasons=tuple(reasons),
             allowed_purposes=(),
+            allowed_use_scopes=(),
         )
 
     return EligibilityDecision(
@@ -79,4 +111,5 @@ def evaluate_training_eligibility(
             TrainingPurpose.REWARD,
             TrainingPurpose.EVAL_ONLY,
         ),
+        allowed_use_scopes=item.requested_use_scopes,
     )
