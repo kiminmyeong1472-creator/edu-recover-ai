@@ -175,9 +175,19 @@ def notebook_tasks() -> list[dict[str, str]]:
         },
         {
             "step": "4",
+            "title": "백업 암호화 마스터키 직접 입력",
+            "detail": (
+                "Railway edurecover-prod의 Sealed 환경변수 EDURECOVER_BACKUP_MASTER_KEY에 "
+                "32바이트 무작위 암호화키를 사용자가 직접 입력합니다. "
+                "이 키는 OpenAI/Gemini/Claude API 키와 완전히 분리하며 채팅·Drive·GitHub에 기록하지 않습니다."
+            ),
+        },
+        {
+            "step": "5",
             "title": "배포 후 상태 확인",
             "detail": (
-                "/owner/ai-status, /control-status, /privacy-status를 확인하고 실제 키 값이 어떤 응답에도 노출되지 않는지 확인합니다."
+                "/owner/ai-status, /control-status, /privacy-status, /owner/backup-encryption-status를 확인하고 "
+                "실제 비밀값이 어떤 응답에도 노출되지 않는지 확인합니다."
             ),
         },
     ]
