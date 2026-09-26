@@ -26,6 +26,14 @@ def build_teacher_html(html: str) -> str:
         teacher,
         flags=re.S,
     )
+    # Remove owner-only privacy/ZDR diagnostics from the teacher status display.
+    teacher = re.sub(
+        r'\s*const privacy=d\.privacy_gate\?\.providers\|\|\{\};.*?'
+        r'if\(cell\) cell\.innerHTML=.*?;\n',
+        '\n    if(cell) cell.innerHTML="<span class=\\\'badge "+(anyReady?"good":"warn")+"\\\'>"+parts.join(" · ")+"</span>";\n',
+        teacher,
+        flags=re.S,
+    )
     # Skip owner/admin refresh calls in the teacher browser.
     teacher = teacher.replace('refreshAuthoringAssets();', '')
     teacher = teacher.replace('refreshOwnerControl();', '')
