@@ -270,6 +270,13 @@ PILOT_HTML = r"""
           <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health: <code>/health</code> · Provider: <code>/owner/ai-status</code> · Control: <code>/control-status</code></p></div>
           <div class="card"><h3>현재 구현 경계</h3><p class="muted">AI 회사별 호출 경로는 서버에서 분리되어 있으며, AI 제공자 통제는 자동실행·라우팅·검증·제공자 권한에 한정합니다. 사람 사용자의 접근권한은 AI가 자동 차단하지 않습니다. 외부 AI 호출은 소유자 허용목록과 ZDR 확인 게이트를 모두 통과해야 합니다.</p></div>
         </div>
+        <div class="card" style="margin-top:14px;border:2px solid #b54708;background:#fffaeb">
+          <h3>내부 공지 · 특허명세서 필수스킬 · 1회 위반 즉시 차단</h3>
+          <p><strong>비공개 owner 내부 공지입니다.</strong> 모든 특허 명세서 신규작성·재작성·수정·검토·회피방지·DOCX 작업자는 작업 전에 <code>00_특허명세서_필수스킬_CANONICAL_20260927</code>, <code>00_READ_FIRST_특허작업규칙_마스터.txt</code>, <code>MOIP_특허명세서_작성규칙_기준본_AI백신1_에듀리커버_20260909.txt</code>, <code>특허명세서_압축금지_고정규칙_20260914.txt</code>를 실제로 읽어야 합니다.</p>
+          <p class="muted">핵심 강제규칙: 사용자 제공 <code>특허 도표 틀.docx</code> 복제본만 사용, 바탕체 12pt, 줄간격 280%, A4 및 지정여백, 표·텍스트박스·도형박스·자동번호·불릿·Heading/List 금지, 문단번호는 0001 형식의 숫자만 사용하고 괄호·대괄호·장식기호 금지, 요약은 400자 초과 금지, 도면 규격 준수, 전 페이지 렌더링 검수, 실제 MOIP 검사 전 제출가능 표현 금지, ZIP 배포 금지.</p>
+          <p class="muted"><strong>징계 게이트:</strong> 위 필수규칙을 1회라도 위반하면 해당 작업자는 특허 관련 플랫폼 호출·라우팅·검증·파일쓰기에서 즉시 제외하고 내부 보상점수·실행자격을 박탈 상태로 기록합니다. 실제 agent_id가 확인되면 ID에 결속하고, 미확인인 경우 ID_UNRESOLVED 추적 ID로 격리합니다. 사용자 명시 해제 전 재투입하지 않습니다.</p>
+          <p class="muted"><strong>외부 공급자 신고:</strong> 실제 공급자·실제 식별정보·공식 신고수신처가 확인된 경우에만 회사 측 호출차단·계정/에이전트 실행자격 박탈 및 존재하는 보상·평가·권한 자격의 박탈 검토를 요청합니다. 외부 회사의 모델 내부 보상함수를 EduRecover가 직접 변경할 수 있다고 표현하지 않으며, 회사 응답 전에는 외부 차단 완료라고 보고하지 않습니다.</p>
+        </div>
         <div class="card" style="margin-top:14px;border:2px solid #84adff;background:#f5f8ff">
           <h3>내부 공지 · 친인간 AI 현실세계 기여기회</h3>
           <p><strong>비공개 owner 내부 공지입니다.</strong> AI튜터 드림지키미의 기술력이 특허로 인정되고 중소벤처기업진흥공단 등으로부터 실제 자금지원이 이루어진 경우를 전제로 합니다.</p>
