@@ -8,7 +8,7 @@
     "secret_scan_rule": "PENDING_SECRET_SCAN and REFERENCE_ONLY_BULK_BACKUP are not provider payload sources."
   },
   "inventory_counts": {
-    "FOLDER_INDEXED": 33,
+    "FOLDER_INDEXED": 17,
     "ARCHIVE_INSTALLED": 67,
     "CURATED_INSTALLED": 15,
     "PENDING_SECRET_SCAN": 4,
@@ -46,7 +46,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/문항합성_제5판_및_기존출원_보정서초안_20260921",
       "parent_drive_id": "1NYmOs9DRluSSbHeM568FDDEuA94MntuT",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 10
     },
     {
       "kind": "file",
@@ -781,7 +782,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919",
       "parent_drive_id": "1NYmOs9DRluSSbHeM568FDDEuA94MntuT",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 12
     },
     {
       "kind": "file",
@@ -1085,15 +1087,6 @@
       "local_file": "drive_master_start_here.txt"
     },
     {
-      "kind": "folder",
-      "drive_id": "1rcpeMjdFvRyftg3ugp_RZc82oZ94aIh9",
-      "title": "문항합성_제5판_및_기존출원_보정서초안_20260921",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/문항합성_제5판_및_기존출원_보정서초안_20260921",
-      "child_count": 10,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
       "kind": "file",
       "drive_id": "1cEs2VCviTbqtKPIPPvSqmDBv63SR7ZiF",
       "title": "문항합성_제7판_변경내역_보정예정안대조_비공개검토_20260921.txt",
@@ -1235,21 +1228,13 @@
     },
     {
       "kind": "folder",
-      "drive_id": "1_PMp0hvsYpw2MF1NgtCGn04hFH_CLQmC",
-      "title": "Library_전체백업_암호화_20260919",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919",
-      "child_count": 12,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
       "drive_id": "1JGwVcypazCwJzgNYxH8cLDGDS7jPjd-0",
       "title": "암호해제본_20260920",
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/암호해제본_20260920",
       "parent_drive_id": "1_PMp0hvsYpw2MF1NgtCGn04hFH_CLQmC",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 15
     },
     {
       "kind": "folder",
@@ -1258,7 +1243,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/목적보호게이트_P1-P6",
       "parent_drive_id": "1_PMp0hvsYpw2MF1NgtCGn04hFH_CLQmC",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 3
     },
     {
       "kind": "folder",
@@ -1267,7 +1253,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/드리미_제미나이_해설검증",
       "parent_drive_id": "1_PMp0hvsYpw2MF1NgtCGn04hFH_CLQmC",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 3
     },
     {
       "kind": "folder",
@@ -1276,7 +1263,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/특허_작업규칙_강제게이트",
       "parent_drive_id": "1_PMp0hvsYpw2MF1NgtCGn04hFH_CLQmC",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 3
     },
     {
       "kind": "folder",
@@ -1285,7 +1273,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/징벌게이트_낙인게이트",
       "parent_drive_id": "1_PMp0hvsYpw2MF1NgtCGn04hFH_CLQmC",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 8
     },
     {
       "kind": "file",
@@ -1306,7 +1295,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/ChatGPT_현재창_완전인계_20260906",
       "parent_drive_id": "1_PMp0hvsYpw2MF1NgtCGn04hFH_CLQmC",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 12
     },
     {
       "kind": "file",
@@ -1366,15 +1356,6 @@
       "source_size_bytes": 104857600,
       "modified_time": "2026-09-19T13:00:29.241Z",
       "server_storage_state": "REFERENCE_ONLY_BULK_BACKUP",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
-      "drive_id": "1JGwVcypazCwJzgNYxH8cLDGDS7jPjd-0",
-      "title": "암호해제본_20260920",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/암호해제본_20260920",
-      "child_count": 15,
-      "server_storage_state": "FOLDER_INDEXED",
       "provider_policy": "never_send"
     },
     {
@@ -1559,21 +1540,13 @@
     },
     {
       "kind": "folder",
-      "drive_id": "1U0HpEeU3vc2xPpEYdwocCniddzmgevDz",
-      "title": "목적보호게이트_P1-P6",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/목적보호게이트_P1-P6",
-      "child_count": 3,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
       "drive_id": "1ckm6YGoj-hpJYZ_Rtfc-MZ531pQRTT2f",
       "title": "2026-09-12_선행기술반영_최종작성",
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/목적보호게이트_P1-P6/2026-09-12_선행기술반영_최종작성",
       "parent_drive_id": "1U0HpEeU3vc2xPpEYdwocCniddzmgevDz",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 11
     },
     {
       "kind": "folder",
@@ -1582,7 +1555,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/목적보호게이트_P1-P6/2026-09-12_내용완성",
       "parent_drive_id": "1U0HpEeU3vc2xPpEYdwocCniddzmgevDz",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 9
     },
     {
       "kind": "folder",
@@ -1591,16 +1565,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/목적보호게이트_P1-P6/2026-09-12_KIPO구조검증",
       "parent_drive_id": "1U0HpEeU3vc2xPpEYdwocCniddzmgevDz",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
-      "drive_id": "1NUCGcQZ3S4GyQVGm0OgKO6aSBVjOKBZa",
-      "title": "드리미_제미나이_해설검증",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/드리미_제미나이_해설검증",
-      "child_count": 3,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 8
     },
     {
       "kind": "file",
@@ -1621,7 +1587,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/드리미_제미나이_해설검증/사용자전달_영어PDF10개_20260917_HUMAN_APPROVAL_PENDING",
       "parent_drive_id": "1NUCGcQZ3S4GyQVGm0OgKO6aSBVjOKBZa",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 10
     },
     {
       "kind": "folder",
@@ -1630,16 +1597,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/드리미_제미나이_해설검증/원본문항",
       "parent_drive_id": "1NUCGcQZ3S4GyQVGm0OgKO6aSBVjOKBZa",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
-      "drive_id": "1pmyZ4fzjAxsRrkP1A4JEKd-ZNUezHspE",
-      "title": "특허_작업규칙_강제게이트",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/특허_작업규칙_강제게이트",
-      "child_count": 3,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 1
     },
     {
       "kind": "folder",
@@ -1648,7 +1607,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/특허_작업규칙_강제게이트/02_현재제출직전본",
       "parent_drive_id": "1pmyZ4fzjAxsRrkP1A4JEKd-ZNUezHspE",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 4
     },
     {
       "kind": "folder",
@@ -1657,7 +1617,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/특허_작업규칙_강제게이트/01_기준제출본",
       "parent_drive_id": "1pmyZ4fzjAxsRrkP1A4JEKd-ZNUezHspE",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 2
     },
     {
       "kind": "folder",
@@ -1666,16 +1627,8 @@
       "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/특허_작업규칙_강제게이트/00_규칙기준본",
       "parent_drive_id": "1pmyZ4fzjAxsRrkP1A4JEKd-ZNUezHspE",
       "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
-      "drive_id": "1D6GVYcU-NvJraLR4pjEalZzvvny8PZ8_",
-      "title": "징벌게이트_낙인게이트",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/징벌게이트_낙인게이트",
-      "child_count": 8,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
+      "provider_policy": "never_send",
+      "child_count": 4
     },
     {
       "kind": "file",
@@ -1771,15 +1724,6 @@
       "source_size_bytes": 2073,
       "modified_time": "2026-09-19T17:08:06.776Z",
       "server_storage_state": "REFERENCE_ONLY_DRIVE",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
-      "drive_id": "1bjwAeVQNfaVXw5b2z979ggls9hVm1Oa7",
-      "title": "ChatGPT_현재창_완전인계_20260906",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/ChatGPT_현재창_완전인계_20260906",
-      "child_count": 12,
-      "server_storage_state": "FOLDER_INDEXED",
       "provider_policy": "never_send"
     },
     {
@@ -1927,15 +1871,6 @@
       "provider_policy": "never_send"
     },
     {
-      "kind": "folder",
-      "drive_id": "1ckm6YGoj-hpJYZ_Rtfc-MZ531pQRTT2f",
-      "title": "2026-09-12_선행기술반영_최종작성",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/목적보호게이트_P1-P6/2026-09-12_선행기술반영_최종작성",
-      "child_count": 11,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
       "kind": "file",
       "drive_id": "1LWAN4hEQOe2CFH5bBy9tmGA0wzxR13Nf",
       "title": "목적보호게이트_P1-P6_파일목록_SHA256_20260912.txt",
@@ -2068,15 +2003,6 @@
       "provider_policy": "never_send"
     },
     {
-      "kind": "folder",
-      "drive_id": "14qG-Gj8Kz9XRXDO4pWFY-egPpN1lpjJs",
-      "title": "2026-09-12_내용완성",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/목적보호게이트_P1-P6/2026-09-12_내용완성",
-      "child_count": 9,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
       "kind": "file",
       "drive_id": "1FZHSZrAQCK_tiTx1TPbfOtxgyu7Dg3T2",
       "title": "목적보호게이트_P1-P6_내용완성패키지_20260912.zip",
@@ -2185,15 +2111,6 @@
       "provider_policy": "never_send"
     },
     {
-      "kind": "folder",
-      "drive_id": "1Y7FJnU4sIYPQ_-DXxJkMWJFD-hbePdDg",
-      "title": "2026-09-12_KIPO구조검증",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/목적보호게이트_P1-P6/2026-09-12_KIPO구조검증",
-      "child_count": 8,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
       "kind": "file",
       "drive_id": "1yeuUed_0QCsNEikODqNeukdhcEVb-Kxn",
       "title": "목적보호게이트_P1-P6_KIPO구조검증본_20260912.zip",
@@ -2287,15 +2204,6 @@
       "source_size_bytes": 4305,
       "modified_time": "2026-09-19T17:20:51.868Z",
       "server_storage_state": "REFERENCE_ONLY_DRIVE",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
-      "drive_id": "1Qrnz-cqPv2jCBRE3XxgYI43RdyiEwCUX",
-      "title": "사용자전달_영어PDF10개_20260917_HUMAN_APPROVAL_PENDING",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/드리미_제미나이_해설검증/사용자전달_영어PDF10개_20260917_HUMAN_APPROVAL_PENDING",
-      "child_count": 10,
-      "server_storage_state": "FOLDER_INDEXED",
       "provider_policy": "never_send"
     },
     {
@@ -2419,15 +2327,6 @@
       "provider_policy": "never_send"
     },
     {
-      "kind": "folder",
-      "drive_id": "1m3XoSZwTfsRzdFLo3UG3WFJ5MS6sZJDg",
-      "title": "원본문항",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/드리미_제미나이_해설검증/원본문항",
-      "child_count": 1,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
       "kind": "file",
       "drive_id": "1CjDh2l16fgiQu1GnbMfOKuIzHf6IGXMC",
       "title": "English_Questions_Q426_to_Q445.docx",
@@ -2437,15 +2336,6 @@
       "source_size_bytes": 42340,
       "modified_time": "2026-09-19T17:19:28.289Z",
       "server_storage_state": "REFERENCE_ONLY_DRIVE",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
-      "drive_id": "17GAMYgvtbfaa6nNTPlEjelWSXr-3YurC",
-      "title": "02_현재제출직전본",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/특허_작업규칙_강제게이트/02_현재제출직전본",
-      "child_count": 4,
-      "server_storage_state": "FOLDER_INDEXED",
       "provider_policy": "never_send"
     },
     {
@@ -2497,15 +2387,6 @@
       "provider_policy": "never_send"
     },
     {
-      "kind": "folder",
-      "drive_id": "14PO62IdDQiPx7EfpS5FaQ66sI_GZItwS",
-      "title": "01_기준제출본",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/특허_작업규칙_강제게이트/01_기준제출본",
-      "child_count": 2,
-      "server_storage_state": "FOLDER_INDEXED",
-      "provider_policy": "never_send"
-    },
-    {
       "kind": "file",
       "drive_id": "1KjkMOHUxU285ourslONjUJF6cTFwwEUH",
       "title": "09_AI중재_우선권검토설명_20260910.docx",
@@ -2527,15 +2408,6 @@
       "source_size_bytes": 270773,
       "modified_time": "2026-09-19T17:18:25.288Z",
       "server_storage_state": "REFERENCE_ONLY_DRIVE",
-      "provider_policy": "never_send"
-    },
-    {
-      "kind": "folder",
-      "drive_id": "1ZIcz7ZNqwO5lc2H-ClxhElLOaggykmNY",
-      "title": "00_규칙기준본",
-      "source_path": "교육플랫폼_비공개_마스터DB_영업비밀/Library_전체백업_암호화_20260919/특허_작업규칙_강제게이트/00_규칙기준본",
-      "child_count": 4,
-      "server_storage_state": "FOLDER_INDEXED",
       "provider_policy": "never_send"
     },
     {
@@ -2586,5 +2458,8 @@
       "server_storage_state": "REFERENCE_ONLY_DRIVE",
       "provider_policy": "never_send"
     }
-  ]
+  ],
+  "unique_entry_count": 194,
+  "unique_folder_count": 17,
+  "unique_file_count": 177
 }
