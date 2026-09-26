@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -8,6 +8,8 @@ from app.core.config import settings
 from app.services.authoring_assets import get_asset_manifest
 import app.services.context_overlay  # installs task-scoped provider context builders
 from app.services.human_ai_charter import CHARTER
+from app.services.owner_basic_auth import require_owner
+from app.services.teacher_view import build_teacher_html
 from app.services.privacy_guard import ProviderZDRHeld, privacy_status as provider_privacy_status
 from app.services.control_plane import (
     ProviderHeld,
@@ -33,6 +35,9 @@ app = FastAPI(
         "EduRecover AI backend for Trust Chain, Vaccine Graph, "
         "and Socratic Trap services."
     ),
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 
@@ -74,22 +79,22 @@ class ApplyTrapRequest(BaseModel):
     )
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-async def platform_home() -> HTMLResponse:
-    """Serve the EduRecover teacher authoring platform."""
-    return HTMLResponse(PILOT_HTML)
+@app.get("/", include_in_schema=False)
+async def platform_home() -> RedirectResponse:
+    """Public entry goes to the teacher-only surface."""
+    return RedirectResponse(url="/teacher-free", status_code=307)
 
 
 @app.get("/owner", response_class=HTMLResponse, include_in_schema=False)
-async def owner_platform() -> HTMLResponse:
-    """Owner platform address."""
+async def owner_platform(_: None = Depends(require_owner)) -> HTMLResponse:
+    """Owner-only platform address."""
     return HTMLResponse(PILOT_HTML.replace("교사 출제 플랫폼", "소유자 운영 플랫폼", 1))
 
 
 @app.get("/teacher-free", response_class=HTMLResponse, include_in_schema=False)
 async def free_teacher_platform() -> HTMLResponse:
-    """Free-teacher platform address."""
-    return HTMLResponse(PILOT_HTML.replace("교사 출제 플랫폼", "무료 교사회원 출제 플랫폼", 1))
+    """Free-teacher platform with owner/admin diagnostics removed."""
+    return HTMLResponse(build_teacher_html(PILOT_HTML))
 
 
 @app.get("/pilot", include_in_schema=False)
@@ -128,23 +133,33 @@ async def ai_status() -> dict[str, Any]:
             "model": settings.anthropic_model,
         },
         "default_provider": "openai",
-        "privacy_gate": provider_privacy_status(),
     }
 
 
 @app.get("/authoring-assets", tags=["authoring"])
 async def authoring_assets() -> dict[str, Any]:
-    """List private server-side EduRecover authoring assets without exposing raw internal text."""
+    """Teacher-safe summary; internal asset names and locations are not exposed."""
     return {
         "usage": "generation_and_verification",
         "sharing": "task-relevant excerpts only",
         "platform_chat_history_forwarded": False,
-        "assets": get_asset_manifest(),
+        "asset_categories": [
+            "학년별 어휘·구문 기준",
+            "문항 출제·검수 기준",
+            "오답 설계 기준",
+            "문항유형별 검증 기준",
+        ],
     }
 
 
-@app.get("/storage-locations", response_class=HTMLResponse, tags=["system"])
-async def storage_locations() -> HTMLResponse:
+@app.get("/owner/authoring-assets", tags=["owner"])
+async def owner_authoring_assets(_: None = Depends(require_owner)) -> dict[str, Any]:
+    """Owner-only detailed server asset manifest."""
+    return {"assets": get_asset_manifest()}
+
+
+@app.get("/storage-locations", response_class=HTMLResponse, tags=["owner"])
+async def storage_locations(_: None = Depends(require_owner)) -> HTMLResponse:
     """Return the non-secret storage-location report."""
     from pathlib import Path
     path = Path(__file__).resolve().parents[1] / "SERVER_STORAGE_LOCATIONS.txt"
@@ -158,20 +173,20 @@ async def human_ai_charter() -> dict[str, Any]:
     return CHARTER
 
 
-@app.get("/control-status", tags=["system"])
-async def platform_control_status() -> dict[str, Any]:
+@app.get("/control-status", tags=["owner"])
+async def platform_control_status(_: None = Depends(require_owner)) -> dict[str, Any]:
     """Expose non-secret owner-sovereignty and AI-control state."""
     return control_status()
 
 
-@app.get("/owner-notebook-tasks", tags=["system"])
-async def owner_notebook_tasks() -> dict[str, Any]:
+@app.get("/owner-notebook-tasks", tags=["owner"])
+async def owner_notebook_tasks(_: None = Depends(require_owner)) -> dict[str, Any]:
     """Return the remaining owner-side setup steps without secret values."""
     return {"tasks": notebook_tasks()}
 
 
-@app.get("/privacy-status", tags=["system"])
-async def privacy_status() -> dict[str, Any]:
+@app.get("/privacy-status", tags=["owner"])
+async def privacy_status(_: None = Depends(require_owner)) -> dict[str, Any]:
     """Describe application and provider-retention gates without exposing secrets."""
     status = provider_privacy_status()
     status.update({
