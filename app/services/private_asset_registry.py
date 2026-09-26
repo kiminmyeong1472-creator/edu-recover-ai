@@ -154,25 +154,6 @@ def _read(name: str) -> str:
     return _neutralize_provenance(p.read_text(encoding="utf-8"))
 
 
-def _asset_receipt(name: str) -> dict[str, Any] | None:
-    """Return non-secret provenance/integrity metadata for an excerptable asset."""
-    item = next((row for row in PRIVATE_ASSETS if row.get("file") == name), None)
-    if not item or item.get("provider_policy") != "excerpt_only":
-        return None
-    p = _path(name)
-    if not p.exists():
-        return None
-    data = p.read_bytes()
-    return {
-        "file": name,
-        "drive_id": item.get("drive_id"),
-        "purpose": item.get("purpose"),
-        "provider_policy": "excerpt_only",
-        "size_bytes": len(data),
-        "sha256": hashlib.sha256(data).hexdigest(),
-    }
-
-
 def _clip(text: str, limit: int) -> str:
     text = text.strip()
     return text if len(text) <= limit else text[:limit].rstrip() + "\n...[task excerpt clipped]"
@@ -262,21 +243,6 @@ def build_task_scoped_private_context(
     )
 
     active_excerpts = {k: v for k, v in excerpts.items() if v.strip()}
-    receipt_sources = {
-        "csat_authoring_principles": "csat_authoring_principles_20260920.txt",
-        "csat_choice_patterns": "csat2026_choices128_full_analysis.txt",
-        "school_exam_authoring_principles": "school_exam_authoring_principles_20260920.txt",
-        "distractor_direct_map": "distractor_36_direct_map_20260920.txt",
-        "grade_blueprint": "english_grade_blueprint_300.txt",
-        "retag_evidence": "english300_distractor1200_retag.txt",
-    }
-    receipts: list[dict[str, Any]] = []
-    for key, name in receipt_sources.items():
-        if key not in active_excerpts:
-            continue
-        receipt = _asset_receipt(name)
-        if receipt is not None:
-            receipts.append(receipt)
 
     return {
         "delivery_scope": "single_request_only",
@@ -284,12 +250,7 @@ def build_task_scoped_private_context(
         "persistent_provider_memory_required": False,
         "provider_may_store_internal_corpus": False,
         "task_relevant_excerpts": active_excerpts,
-        "delivery_manifest": {
-            "rule": "Only excerpt_only assets listed here contributed to this request; never_send/archive assets are excluded.",
-            "assets": receipts,
-        },
     }
-
 
 
 def _load_drive_archive_manifest() -> dict[str, Any]:
