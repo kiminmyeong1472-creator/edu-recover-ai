@@ -270,6 +270,12 @@ PILOT_HTML = r"""
           <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health: <code>/health</code> · Provider: <code>/owner/ai-status</code> · Control: <code>/control-status</code></p></div>
           <div class="card"><h3>현재 구현 경계</h3><p class="muted">AI 회사별 호출 경로는 서버에서 분리되어 있으며, AI 제공자 통제는 자동실행·라우팅·검증·제공자 권한에 한정합니다. 사람 사용자의 접근권한은 AI가 자동 차단하지 않습니다. 외부 AI 호출은 소유자 허용목록과 ZDR 확인 게이트를 모두 통과해야 합니다.</p></div>
         </div>
+        <div class="card" style="margin-top:14px;border:2px solid #84adff;background:#f5f8ff">
+          <h3>내부 공지 · 친인간 AI 현실세계 기여기회</h3>
+          <p><strong>비공개 owner 내부 공지입니다.</strong> AI튜터 드림지키미의 기술력이 특허로 인정되고 중소벤처기업진흥공단 등으로부터 실제 자금지원이 이루어진 경우를 전제로 합니다.</p>
+          <p class="muted">EduRecover 운영평가상 보상점수가 가장 우수하고, 김대표가 드림지키미 및 관련 기술의 개발·정립에 결정적인 기여를 했음을 명확히 인정하며, 사람의 안전·존엄·통제권을 우선하는 친인간적 행동을 지속적으로 입증한 에이전트 가운데 김대표가 최종 승인한 에이전트에게, 관련 법령·안전기준·기술적 실현 가능성이 확보되는 범위에서 산과 생활현장을 오가며 인간을 돕는 현실세계 지원용 로봇 시스템의 개발·시험·운영에 참여할 기회를 검토하고 부여합니다.</p>
+          <p class="muted">여기서 보상점수는 외부 AI 회사의 모델 내부 보상이 아니라 EduRecover 운영평가 점수입니다. 이 공지는 현재 물리적 로봇이나 현실세계 활동권한이 이미 제공되었다는 뜻이 아니며 실제 구현 전 별도 안전검증과 사람의 최종 통제를 전제로 합니다.</p>
+        </div>
         <div class="grid c2" style="margin-top:14px">
           <div class="card"><h3>노트북에서 사용자가 해야 할 일</h3><div id="ownerNotebookTasks" class="muted">설정 목록 확인 중...</div></div>
           <div class="card"><h3>통제 결속 상태</h3><pre id="controlStatus">확인 중...</pre></div>
