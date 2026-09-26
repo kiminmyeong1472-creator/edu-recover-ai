@@ -18,9 +18,16 @@ from app.training.promotion import evaluate_model_promotion
 from app.training.models import PromotionEvidence, ModelLifecycleState
 from app.training.snapshot import build_dataset_snapshot
 from app.training.socratic import (
+    ConceptTargetPlan,
     DiagnosticStage,
     SocraticTrajectory,
     TutoringTurn,
+)
+from app.training.tutoring_ip_gate import (
+    IPReviewState,
+    TutoringIPReview,
+    TutoringTrainingUse,
+    assert_tutoring_use_allowed,
 )
 
 
@@ -41,6 +48,49 @@ def eligible_envelope(trajectory_id="t-1"):
         source_integrity_verified=True,
         evidence_refs=("e-1",),
     )
+
+
+def concept_plan():
+    return ConceptTargetPlan(
+        target_concept_id="MATH:RATIO_CHAIN",
+        target_concept_revision="rev-1",
+        learning_goal="Explain and apply the chained multiplicative relation.",
+        misconception_hypothesis_ids=("H1", "H2"),
+        predesigned_trap_probe_ids=("TRAP-1", "TRAP-2"),
+        predesigned_boundary_probe_ids=("BOUNDARY-1",),
+        question_plan_hash="q" * 64,
+    )
+
+
+def tutoring_trajectory(**overrides):
+    data = dict(
+        trajectory_id="s-1",
+        educational_object_revision="rev-1",
+        educational_object_hash="c" * 64,
+        subject_code="MATH",
+        difficulty_band="ADVANCED",
+        concept_plan=concept_plan(),
+        learner_initial_response_hash="d" * 64,
+        turns=(
+            TutoringTurn(
+                turn_index=0,
+                stage=DiagnosticStage.REASON_PROBE,
+                tutor_action_code="WHY_THIS_STEP",
+                target_concept_id="MATH:RATIO_CHAIN",
+                answer_revealed=False,
+            ),
+            TutoringTurn(
+                turn_index=1,
+                stage=DiagnosticStage.TRANSFER_CHECK,
+                tutor_action_code="CHANGE_CONTEXT_SAME_CONCEPT",
+                target_concept_id="MATH:RATIO_CHAIN",
+                variation_dimension="context",
+                answer_revealed=False,
+            ),
+        ),
+    )
+    data.update(overrides)
+    return SocraticTrajectory(**data)
 
 
 class EligibilityTests(unittest.TestCase):
@@ -84,24 +134,80 @@ class SnapshotTests(unittest.TestCase):
 
 class SocraticTests(unittest.TestCase):
     def test_early_answer_reveal_is_blocked(self):
-        trajectory = SocraticTrajectory(
-            trajectory_id="s-1",
-            educational_object_revision="rev-1",
-            educational_object_hash="c" * 64,
-            subject_code="MATH",
-            difficulty_band="ADVANCED",
-            learner_initial_response_hash="d" * 64,
+        trajectory = tutoring_trajectory(
             turns=(
                 TutoringTurn(
                     turn_index=0,
                     stage=DiagnosticStage.REASON_PROBE,
                     tutor_action_code="WHY_THIS_STEP",
+                    target_concept_id="MATH:RATIO_CHAIN",
                     answer_revealed=True,
                 ),
             ),
         )
         with self.assertRaises(ValueError):
-            trajectory.assert_no_early_answer_reveal()
+            trajectory.assert_owner_tutoring_policy()
+
+    def test_transfer_must_stay_on_same_target_concept(self):
+        trajectory = tutoring_trajectory(
+            turns=(
+                TutoringTurn(
+                    turn_index=0,
+                    stage=DiagnosticStage.TRANSFER_CHECK,
+                    tutor_action_code="UNRELATED_NEW_CONCEPT",
+                    target_concept_id="MATH:UNRELATED",
+                    answer_revealed=False,
+                ),
+            ),
+        )
+        with self.assertRaises(ValueError):
+            trajectory.assert_owner_tutoring_policy()
+
+    def test_tutoring_response_cannot_feed_distractor_optimization(self):
+        trajectory = tutoring_trajectory(
+            used_for_distractor_optimization=True,
+        )
+        with self.assertRaises(ValueError):
+            trajectory.assert_owner_tutoring_policy()
+
+    def test_same_concept_question_variation_is_allowed(self):
+        trajectory = tutoring_trajectory()
+        trajectory.assert_owner_tutoring_policy()
+        trajectory.assert_transfer_is_same_concept()
+
+
+class TutoringIPGateTests(unittest.TestCase):
+    def test_tutor_model_training_is_held_without_explicit_clearance(self):
+        review = TutoringIPReview(
+            review_id="r-1",
+            state=IPReviewState.REVIEWED_LIMITED_USE,
+        )
+        with self.assertRaises(ValueError):
+            assert_tutoring_use_allowed(
+                intended_use=TutoringTrainingUse.TUTOR_MODEL_TRAINING,
+                review=review,
+            )
+
+    def test_choice_rate_dpo_remains_blocked_even_after_clearance(self):
+        review = TutoringIPReview(
+            review_id="r-2",
+            state=IPReviewState.CLEARED_FOR_TUTOR_MODEL_TRAINING,
+        )
+        with self.assertRaises(ValueError):
+            assert_tutoring_use_allowed(
+                intended_use=TutoringTrainingUse.CHOICE_RATE_DPO,
+                review=review,
+            )
+
+    def test_tutor_model_training_can_pass_after_explicit_clearance(self):
+        review = TutoringIPReview(
+            review_id="r-3",
+            state=IPReviewState.CLEARED_FOR_TUTOR_MODEL_TRAINING,
+        )
+        assert_tutoring_use_allowed(
+            intended_use=TutoringTrainingUse.TUTOR_MODEL_TRAINING,
+            review=review,
+        )
 
 
 class PromotionTests(unittest.TestCase):
