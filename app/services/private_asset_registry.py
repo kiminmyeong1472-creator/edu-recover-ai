@@ -58,6 +58,12 @@ PRIVATE_ASSETS: tuple[dict[str, Any], ...] = (
         "provider_policy": "excerpt_only",
     },
     {
+        "file": "edurecover_handoff_20260926.txt",
+        "drive_id": "1SrcTWk_gwL_CyBD8hanjofI2z7Go2E94cOg3XQVODeQ",
+        "purpose": "현재 완전인계 문서",
+        "provider_policy": "never_send",
+    },
+    {
         "file": "edurecover_source_dump_v3.24.5_20260924.txt",
         "drive_id": "1G8wx2YUhmqxh7mkVonJD6l4mQAbdxQQ0",
         "purpose": "과거 전체 소스 덤프",
