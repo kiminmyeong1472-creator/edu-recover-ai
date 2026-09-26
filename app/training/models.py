@@ -39,6 +39,26 @@ class ConsentState(StrEnum):
     REVOKED = "REVOKED"
 
 
+class PatentClearanceState(StrEnum):
+    NOT_REVIEWED = "NOT_REVIEWED"
+    HOLD = "HOLD"
+    CLEARED = "CLEARED"
+
+
+class TrainingUseScope(StrEnum):
+    """Where a record may be used.
+
+    Student-response tutoring data must never silently flow into question
+    synthesis or distractor-attractiveness training.
+    """
+
+    TUTOR_POLICY = "TUTOR_POLICY"
+    STUDENT_MODEL = "STUDENT_MODEL"
+    ITEM_GENERATOR = "ITEM_GENERATOR"
+    DISTRACTOR_RANKER = "DISTRACTOR_RANKER"
+    EVAL_ONLY = "EVAL_ONLY"
+
+
 class TrainingPurpose(StrEnum):
     SFT = "SFT"
     PREFERENCE = "PREFERENCE"
@@ -70,6 +90,10 @@ class TrajectoryEnvelope(BaseModel):
     source_class: SourceClass
     rights_state: RightsState = RightsState.UNKNOWN
     consent_state: ConsentState = ConsentState.NOT_REQUIRED
+    patent_clearance: PatentClearanceState = PatentClearanceState.NOT_REVIEWED
+    requested_use_scopes: tuple[TrainingUseScope, ...] = (
+        TrainingUseScope.EVAL_ONLY,
+    )
     contains_personal_data: bool = False
     deidentified: bool = False
     learner_pseudonymous_id: str | None = None
@@ -90,6 +114,7 @@ class EligibilityDecision(BaseModel):
     status: TrainingDataStatus
     reasons: tuple[str, ...]
     allowed_purposes: tuple[TrainingPurpose, ...] = ()
+    allowed_use_scopes: tuple[TrainingUseScope, ...] = ()
 
 
 class BaseModelSpec(BaseModel):
