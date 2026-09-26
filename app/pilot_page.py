@@ -366,6 +366,7 @@ async function generateQuestions(){
   if(!source.trim()){out.textContent="출제 원문을 입력하십시오.";return;}
   const payload={
     provider,
+    explicit_authorization:true,
     source_text:source,
     count:Number(workspace.exam.count||1),
     subject:document.getElementById("subject")?.value||"영어",
@@ -383,7 +384,7 @@ async function generateQuestions(){
     const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok){out.textContent="자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
-    workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;persist();
+    workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;workspace.lastGenerationReceipt=d.execution_receipt||null;persist();
     out.textContent=providerLabel(d.provider)+" · "+d.count+"문항 생성 완료. 문항 작업실에서 교사가 확인·수정하십시오.";
     await showCrossVerifyPrompt(d.provider, Number(d.count)||workspace.items.length);
   }catch(e){out.textContent="자동출제 요청 실패: "+e.message;}
@@ -421,7 +422,7 @@ async function runCrossVerification(){
   yes.disabled=true;no.hidden=true;message.textContent=providerLabel(provider)+" AI 검증 에이전트가 출제된 전체 문항을 검증 중입니다...";
   try{
     const route={openai:"/channel/openai/verify",gemini:"/channel/gemini/verify",claude:"/channel/claude/verify"}[provider];
-    const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,problems:workspace.items})});
+    const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,origin_provider:workspace.lastGenerationProvider,origin_invocation_id:workspace.lastGenerationReceipt?.invocation_id||null,explicit_authorization:true,problems:workspace.items})});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok)throw new Error(d.detail||t);
     workspace.lastCrossVerification=d;persist();

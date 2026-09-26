@@ -57,6 +57,7 @@ class VerifyProblemRequest(BaseModel):
 class GenerateQuestionsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: Literal["openai", "gemini", "claude"]
+    explicit_authorization: Literal[True]
     source_text: str = Field(..., min_length=1)
     count: int = Field(default=20, ge=1, le=50)
     subject: str = "영어"
@@ -72,6 +73,9 @@ class GenerateQuestionsRequest(BaseModel):
 class VerifyWithProviderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: Literal["openai", "gemini", "claude"]
+    origin_provider: Literal["openai", "gemini", "claude"]
+    origin_invocation_id: str | None = Field(default=None, min_length=8, max_length=128)
+    explicit_authorization: Literal[True]
     problems: list[dict[str, Any]] = Field(..., min_length=1)
 
 
@@ -79,6 +83,48 @@ class ExportDocxRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     exam: dict[str, Any]
     items: list[dict[str, Any]] = Field(..., min_length=1, max_length=100)
+
+
+def _sha256_json(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _execution_receipt(
+    *,
+    provider: str,
+    action: Literal["generate", "verify"],
+    request_payload: dict[str, Any],
+    result_payload: dict[str, Any],
+    control_epoch: str,
+    origin_provider: str | None = None,
+    origin_invocation_id: str | None = None,
+) -> dict[str, Any]:
+    """Return a non-secret, provider-isolated receipt for one explicit call."""
+    receipt = {
+        "invocation_id": str(uuid.uuid4()),
+        "provider": provider,
+        "action": action,
+        "channel": f"/channel/{provider}/{action}",
+        "control_epoch": control_epoch,
+        "request_sha256": _sha256_json(request_payload),
+        "result_sha256": _sha256_json(result_payload),
+        "session_scope": "single_request_only",
+        "provider_session_persisted": False,
+        "cross_provider_state_shared": False,
+        "explicit_authorization": True,
+    }
+    if origin_provider is not None:
+        receipt["origin_provider"] = origin_provider
+    if origin_invocation_id is not None:
+        receipt["origin_invocation_id"] = origin_invocation_id
+    return receipt
 
 
 class ApplyTrapRequest(BaseModel):
@@ -285,7 +331,7 @@ async def _run_generation_channel(
     if payload.provider != provider:
         raise HTTPException(status_code=400, detail="Provider/channel mismatch.")
     try:
-        assert_provider_allowed(provider, "generate")
+        decision = assert_provider_allowed(provider, "generate")
         result = await generate_questions(
             provider=provider,
             source_text=payload.source_text,
@@ -307,7 +353,15 @@ async def _run_generation_channel(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except GenerationFailed as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return result.to_dict()
+    response = result.to_dict()
+    response["execution_receipt"] = _execution_receipt(
+        provider=provider,
+        action="generate",
+        request_payload=payload.model_dump(mode="json"),
+        result_payload=response,
+        control_epoch=decision.control_epoch,
+    )
+    return response
 
 
 @app.post("/channel/openai/generate", tags=["authoring"])
@@ -336,9 +390,14 @@ async def _run_verification_channel(
 ) -> dict[str, Any]:
     if payload.provider != provider:
         raise HTTPException(status_code=400, detail="Provider/channel mismatch.")
+    if payload.origin_provider == provider:
+        raise HTTPException(
+            status_code=409,
+            detail="Cross-verification must use a provider different from the generation provider.",
+        )
     try:
-        assert_provider_allowed(provider, "verify")
-        return await verify_with_provider(provider, payload.problems)
+        decision = assert_provider_allowed(provider, "verify")
+        result = await verify_with_provider(provider, payload.problems)
     except ProviderHeld as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
     except ProviderZDRHeld as exc:
@@ -347,6 +406,19 @@ async def _run_verification_channel(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except GenerationFailed as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    response = dict(result)
+    response["origin_provider"] = payload.origin_provider
+    response["execution_receipt"] = _execution_receipt(
+        provider=provider,
+        action="verify",
+        request_payload=payload.model_dump(mode="json"),
+        result_payload=response,
+        control_epoch=decision.control_epoch,
+        origin_provider=payload.origin_provider,
+        origin_invocation_id=payload.origin_invocation_id,
+    )
+    return response
 
 
 @app.post("/channel/openai/verify", tags=["authoring"])
