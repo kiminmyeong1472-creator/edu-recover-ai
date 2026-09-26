@@ -267,7 +267,7 @@ PILOT_HTML = r"""
       <section id="system" class="view">
         <div class="hero"><div><h2>시스템</h2><p>현재 배포와 API 상태 및 사용자 주권형 통제상태를 확인합니다.</p></div></div>
         <div class="grid c2">
-          <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health: <code>/health</code> · AI: <code>/ai-status</code> · Control: <code>/control-status</code></p><a href="/docs" target="_blank">FastAPI 문서 열기</a></div>
+          <div class="card"><h3>백엔드 상태</h3><p id="systemHealth">확인 중...</p><p class="muted">Health: <code>/health</code> · Provider: <code>/owner/ai-status</code> · Control: <code>/control-status</code></p></div>
           <div class="card"><h3>현재 구현 경계</h3><p class="muted">AI 회사별 호출 경로는 서버에서 분리되어 있으며, AI 제공자 통제는 자동실행·라우팅·검증·제공자 권한에 한정합니다. 사람 사용자의 접근권한은 AI가 자동 차단하지 않습니다. 외부 AI 호출은 소유자 허용목록과 ZDR 확인 게이트를 모두 통과해야 합니다.</p></div>
         </div>
         <div class="grid c2" style="margin-top:14px">
@@ -450,10 +450,11 @@ async function refreshAuthoringAssets(){
 async function refreshOwnerControl(){
   const taskEl=document.getElementById("ownerNotebookTasks"),controlEl=document.getElementById("controlStatus");
   try{
-    const [tr,cr]=await Promise.all([fetch("/owner-notebook-tasks"),fetch("/control-status")]);
-    const td=await tr.json(),cd=await cr.json();
+    const [tr,cr,ar]=await Promise.all([fetch("/owner-notebook-tasks"),fetch("/control-status"),fetch("/owner/ai-status")]);
+    const td=await tr.json(),cd=await cr.json(),ad=await ar.json();
+    if(!tr.ok||!cr.ok||!ar.ok)throw new Error("owner diagnostics HTTP error");
     if(taskEl) taskEl.innerHTML=(td.tasks||[]).map(x=>"<div style='margin-bottom:8px'><strong>"+escapeHtml(x.step+". "+x.title)+"</strong><br>"+escapeHtml(x.detail)+"</div>").join("");
-    if(controlEl) controlEl.textContent=JSON.stringify(cd,null,2);
+    if(controlEl) controlEl.textContent=JSON.stringify({control:cd,providers:ad},null,2);
   }catch(e){
     if(taskEl) taskEl.textContent="사용자 설정 목록 확인 실패: "+e.message;
     if(controlEl) controlEl.textContent="통제상태 확인 실패: "+e.message;
