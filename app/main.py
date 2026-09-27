@@ -409,6 +409,11 @@ async def _run_generation_channel(
     fallback_used = False
     fallback_reason: str | None = None
 
+    if provider == "openai" and "openai" in _runtime_generation_holds:
+        effective_provider = "gemini"
+        fallback_used = True
+        fallback_reason = "openai_runtime_auth_hold"
+
     async def _generate(selected_provider: Literal["openai", "gemini", "claude"]):
         selected_decision = assert_provider_allowed(selected_provider, "generate")
         selected_result = await generate_questions(
@@ -427,7 +432,7 @@ async def _run_generation_channel(
         return selected_decision, selected_result
 
     try:
-        decision, result = await _generate(provider)
+        decision, result = await _generate(effective_provider)
     except ProviderHeld as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
     except ProviderZDRHeld as exc:
