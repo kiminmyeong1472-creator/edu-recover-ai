@@ -56,6 +56,10 @@ app = FastAPI(
 
 logger = logging.getLogger(__name__)
 
+# Runtime-only provider hold used when a configured credential is rejected by
+# the upstream provider. This does not modify or delete any API key.
+_runtime_generation_holds: set[str] = set()
+
 
 @app.on_event("startup")
 async def backup_encryption_startup_self_test() -> None:
@@ -245,6 +249,8 @@ def _provider_model(provider: str) -> str:
 
 
 def _provider_ready_for_teacher(provider: str) -> bool:
+    if provider in _runtime_generation_holds:
+        return False
     configured = _provider_secret_configured(provider)
     try:
         decision = evaluate_provider(provider, "generate")
@@ -397,10 +403,16 @@ async def _run_generation_channel(
 ) -> dict[str, Any]:
     if payload.provider != provider:
         raise HTTPException(status_code=400, detail="Provider/channel mismatch.")
-    try:
-        decision = assert_provider_allowed(provider, "generate")
-        result = await generate_questions(
-            provider=provider,
+
+    requested_provider = provider
+    effective_provider = provider
+    fallback_used = False
+    fallback_reason: str | None = None
+
+    async def _generate(selected_provider: Literal["openai", "gemini", "claude"]):
+        selected_decision = assert_provider_allowed(selected_provider, "generate")
+        selected_result = await generate_questions(
+            provider=selected_provider,
             source_text=payload.source_text,
             count=payload.count,
             subject=payload.subject,
@@ -412,6 +424,10 @@ async def _run_generation_channel(
             scope_memo=payload.scope_memo,
             extra_instructions=payload.extra_instructions,
         )
+        return selected_decision, selected_result
+
+    try:
+        decision, result = await _generate(provider)
     except ProviderHeld as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
     except ProviderZDRHeld as exc:
@@ -419,12 +435,54 @@ async def _run_generation_channel(
     except GeneratorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except GenerationFailed as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        # Keep the owner's existing OpenAI key untouched. If OpenAI itself
+        # rejects that credential, route this generation attempt to the
+        # already-configured Gemini channel instead of forcing a key change.
+        if provider == "openai" and "AuthenticationError" in str(exc):
+            _runtime_generation_holds.add("openai")
+            effective_provider = "gemini"
+            fallback_used = True
+            fallback_reason = "openai_authentication_failed"
+            try:
+                decision, result = await _generate("gemini")
+            except ProviderHeld as fallback_exc:
+                raise HTTPException(status_code=423, detail=str(fallback_exc)) from fallback_exc
+            except ProviderZDRHeld as fallback_exc:
+                raise HTTPException(status_code=423, detail=str(fallback_exc)) from fallback_exc
+            except GeneratorNotConfigured as fallback_exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "OpenAI authentication failed and Gemini fallback is not configured: "
+                        + str(fallback_exc)
+                    ),
+                ) from fallback_exc
+            except GenerationFailed as fallback_exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "OpenAI authentication failed; Gemini fallback also failed: "
+                        + str(fallback_exc)
+                    ),
+                ) from fallback_exc
+        else:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     response = result.to_dict()
+    response["requested_provider"] = requested_provider
+    response["effective_provider"] = effective_provider
+    response["fallback_used"] = fallback_used
+    if fallback_reason is not None:
+        response["fallback_reason"] = fallback_reason
+
+    receipt_request = payload.model_dump(mode="json")
+    receipt_request["requested_provider"] = requested_provider
+    receipt_request["effective_provider"] = effective_provider
+
     response["execution_receipt"] = _execution_receipt(
-        provider=provider,
+        provider=result.provider,
         action="generate",
-        request_payload=payload.model_dump(mode="json"),
+        request_payload=receipt_request,
         result_payload=response,
         control_epoch=decision.control_epoch,
     )
