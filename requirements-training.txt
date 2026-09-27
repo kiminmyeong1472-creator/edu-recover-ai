@@ -1,0 +1,9 @@
+# Install PyTorch separately for the target GPU/CUDA environment.
+# Official gpt-oss cookbook example uses a CUDA-specific PyTorch wheel.
+-r requirements.txt
+transformers>=4.55.0
+peft>=0.17.0
+trl>=0.20.0
+datasets>=3.0
+accelerate>=1.0
+huggingface-hub>=0.34.0
