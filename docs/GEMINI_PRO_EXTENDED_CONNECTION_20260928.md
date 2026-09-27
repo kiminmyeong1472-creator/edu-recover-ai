@@ -92,3 +92,32 @@ Preview 모델은 운영 사용이 가능하지만 수명주기와 사용량 제
 - 응답의 `effective_provider`가 `gemini`이고 실행 영수증이 존재
 
 실제 운영 호출 결과는 배포 검증 후 이 문서에 추가한다.
+
+## 7. 2026-09-28 운영 검증 결과
+
+| 항목 | 결과 |
+|---|---|
+| 자동화 테스트 | 51 passed, 5 subtests passed |
+| Railway 배포 | SUCCESS |
+| `/health` | HTTP 200 |
+| `/ai-status` | Gemini `ready=true` |
+| Pro 실제 생성 | HTTP 502 (내부 upstream 429) |
+| Google 오류 | `RESOURCE_EXHAUSTED` |
+| 확정 원인 | `gemini-3.1-pro` 무료 등급 입력 토큰 한도 0 |
+
+Google의 원문 오류는 현재 프로젝트의
+`generate_content_free_tier_input_token_count` 한도가 0이라고 명시했다. 따라서
+API 키 형식이나 모델 ID가 잘못된 것이 아니라, 키가 연결된 Google Cloud 프로젝트가
+Gemini 3.1 Pro의 유료 사용 등급을 갖지 못한 상태다.
+
+### 남은 소유자 조치
+
+1. Google AI Studio의 **Projects** 또는 **Billing**에서 현재
+   `GEMINI_API_KEY`와 연결된 프로젝트를 선택한다.
+2. **Set up billing**을 눌러 유료 등급을 활성화한다.
+3. Prepay로 지정되면 Google 정책상 최소 미화 5달러 상당의 크레딧을 충전한다.
+4. 결제 반영 후 동일한 운영 생성 시험을 다시 실행한다.
+
+결제·선불 충전은 비용과 계약을 발생시키므로 자동으로 시행하지 않았다. 키 역시
+교체하지 않았다. 사용자가 결제를 활성화한 뒤 실제 생성 1건이 성공해야 본 연결을
+최종 완료로 판정한다.
