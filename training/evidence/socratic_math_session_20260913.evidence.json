@@ -1,0 +1,35 @@
+{
+  "evidence_id": "SOCRATIC_MATH_20260913_CHAINED_RATIO_001",
+  "source_file": "00_START_HERE_도움요청_완전인계_20260913_1305이후.txt",
+  "source_file_sha256": "b3b5707d46657356a66c3674dec03791a5c74baa2c74318297dca64ecdffaaf4",
+  "source_line_range": "389-399",
+  "learner_id": "LEARNER_A",
+  "deidentified": true,
+  "subject": "MATH",
+  "concept": "chained multiplicative/division relationship",
+  "known_facts": {
+    "prior_method_1": "나=1 concrete anchoring",
+    "prior_method_2": "bundle analogy",
+    "presented_problem": "가÷나=5, 다÷가=8 → 다÷나?"
+  },
+  "missing_from_preserved_record": [
+    "learner exact initial answer",
+    "learner exact reasoning",
+    "turn-by-turn tutor questions",
+    "turn-by-turn learner replies",
+    "outcome after the presented problem",
+    "delayed or transfer check result"
+  ],
+  "training_status": "QUARANTINED_INCOMPLETE_TRAJECTORY",
+  "permitted_use": [
+    "PROVENANCE_EVIDENCE",
+    "EVAL_SEED_AFTER_HUMAN_COMPLETION"
+  ],
+  "prohibited_use": [
+    "SFT_TARGET",
+    "PREFERENCE_TARGET",
+    "REWARD_TARGET"
+  ],
+  "note": "Do not invent missing learner/tutor turns. Complete only from preserved human-authored source records."
+}
+

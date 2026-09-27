@@ -19,6 +19,7 @@ EduRecover Classroom Video Tutor + Electronic Whiteboard Prototype v0.1
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import uuid
@@ -32,11 +33,16 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.services.owner_basic_auth import require_owner
+from app.training.tutor_learning import ContentTrustState
+from app.training.tutor_ledger import TutorLearningLedger
 
 APP_VERSION = "0.1.0"
 STATE_DIR = Path(os.environ.get("EDURECOVER_CLASSROOM_STATE_DIR", ".edurecover_classroom_state"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = STATE_DIR / "classroom_tutor.sqlite3"
+TRAINING_DB_PATH = STATE_DIR / "ai_tutor_training.sqlite3"
+TRAINING_LEDGER = TutorLearningLedger(TRAINING_DB_PATH)
+logger = logging.getLogger(__name__)
 
 classroom_tutor_router = APIRouter(prefix="/tutor", tags=["classroom-tutor"])
 
@@ -126,10 +132,20 @@ class Segment(BaseModel):
     text: str = ""
     media_url: Optional[str] = None
     pause_at_sec: Optional[float] = None
-    choices: list[str] = []
+    choices: list[str] = Field(default_factory=list)
     correct_answer: Optional[str] = None
     misconception_path: Optional[str] = None
-    branch_map: dict[str, str] = {}
+    branch_map: dict[str, str] = Field(default_factory=dict)
+    concept_key: str = "UNSPECIFIED"
+    content_revision_id: Optional[str] = None
+    source_integrity_verified: bool = False
+    content_trust: ContentTrustState = ContentTrustState.UNVERIFIED
+    feedback_phase: Optional[Literal["PRE_FEEDBACK", "POST_FEEDBACK"]] = None
+    independent_followup: bool = False
+    delayed_hours: float = Field(default=0, ge=0)
+    hint_level: int = Field(default=0, ge=0, le=10)
+    answer_disclosed: bool = False
+    tutor_action_content_revision: Optional[str] = None
 
 
 class SessionCreate(BaseModel):
@@ -143,7 +159,7 @@ class SessionCreate(BaseModel):
         "BROWSER", "MIRACAST", "AIRPLAY", "GOOGLE_CAST", "HDMI", "USB_C", "VENDOR_CAST", "OTHER"
     ] = "BROWSER"
     privacy_mode: Literal["AGGREGATE_ONLY", "ALIAS_ONLY"] = "AGGREGATE_ONLY"
-    lesson: list[Segment] = []
+    lesson: list[Segment] = Field(default_factory=list)
 
 
 class Command(BaseModel):
@@ -179,11 +195,36 @@ class EduRecoverQuestionBundle(BaseModel):
     correct_answer: Optional[str] = None
     misconception_path: Optional[str] = None
     concise_explanation: Optional[str] = None
-    socratic_questions: list[str] = []
-    retest_choices: list[str] = []
+    socratic_questions: list[str] = Field(default_factory=list)
+    retest_choices: list[str] = Field(default_factory=list)
     retest_correct_answer: Optional[str] = None
     video_url: Optional[str] = None
     source_scope: str = "TUTOR_MINIMAL_CONTEXT"
+    concept_key: str = "UNSPECIFIED"
+    content_revision_id: Optional[str] = None
+    source_integrity_verified: bool = False
+
+
+class TrainingReviewRequest(BaseModel):
+    response_id: str = Field(min_length=1)
+    teacher_validated: Literal[True]
+    source_integrity_verified: bool = True
+    content_trust: ContentTrustState = ContentTrustState.VERIFIED
+    hint_or_explanation_confirmed: bool = False
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ContentDefectRequest(BaseModel):
+    content_revision_id: str = Field(min_length=1)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ActualTrainingUseRequest(BaseModel):
+    eligibility_revision_id: str = Field(min_length=1)
+    training_job_id: str = Field(min_length=1)
+    tutor_model_version: str = Field(min_length=1)
+    sample_hash: str = Field(min_length=64, max_length=64)
+    confirmed_actual_use: Literal[True]
 
 
 
@@ -194,6 +235,9 @@ DEFAULT_LESSON = [
         title="오답 원인 확인",
         text="정답을 바로 말하지 않고, 먼저 학생이 어느 지점에서 조건을 바꾸어 읽었는지 확인합니다.",
         misconception_path="조건의 범위를 전체 상황으로 과도하게 일반화함",
+        concept_key="DEFAULT:CONDITION_SCOPE",
+        content_revision_id="default-condition-scope:problem:v1",
+        feedback_phase="PRE_FEEDBACK",
     ),
     Segment(
         segment_id="seg-2",
@@ -203,6 +247,9 @@ DEFAULT_LESSON = [
         media_url="",
         pause_at_sec=8,
         misconception_path="조건의 범위를 전체 상황으로 과도하게 일반화함",
+        concept_key="DEFAULT:CONDITION_SCOPE",
+        content_revision_id="default-condition-scope:hint:v1",
+        hint_level=1,
     ),
     Segment(
         segment_id="seg-3",
@@ -212,6 +259,10 @@ DEFAULT_LESSON = [
         choices=["항상 성립", "특정 조건에서만 성립", "잘 모르겠다"],
         correct_answer="특정 조건에서만 성립",
         branch_map={"항상 성립": "seg-2", "특정 조건에서만 성립": "seg-4", "잘 모르겠다": "seg-2"},
+        concept_key="DEFAULT:CONDITION_SCOPE",
+        content_revision_id="default-condition-scope:probe:v1",
+        feedback_phase="POST_FEEDBACK",
+        tutor_action_content_revision="default-condition-scope:hint:v1",
     ),
     Segment(
         segment_id="seg-4",
@@ -220,6 +271,10 @@ DEFAULT_LESSON = [
         text="같은 오개념을 다른 표현의 문제에서 다시 확인합니다.",
         choices=["A", "B", "C", "D", "E"],
         correct_answer="B",
+        concept_key="DEFAULT:CONDITION_SCOPE",
+        content_revision_id="default-condition-scope:transfer:v1",
+        independent_followup=True,
+        tutor_action_content_revision="default-condition-scope:hint:v1",
     ),
 ]
 
@@ -240,31 +295,54 @@ def build_lesson_from_bundle(bundle: EduRecoverQuestionBundle) -> list[dict[str,
         "내가 고른 선택지가 맞으려면 어떤 문장이나 계산이 반드시 성립해야 하나요?",
     ]
     retest = bundle.retest_choices or choices
+    base_revision = bundle.content_revision_id or f"{qid}:runtime-v1"
+    concept_key = bundle.concept_key or f"QUESTION:{qid}"
     return [
         Segment(
             segment_id=f"{qid}-problem", kind="EXPLAIN", title=f"문제 {qid}",
-            text=bundle.stem + "\n" + " | ".join(choices), misconception_path=misconception
+            text=bundle.stem + "\n" + " | ".join(choices), choices=choices,
+            correct_answer=bundle.correct_answer, misconception_path=misconception,
+            concept_key=concept_key, content_revision_id=f"{base_revision}:problem",
+            source_integrity_verified=bundle.source_integrity_verified,
+            content_trust=ContentTrustState.VERIFIED if bundle.source_integrity_verified else ContentTrustState.UNVERIFIED,
+            feedback_phase="PRE_FEEDBACK",
         ).model_dump(),
         Segment(
             segment_id=f"{qid}-video", kind="VIDEO", title="오답원인 짧은 설명",
-            text=explain_text, media_url=bundle.video_url or "", pause_at_sec=8, misconception_path=misconception
+            text=explain_text, media_url=bundle.video_url or "", pause_at_sec=8, misconception_path=misconception,
+            concept_key=concept_key, content_revision_id=f"{base_revision}:hint",
+            source_integrity_verified=bundle.source_integrity_verified,
+            content_trust=ContentTrustState.VERIFIED if bundle.source_integrity_verified else ContentTrustState.UNVERIFIED,
+            hint_level=1,
         ).model_dump(),
         Segment(
             segment_id=f"{qid}-socratic-1", kind="SOCRATIC", title="스스로 확인하기",
             text=sq[0], choices=["조건을 다시 확인했다", "아직 헷갈린다"],
             branch_map={"조건을 다시 확인했다": f"{qid}-socratic-2", "아직 헷갈린다": f"{qid}-video"},
-            misconception_path=misconception
+            misconception_path=misconception, concept_key=concept_key,
+            content_revision_id=f"{base_revision}:probe-1", feedback_phase="POST_FEEDBACK",
+            tutor_action_content_revision=f"{base_revision}:hint",
+            source_integrity_verified=bundle.source_integrity_verified,
+            content_trust=ContentTrustState.VERIFIED if bundle.source_integrity_verified else ContentTrustState.UNVERIFIED,
         ).model_dump(),
         Segment(
             segment_id=f"{qid}-socratic-2", kind="SOCRATIC", title="한 번 더 확인하기",
             text=sq[1] if len(sq) > 1 else sq[0], choices=["근거를 찾았다", "다시 설명 필요"],
             branch_map={"근거를 찾았다": f"{qid}-retest", "다시 설명 필요": f"{qid}-video"},
-            misconception_path=misconception
+            misconception_path=misconception, concept_key=concept_key,
+            content_revision_id=f"{base_revision}:probe-2", feedback_phase="POST_FEEDBACK",
+            tutor_action_content_revision=f"{base_revision}:hint",
+            source_integrity_verified=bundle.source_integrity_verified,
+            content_trust=ContentTrustState.VERIFIED if bundle.source_integrity_verified else ContentTrustState.UNVERIFIED,
         ).model_dump(),
         Segment(
             segment_id=f"{qid}-retest", kind="RETEST", title="전이 재시험",
             text="같은 오개념을 다른 표현으로 다시 확인합니다.", choices=retest,
-            correct_answer=bundle.retest_correct_answer or bundle.correct_answer, misconception_path=misconception
+            correct_answer=bundle.retest_correct_answer or bundle.correct_answer, misconception_path=misconception,
+            concept_key=concept_key, content_revision_id=f"{base_revision}:transfer",
+            source_integrity_verified=bundle.source_integrity_verified,
+            content_trust=ContentTrustState.VERIFIED if bundle.source_integrity_verified else ContentTrustState.UNVERIFIED,
+            independent_followup=True, tutor_action_content_revision=f"{base_revision}:hint",
         ).model_dump(),
     ]
 
@@ -448,6 +526,7 @@ def command(session_id: str, req: Command, teacher_token: str):
 
 @classroom_tutor_router.post("/api/sessions/{session_id}/respond")
 def respond(session_id: str, req: StudentResponse):
+    training_payload: dict[str, Any] | None = None
     with db() as conn:
         row = get_session_or_404(conn, session_id)
         if req.join_token != row["join_token"]:
@@ -477,13 +556,29 @@ def respond(session_id: str, req: StudentResponse):
             {"response_id": rid, "segment_id": req.segment_id, "answer": req.answer},
         )
         branch_to = (segment.get("branch_map") or {}).get(req.answer)
-        return {
-            "ok": True,
-            "event_id": event_id,
-            "response_id": rid,
-            "branch_candidate": branch_to,
-            "correct": None if segment.get("correct_answer") is None else req.answer == segment.get("correct_answer"),
-        }
+        correct = None if segment.get("correct_answer") is None else req.answer == segment.get("correct_answer")
+    try:
+        training_payload = TRAINING_LEDGER.capture_response(
+            session_id=session_id,
+            student_alias=req.student_alias,
+            segment=segment,
+            response_ref=rid,
+            correct=correct,
+            reason_present=bool((req.reason_text or "").strip()),
+            confidence=req.confidence,
+        )
+    except Exception as exc:
+        logger.exception("tutor_training_capture_failed session_id=%s error_type=%s", session_id, type(exc).__name__)
+        training_payload = {"status": "CAPTURE_FAILED_HOLD"}
+    student_visible_correct = None if segment.get("feedback_phase") == "PRE_FEEDBACK" else correct
+    return {
+        "ok": True,
+        "event_id": event_id,
+        "response_id": rid,
+        "branch_candidate": branch_to,
+        "correct": student_visible_correct,
+        "training": training_payload,
+    }
 
 
 @classroom_tutor_router.get("/api/sessions/{session_id}/results")
@@ -528,6 +623,136 @@ def events(session_id: str, teacher_token: str, after: int = 0):
             }
             for r in rows
         ]
+
+
+@classroom_tutor_router.get("/api/sessions/{session_id}/training-status")
+def training_status(session_id: str, teacher_token: str):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+    return TRAINING_LEDGER.session_status(session_id)
+
+
+@classroom_tutor_router.get("/api/sessions/{session_id}/training-review-candidates")
+def training_review_candidates(session_id: str, teacher_token: str):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+        lesson = json_load(row["lesson_json"]) or []
+        segments = {item["segment_id"]: item for item in lesson}
+        responses = conn.execute(
+            """SELECT response_id,student_alias,segment_id,answer,confidence,reason_text,created_at
+               FROM responses WHERE session_id=? ORDER BY created_at DESC LIMIT 100""",
+            (session_id,),
+        ).fetchall()
+    candidates = []
+    for response in responses:
+        item = dict(response)
+        segment = segments.get(item["segment_id"], {})
+        correct_answer = segment.get("correct_answer")
+        item.update({
+            "segment_title": segment.get("title"),
+            "segment_kind": segment.get("kind"),
+            "concept_key": segment.get("concept_key") or "UNSPECIFIED",
+            "content_revision_id": segment.get("content_revision_id") or f"{session_id}:{item['segment_id']}:v1",
+            "correct": None if correct_answer is None else item["answer"] == correct_answer,
+            "independent_followup": bool(segment.get("independent_followup", False)),
+        })
+        candidates.append(item)
+    return {"candidates": candidates}
+
+
+@classroom_tutor_router.post("/api/sessions/{session_id}/training-review")
+def training_review(
+    session_id: str,
+    req: TrainingReviewRequest,
+    teacher_token: str,
+):
+    with db() as conn:
+        session = get_session_or_404(conn, session_id)
+        require_teacher(session, teacher_token)
+        response = conn.execute(
+            "SELECT * FROM responses WHERE session_id=? AND response_id=?",
+            (session_id, req.response_id),
+        ).fetchone()
+        if not response:
+            raise HTTPException(404, "response not found")
+        lesson = json_load(session["lesson_json"]) or []
+        segment = next((item for item in lesson if item["segment_id"] == response["segment_id"]), None)
+        if not segment:
+            raise HTTPException(409, "response segment revision is unavailable")
+        correct_answer = segment.get("correct_answer")
+        correct = None if correct_answer is None else response["answer"] == correct_answer
+    try:
+        result = TRAINING_LEDGER.review_response(
+            session_id=session_id,
+            student_alias=response["student_alias"],
+            response_ref=response["response_id"],
+            segment=segment,
+            correct=correct,
+            reason_present=bool((response["reason_text"] or "").strip()),
+            confidence=response["confidence"],
+            source_integrity_verified=req.source_integrity_verified,
+            content_trust=req.content_trust,
+            hint_or_explanation_confirmed=req.hint_or_explanation_confirmed,
+            notes=req.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {**result, "training_status": TRAINING_LEDGER.session_status(session_id)}
+
+
+@classroom_tutor_router.post("/api/sessions/{session_id}/training-content-defect")
+def training_content_defect(
+    session_id: str,
+    req: ContentDefectRequest,
+    teacher_token: str,
+    _: None = Depends(require_owner),
+):
+    with db() as conn:
+        session = get_session_or_404(conn, session_id)
+        require_teacher(session, teacher_token)
+    affected = TRAINING_LEDGER.mark_content_defect(
+        session_id=session_id,
+        content_revision_id=req.content_revision_id,
+        notes=req.notes,
+    )
+    return {"ok": True, "affected_learner_concepts": affected, "successor_revisions_created": affected > 0}
+
+
+@classroom_tutor_router.get("/api/training/status")
+def owner_training_status(_: None = Depends(require_owner)):
+    snapshot = TRAINING_LEDGER.dataset_snapshot()
+    return {
+        "connected_to_ai_tutor": True,
+        "training_plane": "OWNER_CONTROLLED",
+        "automatic_live_reinforcement": False,
+        "actual_gpu_training_started": False,
+        "pseudonym_salt_configured": TRAINING_LEDGER.pseudonym_salt_configured,
+        "dataset_snapshot": snapshot,
+        "promotion_gate": "FAIL_CLOSED",
+    }
+
+
+@classroom_tutor_router.get("/api/training/dataset-snapshot")
+def owner_training_snapshot(_: None = Depends(require_owner)):
+    return TRAINING_LEDGER.dataset_snapshot()
+
+
+@classroom_tutor_router.post("/api/training/actual-use-receipt")
+def owner_actual_training_use(
+    req: ActualTrainingUseRequest,
+    _: None = Depends(require_owner),
+):
+    try:
+        return TRAINING_LEDGER.create_actual_use_receipt(
+            eligibility_revision_id=req.eligibility_revision_id,
+            training_job_id=req.training_job_id,
+            tutor_model_version=req.tutor_model_version,
+            sample_hash=req.sample_hash,
+        )
+    except ValueError as exc:
+        raise HTTPException(423, str(exc)) from exc
 
 
 COMMON_CSS = """
@@ -595,10 +820,13 @@ makeQR();refresh();setInterval(refresh,1500);
 def teacher_html(session_id: str, teacher_token: str) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>EduRecover Teacher</title><style>{COMMON_CSS}</style></head><body>
 <div class='top'><b>EduRecover 교사 콘솔</b><span class='badge'>{session_id}</span></div><main style='max-width:960px;margin:auto;padding:18px'><div class='card'><b>전자칠판 열기</b><p class='muted'>전자칠판 자체 브라우저/OPS에서는 아래 주소를 직접 열고, 캐스트/HDMI 환경에서는 이 화면을 전자칠판으로 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/tutor/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a></div>
-<div class='card'><b>수업 단계</b><div id='segments'></div></div><div class='card'><b>실시간 응답</b><div id='res'></div></div></main><script>{COMMON_JS}
+<div class='card'><b>수업 단계</b><div id='segments'></div></div><div class='card'><b>실시간 응답</b><div id='res'></div></div>
+<div class='card'><b>강화학습 연결 상태</b><p class='muted'>학생상태와 AI튜터 학습자격은 별도 객체입니다. 응답은 즉시 모델 가중치에 반영되지 않으며, 교사검증·독립 후속문항·출처무결성 게이트를 통과해야 학습후보가 됩니다.</p><div id='training'>불러오는 중...</div><div id='review'></div></div></main><script>{COMMON_JS}
 const SID={json.dumps(session_id)},TT={json.dumps(teacher_token)};let S;
-async function load(){{S=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);q('#segments').innerHTML=(S.lesson||[]).map(x=>`<button class='choice' onclick="go('${{x.segment_id}}')"><b>${{esc(x.title)}}</b><br><span class='muted'>${{esc(x.kind)}} · ${{esc(x.text)}}</span></button>`).join('');let r=await api(`/tutor/api/sessions/${{SID}}/results?teacher_token=${{encodeURIComponent(TT)}}`);q('#res').innerHTML=(r.counts.length?r.counts.map(x=>`<div>${{esc(x.segment_id)}} / ${{esc(x.answer)}} : ${{x.n}}명</div>`).join(''):'아직 응답 없음');}}
+async function load(){{S=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);q('#segments').innerHTML=(S.lesson||[]).map(x=>`<button class='choice' onclick="go('${{x.segment_id}}')"><b>${{esc(x.title)}}</b><br><span class='muted'>${{esc(x.kind)}} · ${{esc(x.text)}}</span></button>`).join('');let r=await api(`/tutor/api/sessions/${{SID}}/results?teacher_token=${{encodeURIComponent(TT)}}`);q('#res').innerHTML=(r.counts.length?r.counts.map(x=>`<div>${{esc(x.segment_id)}} / ${{esc(x.answer)}} : ${{x.n}}명</div>`).join(''):'아직 응답 없음');await loadTraining();}}
 async function go(id){{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action:'GOTO',segment_id:id}})}});load();}}
+async function loadTraining(){{let s=await api(`/tutor/api/sessions/${{SID}}/training-status?teacher_token=${{encodeURIComponent(TT)}}`);q('#training').innerHTML=`<div><span class='badge'>연결됨</span> 노출 ${{s.exposure_count}} · 증거 revision ${{s.evidence_revision_count}}</div><div class='muted'>ELIGIBLE ${{s.eligibility_counts.ELIGIBLE||0}} · HOLD ${{s.eligibility_counts.HOLD||0}} · INELIGIBLE ${{s.eligibility_counts.INELIGIBLE||0}} · 자동 가중치 갱신: 사용 안 함</div>`;let c=await api(`/tutor/api/sessions/${{SID}}/training-review-candidates?teacher_token=${{encodeURIComponent(TT)}}`);q('#review').innerHTML=(c.candidates||[]).slice(0,12).map(x=>`<div class='card' style='margin-top:10px'><b>${{esc(x.student_alias)}} · ${{esc(x.segment_title||x.segment_id)}}</b><div class='muted'>응답 ${{esc(x.answer)}} · 이유 ${{esc(x.reason_text||'없음')}} · ${{x.independent_followup?'독립 후속문항':'일반 응답'}}</div><button class='btn primary' onclick="reviewEvidence('${{x.response_id}}',${{x.segment_kind!=='EXPLAIN'}})">이 응답 교사검증</button></div>`).join('')||`<p class='muted'>검증할 응답이 없습니다.</p>`;}}
+async function reviewEvidence(id,hint){{if(!confirm('이 응답의 근거와 해당 수업자료 revision을 교사가 확인했습니까?'))return;await api(`/tutor/api/sessions/${{SID}}/training-review?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{response_id:id,teacher_validated:true,source_integrity_verified:true,content_trust:'VERIFIED',hint_or_explanation_confirmed:hint}})}});await loadTraining();}}
 load();setInterval(load,2000);</script></body></html>"""
 
 
@@ -658,10 +886,10 @@ async function createSession(){{
   const choices=q('#choices').value.split(/\\n+/).map(x=>x.trim()).filter(Boolean), answer=q('#answer').value.trim();
   const misconception=q('#misconception').value.trim(), explanation=q('#explanation').value.trim(), question=q('#question').value.trim(), socratic=q('#socratic').value.trim();
   const lesson=[
-    {{segment_id:'problem',kind:'EXPLAIN',title:'문제와 조건 확인',text:question+'\\n'+choices.join(' | '),misconception_path:misconception}},
-    {{segment_id:'media',kind:'VIDEO',title:'오답원인 짧은 설명',text:explanation,media_url:q('#videoUrl').value.trim()||null,pause_at_sec:Number(q('#pauseAt').value||0)||null,misconception_path:misconception}},
-    {{segment_id:'socratic',kind:'SOCRATIC',title:'스스로 확인하기',text:socratic,choices:['조건을 다시 확인했다','아직 헷갈린다'],correct_answer:'조건을 다시 확인했다',branch_map:{{'조건을 다시 확인했다':'retest','아직 헷갈린다':'media'}},misconception_path:misconception}},
-    {{segment_id:'retest',kind:'RETEST',title:'재시험',text:question,choices:choices,correct_answer:answer,branch_map:{{}},misconception_path:misconception}}
+    {{segment_id:'problem',kind:'EXPLAIN',title:'문제와 조건 확인',text:question+'\\n'+choices.join(' | '),choices:choices,correct_answer:answer,misconception_path:misconception,concept_key:'OWNER:CURRENT_LESSON',content_revision_id:'owner-current:problem:v1',feedback_phase:'PRE_FEEDBACK'}},
+    {{segment_id:'media',kind:'VIDEO',title:'오답원인 짧은 설명',text:explanation,media_url:q('#videoUrl').value.trim()||null,pause_at_sec:Number(q('#pauseAt').value||0)||null,misconception_path:misconception,concept_key:'OWNER:CURRENT_LESSON',content_revision_id:'owner-current:hint:v1',hint_level:1}},
+    {{segment_id:'socratic',kind:'SOCRATIC',title:'스스로 확인하기',text:socratic,choices:['조건을 다시 확인했다','아직 헷갈린다'],correct_answer:'조건을 다시 확인했다',branch_map:{{'조건을 다시 확인했다':'retest','아직 헷갈린다':'media'}},misconception_path:misconception,concept_key:'OWNER:CURRENT_LESSON',content_revision_id:'owner-current:probe:v1',feedback_phase:'POST_FEEDBACK',tutor_action_content_revision:'owner-current:hint:v1'}},
+    {{segment_id:'retest',kind:'RETEST',title:'전이 재시험',text:question,choices:choices,correct_answer:answer,branch_map:{{}},misconception_path:misconception,concept_key:'OWNER:CURRENT_LESSON',content_revision_id:'owner-current:transfer:v1',independent_followup:true,tutor_action_content_revision:'owner-current:hint:v1'}}
   ];
   const body={{title:q('#title').value,room_alias:q('#room').value,launch_mode:q('#launch').value,connection_method:q('#conn').value,institution_type:'SCHOOL',privacy_mode:'ALIAS_ONLY',lesson}};
   q('#out').innerHTML="<p class='muted'>수업을 만드는 중입니다...</p>";

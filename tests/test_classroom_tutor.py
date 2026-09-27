@@ -7,6 +7,7 @@ import unittest
 os.environ.setdefault("EDURECOVER_OWNER_USER", "owner-test")
 os.environ.setdefault("EDURECOVER_OWNER_PASSWORD", "password-test")
 os.environ.setdefault("EDURECOVER_CLASSROOM_STATE_DIR", tempfile.mkdtemp(prefix="edurecover-tutor-"))
+os.environ.setdefault("EDURECOVER_TRAINING_PSEUDONYM_SALT", "test-only-training-pseudonym-salt")
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -93,6 +94,81 @@ class ClassroomTutorTests(unittest.TestCase):
         self.assertIn("산파식 AI 튜터", page.text)
         self.assertIn("영상 주소", page.text)
         self.assertIn("한국어 음성합성", page.text)
+
+    def test_tutor_responses_feed_fail_closed_training_eligibility(self):
+        lesson = [
+            {
+                "segment_id": "pre",
+                "kind": "EXPLAIN",
+                "title": "최초응답",
+                "text": "먼저 답해 보세요.",
+                "choices": ["A", "B"],
+                "correct_answer": "B",
+                "concept_key": "TEST:CONCEPT",
+                "content_revision_id": "test:problem:v1",
+                "feedback_phase": "PRE_FEEDBACK",
+            },
+            {
+                "segment_id": "transfer",
+                "kind": "RETEST",
+                "title": "독립 전이",
+                "text": "다른 맥락에서 다시 답하세요.",
+                "choices": ["A", "B"],
+                "correct_answer": "B",
+                "concept_key": "TEST:CONCEPT",
+                "content_revision_id": "test:transfer:v1",
+                "independent_followup": True,
+                "tutor_action_content_revision": "test:hint:v1",
+            },
+        ]
+        created = self.client.post(
+            "/tutor/api/sessions",
+            headers=self.owner_headers,
+            json={"title": "학습자격 시험", "room_alias": "RL", "lesson": lesson},
+        ).json()
+        sid, tt, jt = created["session_id"], created["teacher_token"], created["join_token"]
+        first = self.client.post(
+            f"/tutor/api/sessions/{sid}/respond",
+            json={
+                "student_alias": "S1",
+                "segment_id": "pre",
+                "answer": "A",
+                "reason_text": "조건을 전체에 적용했다.",
+                "join_token": jt,
+            },
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertIsNone(first.json()["correct"], "최초응답 정오를 학생에게 즉시 누출하면 안 됩니다.")
+        transfer = self.client.post(
+            f"/tutor/api/sessions/{sid}/respond",
+            json={
+                "student_alias": "S1",
+                "segment_id": "transfer",
+                "answer": "B",
+                "reason_text": "같은 개념을 다른 조건에 적용했다.",
+                "join_token": jt,
+            },
+        )
+        self.assertEqual(transfer.status_code, 200, transfer.text)
+        reviewed = self.client.post(
+            f"/tutor/api/sessions/{sid}/training-review",
+            params={"teacher_token": tt},
+            json={
+                "response_id": transfer.json()["response_id"],
+                "teacher_validated": True,
+                "source_integrity_verified": True,
+                "content_trust": "VERIFIED",
+                "hint_or_explanation_confirmed": True,
+            },
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        status = reviewed.json()["training_status"]
+        states = {row["learning_purpose"]: row["state"] for row in status["current_eligibility"]}
+        self.assertEqual(states["MASTERY_MODEL"], "ELIGIBLE")
+        self.assertEqual(states["ERROR_PATTERN_MODEL"], "ELIGIBLE")
+        self.assertEqual(states["TUTOR_POLICY_MODEL"], "ELIGIBLE")
+        self.assertEqual(states["REVIEW_TIMING_MODEL"], "HOLD")
+        self.assertFalse(status["automatic_weight_update"])
 
 
 if __name__ == "__main__":

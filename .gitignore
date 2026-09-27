@@ -131,3 +131,17 @@ uv.lock.local
 # Local overrides
 config.local.*
 settings.local.*
+
+# Owner-controlled training artifacts (never commit raw data/checkpoints)
+training_runs/
+checkpoints/
+datasets/local/
+datasets/private/
+*.safetensors
+*.gguf
+*.ckpt
+*.pt
+*.pth
+adapter_model.bin
+adapter_model.safetensors
+

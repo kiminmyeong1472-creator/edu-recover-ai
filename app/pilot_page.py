@@ -250,6 +250,7 @@ PILOT_HTML = r"""
         <div class="grid c2">
           <div class="card"><h3>현재 문항으로 수업 만들기</h3><p class="muted">문항 작업실에서 선택한 문항과 해설을 전자칠판 수업으로 보냅니다. 학생은 가명이나 번호로 참가합니다.</p><button class="btn primary" onclick="startTutorFromCurrentItem()">현재 문항 AI 튜터 수업 만들기</button><div id="tutorLaunchResult" class="muted" style="margin-top:12px"></div></div>
           <div class="card"><h3>AI 튜터 수업실</h3><p class="muted">문항·오답원인·영상·TTS·산파식 질문·재시험을 직접 설정하고 전자칠판과 교사 콘솔을 엽니다.</p><a class="btn dark" href="/tutor" style="display:inline-block;text-decoration:none">AI 튜터 수업실 열기</a></div>
+          <div class="card"><h3>강화학습 연결</h3><p class="muted">실제 노출·피드백 전 응답·독립 후속문항·교사검증을 목적별 학습자격으로 판정합니다. 학생 응답 직후 모델 가중치는 자동 변경하지 않습니다.</p><div id="tutorTrainingState"><span class="badge warn">상태 확인 중</span></div></div>
         </div>
       </section>
 
@@ -506,6 +507,10 @@ async function refreshHealth(){
     if(sys) sys.textContent="확인 실패: "+e.message;
   }
 }
+async function refreshTutorTrainingStatus(){
+  const cell=document.getElementById("tutorTrainingState");if(!cell)return;
+  try{const r=await fetch("/tutor/api/training/status");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);const n=d.dataset_snapshot?.record_count||0;cell.innerHTML="<span class='badge good'>AI 튜터 연결됨</span><div class='muted' style='margin-top:8px'>현재 ELIGIBLE 학습후보 "+n+"건 · 실제 GPU 학습 미실행 · 자동 가중치 갱신 꺼짐</div>";}catch(e){cell.innerHTML="<span class='badge warn'>학습 게이트 확인 필요</span>";}
+}
 function updateCards(){document.getElementById("questionCountCard").textContent=workspace.items.length;document.getElementById("verifyState").textContent=workspace.teacherApproved?"교사 검토 완료":"대기";}
 function addSourceFiles(){
   const input=document.getElementById("sourceFiles"),type=document.getElementById("sourceType").value,tb=document.querySelector("#sourceTable tbody");
@@ -549,21 +554,23 @@ function startTutorFromCurrentItem(){
   const answer=String(it.answer||choices[0]),misconception=String(it.misconception_path||it.error_pattern||"학생이 선택한 근거와 문제의 실제 조건이 일치하지 않음");
   const prompt=[it.passage,it.question].filter(Boolean).join("\n\n")||"현재 문항의 조건을 자기 말로 설명해 보세요.";
   const explanation=String(it.explanation||"정답을 바로 말하지 않고, 문제에 실제로 적힌 조건부터 다시 확인합니다.");
+  const revision=String(it.problem_id||it.question_id||("workspace-"+(currentItem+1))),concept=String(it.concept_key||it.target_concept||("QUESTION:"+revision));
   const lesson=[
-    {segment_id:"problem",kind:"EXPLAIN",title:"문제와 조건 확인",text:prompt+"\n"+choices.join(" | "),misconception_path:misconception},
-    {segment_id:"media",kind:"VIDEO",title:"오답원인 짧은 설명",text:explanation,media_url:null,pause_at_sec:null,misconception_path:misconception},
-    {segment_id:"socratic",kind:"SOCRATIC",title:"스스로 확인하기",text:"문제에서 실제로 주어진 조건과 내가 덧붙여 생각한 조건을 나누어 볼까요?",choices:["조건을 다시 확인했다","아직 헷갈린다"],correct_answer:"조건을 다시 확인했다",branch_map:{"조건을 다시 확인했다":"retest","아직 헷갈린다":"media"},misconception_path:misconception},
-    {segment_id:"retest",kind:"RETEST",title:"재시험",text:prompt,choices,correct_answer:answer,branch_map:{},misconception_path:misconception}
+    {segment_id:"problem",kind:"EXPLAIN",title:"문제와 조건 확인",text:prompt+"\n"+choices.join(" | "),choices,correct_answer:answer,misconception_path:misconception,concept_key:concept,content_revision_id:revision+":problem",feedback_phase:"PRE_FEEDBACK"},
+    {segment_id:"media",kind:"VIDEO",title:"오답원인 짧은 설명",text:explanation,media_url:null,pause_at_sec:null,misconception_path:misconception,concept_key:concept,content_revision_id:revision+":hint",hint_level:1},
+    {segment_id:"socratic",kind:"SOCRATIC",title:"스스로 확인하기",text:"문제에서 실제로 주어진 조건과 내가 덧붙여 생각한 조건을 나누어 볼까요?",choices:["조건을 다시 확인했다","아직 헷갈린다"],correct_answer:"조건을 다시 확인했다",branch_map:{"조건을 다시 확인했다":"retest","아직 헷갈린다":"media"},misconception_path:misconception,concept_key:concept,content_revision_id:revision+":probe",feedback_phase:"POST_FEEDBACK",tutor_action_content_revision:revision+":hint"},
+    {segment_id:"retest",kind:"RETEST",title:"전이 재시험",text:prompt,choices,correct_answer:answer,branch_map:{},misconception_path:misconception,concept_key:concept,content_revision_id:revision+":transfer",independent_followup:true,tutor_action_content_revision:revision+":hint"}
   ];
   createTutorSession((workspace.exam?.name||"EduRecover")+" · 문항 "+(currentItem+1),lesson,"tutorLaunchResult");
 }
 function startAudiovisualLesson(){
   const title=document.getElementById("mediaTitle").value.trim()||"시청각 개념 수업",script=document.getElementById("mediaScript").value.trim(),url=document.getElementById("mediaUrl").value.trim()||null,question=document.getElementById("mediaQuestion").value.trim(),pause=Number(document.getElementById("mediaPause").value||0)||null;
+  const revision="media-"+Date.now(),concept="MEDIA:"+title;
   const lesson=[
-    {segment_id:"prepare",kind:"EXPLAIN",title:"학습 목표 확인",text:"설명을 듣기 전에 무엇을 알고 있는지 자기 말로 이야기해 보세요."},
-    {segment_id:"media",kind:"VIDEO",title:"짧은 영상·TTS 설명",text:script,media_url:url,pause_at_sec:pause},
-    {segment_id:"socratic",kind:"SOCRATIC",title:"산파식 확인 질문",text:question,choices:["핵심 조건을 설명할 수 있다","한 번 더 보고 싶다"],correct_answer:"핵심 조건을 설명할 수 있다",branch_map:{"핵심 조건을 설명할 수 있다":"retest","한 번 더 보고 싶다":"media"}},
-    {segment_id:"retest",kind:"RETEST",title:"재확인",text:"방금 배운 내용을 다른 예에 적용할 수 있나요?",choices:["적용할 수 있다","조금 더 연습이 필요하다"],correct_answer:"적용할 수 있다",branch_map:{}}
+    {segment_id:"prepare",kind:"EXPLAIN",title:"학습 목표 확인",text:"설명을 듣기 전에 무엇을 알고 있는지 자기 말로 이야기해 보세요.",choices:["설명할 수 있다","아직 모르겠다"],concept_key:concept,content_revision_id:revision+":pre",feedback_phase:"PRE_FEEDBACK"},
+    {segment_id:"media",kind:"VIDEO",title:"짧은 영상·TTS 설명",text:script,media_url:url,pause_at_sec:pause,concept_key:concept,content_revision_id:revision+":hint",hint_level:1},
+    {segment_id:"socratic",kind:"SOCRATIC",title:"산파식 확인 질문",text:question,choices:["핵심 조건을 설명할 수 있다","한 번 더 보고 싶다"],correct_answer:"핵심 조건을 설명할 수 있다",branch_map:{"핵심 조건을 설명할 수 있다":"retest","한 번 더 보고 싶다":"media"},concept_key:concept,content_revision_id:revision+":probe",feedback_phase:"POST_FEEDBACK",tutor_action_content_revision:revision+":hint"},
+    {segment_id:"retest",kind:"RETEST",title:"전이 재확인",text:"방금 배운 내용을 다른 예에 적용할 수 있나요?",choices:["적용할 수 있다","조금 더 연습이 필요하다"],correct_answer:"적용할 수 있다",branch_map:{},concept_key:concept,content_revision_id:revision+":transfer",independent_followup:true,tutor_action_content_revision:revision+":hint"}
   ];
   createTutorSession(title,lesson,"mediaLaunchResult");
 }
@@ -620,7 +627,7 @@ function renderArchive(){
   const tb=document.getElementById("archiveRows");tb.innerHTML="<tr><td>"+escapeHtml(workspace.exam.name)+"</td><td>"+escapeHtml(workspace.exam.schoolLevel+" "+workspace.exam.grade)+"</td><td>"+workspace.items.length+"</td><td><span class='badge "+(workspace.teacherApproved?"good":"warn")+"'>"+(workspace.teacherApproved?"교사 검토 완료":"작업 중")+"</span></td></tr>";
 }
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-refreshHealth();refreshAiStatus();refreshAuthoringAssets();refreshOwnerControl();updateCards();renderItems();renderArchive();syncRange();refreshGenerationSummary();
+refreshHealth();refreshAiStatus();refreshAuthoringAssets();refreshOwnerControl();refreshTutorTrainingStatus();updateCards();renderItems();renderArchive();syncRange();refreshGenerationSummary();
 </script>
 </body>
 </html>
