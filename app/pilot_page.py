@@ -66,6 +66,8 @@ PILOT_HTML = r"""
       <button data-view="settings">출제 설정</button>
       <button data-view="generate">AI 자동출제</button>
       <button data-view="workspace">문항 작업실</button>
+      <button data-view="tutor">AI 튜터</button>
+      <button data-view="media">시청각 자료</button>
       <button data-view="verify">검증 센터</button>
       <button data-view="preview">시험지 · 해설</button>
       <button data-view="archive">보관함</button>
@@ -80,7 +82,7 @@ PILOT_HTML = r"""
       <div class="row"><span id="healthBadge" class="badge warn"><span class="status-dot"></span>서버 확인 중</span><button class="btn primary" onclick="showView('create')">+ 새 시험</button></div>
     </div>
     <div class="mobile-nav" id="mobileNav">
-      <button data-view="dashboard">홈</button><button data-view="sources">자료</button><button data-view="create">새 시험</button><button data-view="settings">설정</button><button data-view="generate">AI출제</button><button data-view="workspace">문항</button><button data-view="verify">검증</button><button data-view="preview">출력</button><button data-view="archive">보관</button><button data-view="system">시스템</button>
+      <button data-view="dashboard">홈</button><button data-view="sources">자료</button><button data-view="create">새 시험</button><button data-view="settings">설정</button><button data-view="generate">AI출제</button><button data-view="workspace">문항</button><button data-view="tutor">AI튜터</button><button data-view="media">시청각</button><button data-view="verify">검증</button><button data-view="preview">출력</button><button data-view="archive">보관</button><button data-view="system">시스템</button>
     </div>
 
     <div class="content">
@@ -118,6 +120,8 @@ PILOT_HTML = r"""
               <tr><td>Socratic Trap API</td><td><span class="badge good">실행</span></td></tr>
               <tr><td>자료 파일 영구저장</td><td><span class="badge warn">연동 전</span></td></tr>
               <tr><td>AI 자동출제 API</td><td id="autoGenStatus"><span class="badge warn">서버 상태 확인 중</span></td></tr>
+              <tr><td>산파식 AI 튜터</td><td><span class="badge good">실행</span></td></tr>
+              <tr><td>영상·TTS·전자칠판</td><td><span class="badge good">실행</span></td></tr>
               <tr><td>시험지 DOCX 자동출력</td><td><span class="badge good">실행</span></td></tr>
               <tr><td>HWP 직접출력</td><td><span class="badge warn">미지원 · 복사/붙여넣기 안내</span></td></tr>
             </table>
@@ -236,8 +240,25 @@ PILOT_HTML = r"""
             <label>지문</label><textarea id="editPassage"></textarea>
             <label>정답</label><input id="editAnswer" />
             <label>해설</label><textarea id="editExplanation"></textarea>
-            <div class="row"><button class="btn primary" onclick="saveCurrentItem()">문항 저장</button><button class="btn ghost" onclick="showView('verify')">검증 센터로</button></div>
+            <div class="row"><button class="btn primary" onclick="saveCurrentItem()">문항 저장</button><button class="btn ghost" onclick="showView('tutor')">AI 튜터로</button><button class="btn ghost" onclick="showView('verify')">검증 센터로</button></div>
           </div>
+        </div>
+      </section>
+
+      <section id="tutor" class="view">
+        <div class="hero"><div><h2>산파식 AI 튜터</h2><p>현재 문항을 정답 선제공 없이 오답원인 확인·질문·분기·재시험 수업으로 전환합니다.</p></div><span class="badge good">설치 완료</span></div>
+        <div class="grid c2">
+          <div class="card"><h3>현재 문항으로 수업 만들기</h3><p class="muted">문항 작업실에서 선택한 문항과 해설을 전자칠판 수업으로 보냅니다. 학생은 가명이나 번호로 참가합니다.</p><button class="btn primary" onclick="startTutorFromCurrentItem()">현재 문항 AI 튜터 수업 만들기</button><div id="tutorLaunchResult" class="muted" style="margin-top:12px"></div></div>
+          <div class="card"><h3>AI 튜터 수업실</h3><p class="muted">문항·오답원인·영상·TTS·산파식 질문·재시험을 직접 설정하고 전자칠판과 교사 콘솔을 엽니다.</p><a class="btn dark" href="/tutor" style="display:inline-block;text-decoration:none">AI 튜터 수업실 열기</a></div>
+        </div>
+      </section>
+
+      <section id="media" class="view">
+        <div class="hero"><div><h2>시청각 자료</h2><p>영상 또는 한국어 TTS 설명을 산파식 확인 질문과 함께 수업으로 구성합니다.</p></div><span class="badge good">영상·음성 실행</span></div>
+        <div class="card">
+          <div class="form-grid"><div><label>수업 제목</label><input id="mediaTitle" value="시청각 개념 수업"></div><div><label>영상 주소</label><input id="mediaUrl" placeholder="MP4·WebM 또는 YouTube 주소"></div><div><label>영상 멈춤 시점(초)</label><input id="mediaPause" type="number" min="0" step="0.5" value="8"></div><div><label>확인 질문</label><input id="mediaQuestion" value="방금 설명에서 가장 중요한 조건은 무엇인가요?"></div></div>
+          <label>설명·TTS 원고</label><textarea id="mediaScript">핵심 조건을 먼저 자기 말로 설명해 보세요. 영상 주소가 없으면 이 문장을 한국어 음성으로 읽어 줍니다.</textarea>
+          <button class="btn primary" onclick="startAudiovisualLesson()">시청각 수업 만들기</button><a class="btn ghost" href="/tutor" style="display:inline-block;text-decoration:none;margin-left:6px">상세 설정</a><div id="mediaLaunchResult" class="muted" style="margin-top:12px"></div>
         </div>
       </section>
 
@@ -320,7 +341,7 @@ PILOT_HTML = r"""
 </div>
 
 <script>
-const titles={dashboard:"홈 대시보드",sources:"자료 관리",create:"새 시험 만들기",settings:"출제 설정",generate:"AI 자동출제",workspace:"문항 작업실",verify:"검증 센터",preview:"시험지 · 해설",archive:"보관함",system:"시스템"};
+const titles={dashboard:"홈 대시보드",sources:"자료 관리",create:"새 시험 만들기",settings:"출제 설정",generate:"AI 자동출제",workspace:"문항 작업실",tutor:"AI 튜터",media:"시청각 자료",verify:"검증 센터",preview:"시험지 · 해설",archive:"보관함",system:"시스템"};
 let workspace=JSON.parse(localStorage.getItem("edurecover_workspace")||"null")||{
   exam:{name:"2학기 중간고사 영어",schoolLevel:"고등학교",grade:"1학년",type:"중간고사",count:20,scope:""},
   settings:{easy:25,mid:50,hard:25},
@@ -503,8 +524,49 @@ function renderItems(){
   if(workspace.items.length) loadEditor();
 }
 function loadEditor(){const it=workspace.items[currentItem];if(!it)return;editQuestion.value=it.question||"";editPassage.value=it.passage||"";editAnswer.value=it.answer||"";editExplanation.value=it.explanation||"";editorTitle.textContent="문항 "+(currentItem+1)+" 편집";}
-function saveCurrentItem(){if(!workspace.items[currentItem])return;workspace.items[currentItem]={question:editQuestion.value,passage:editPassage.value,answer:editAnswer.value,explanation:editExplanation.value};persist();}
+function saveCurrentItem(){if(!workspace.items[currentItem])return;workspace.items[currentItem]={...workspace.items[currentItem],question:editQuestion.value,passage:editPassage.value,answer:editAnswer.value,explanation:editExplanation.value};persist();}
 function addSampleItem(){workspace.items.push({question:"새 문항 발문",passage:"",answer:"",explanation:""});currentItem=workspace.items.length-1;persist();}
+function tutorLinks(r){
+  return "<a class='btn primary' target='_blank' href='"+escapeHtml(r.board_url)+"'>전자칠판 열기</a> "+
+    "<a class='btn dark' target='_blank' href='"+escapeHtml(r.teacher_url)+"'>교사 콘솔</a> "+
+    "<a class='btn ghost' target='_blank' href='"+escapeHtml(r.join_url)+"'>학생 화면 확인</a>";
+}
+async function createTutorSession(title,lesson,resultId){
+  const out=document.getElementById(resultId);out.textContent="수업을 만드는 중입니다...";
+  try{
+    const body={title,room_alias:"CLASS-A",institution_type:"SCHOOL",launch_mode:"DIRECT_BOARD_WEB",connection_method:"BROWSER",privacy_mode:"ALIAS_ONLY",lesson};
+    const r=await fetch("/tutor/api/sessions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
+    if(!r.ok)throw new Error(d.detail||("HTTP "+r.status));
+    out.innerHTML=tutorLinks(d);
+  }catch(e){out.textContent="수업 생성 실패: "+e.message;}
+}
+function startTutorFromCurrentItem(){
+  if(!workspace.items[currentItem]){document.getElementById("tutorLaunchResult").textContent="문항 작업실에 문항을 먼저 추가해 주세요.";return;}
+  const it=workspace.items[currentItem],raw=Array.isArray(it.choices)?it.choices:[];
+  const choices=raw.map((c,i)=>typeof c==="string"?c:(c?.text||c?.content||("선택지 "+(i+1)))).filter(Boolean);
+  if(!choices.length)choices.push("A. 첫 번째 선택지","B. 두 번째 선택지","C. 세 번째 선택지","D. 네 번째 선택지");
+  const answer=String(it.answer||choices[0]),misconception=String(it.misconception_path||it.error_pattern||"학생이 선택한 근거와 문제의 실제 조건이 일치하지 않음");
+  const prompt=[it.passage,it.question].filter(Boolean).join("\n\n")||"현재 문항의 조건을 자기 말로 설명해 보세요.";
+  const explanation=String(it.explanation||"정답을 바로 말하지 않고, 문제에 실제로 적힌 조건부터 다시 확인합니다.");
+  const lesson=[
+    {segment_id:"problem",kind:"EXPLAIN",title:"문제와 조건 확인",text:prompt+"\n"+choices.join(" | "),misconception_path:misconception},
+    {segment_id:"media",kind:"VIDEO",title:"오답원인 짧은 설명",text:explanation,media_url:null,pause_at_sec:null,misconception_path:misconception},
+    {segment_id:"socratic",kind:"SOCRATIC",title:"스스로 확인하기",text:"문제에서 실제로 주어진 조건과 내가 덧붙여 생각한 조건을 나누어 볼까요?",choices:["조건을 다시 확인했다","아직 헷갈린다"],correct_answer:"조건을 다시 확인했다",branch_map:{"조건을 다시 확인했다":"retest","아직 헷갈린다":"media"},misconception_path:misconception},
+    {segment_id:"retest",kind:"RETEST",title:"재시험",text:prompt,choices,correct_answer:answer,branch_map:{},misconception_path:misconception}
+  ];
+  createTutorSession((workspace.exam?.name||"EduRecover")+" · 문항 "+(currentItem+1),lesson,"tutorLaunchResult");
+}
+function startAudiovisualLesson(){
+  const title=document.getElementById("mediaTitle").value.trim()||"시청각 개념 수업",script=document.getElementById("mediaScript").value.trim(),url=document.getElementById("mediaUrl").value.trim()||null,question=document.getElementById("mediaQuestion").value.trim(),pause=Number(document.getElementById("mediaPause").value||0)||null;
+  const lesson=[
+    {segment_id:"prepare",kind:"EXPLAIN",title:"학습 목표 확인",text:"설명을 듣기 전에 무엇을 알고 있는지 자기 말로 이야기해 보세요."},
+    {segment_id:"media",kind:"VIDEO",title:"짧은 영상·TTS 설명",text:script,media_url:url,pause_at_sec:pause},
+    {segment_id:"socratic",kind:"SOCRATIC",title:"산파식 확인 질문",text:question,choices:["핵심 조건을 설명할 수 있다","한 번 더 보고 싶다"],correct_answer:"핵심 조건을 설명할 수 있다",branch_map:{"핵심 조건을 설명할 수 있다":"retest","한 번 더 보고 싶다":"media"}},
+    {segment_id:"retest",kind:"RETEST",title:"재확인",text:"방금 배운 내용을 다른 예에 적용할 수 있나요?",choices:["적용할 수 있다","조금 더 연습이 필요하다"],correct_answer:"적용할 수 있다",branch_map:{}}
+  ];
+  createTutorSession(title,lesson,"mediaLaunchResult");
+}
 async function runWorkspaceApi(path){
   const out=document.getElementById("verifyOutput"),badge=document.getElementById("verifyBadge");
   out.textContent="검증 중...";badge.className="badge warn";badge.textContent="실행 중";

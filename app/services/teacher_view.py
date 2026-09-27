@@ -9,6 +9,18 @@ def build_teacher_html(html: str) -> str:
     teacher = html.replace("교사 출제 플랫폼", "무료 교사회원 출제 플랫폼", 1)
     # Remove system navigation buttons from desktop and mobile navigation.
     teacher = teacher.replace('<button data-view="system">시스템</button>', '')
+    # Classroom tutor creation is owner-only until teacher accounts and quotas
+    # are connected. Keep the public teacher surface free of dead controls.
+    teacher = teacher.replace('<button data-view="tutor">AI 튜터</button>', '')
+    teacher = teacher.replace('<button data-view="tutor">AI튜터</button>', '')
+    teacher = teacher.replace('<button data-view="media">시청각 자료</button>', '')
+    teacher = teacher.replace('<button data-view="media">시청각</button>', '')
+    teacher = re.sub(
+        r'<section id="(?:tutor|media)" class="view">.*?</section>',
+        '',
+        teacher,
+        flags=re.S,
+    )
     # Remove owner/admin system section.
     teacher = re.sub(
         r'<section id="system" class="view">.*?</section>',
