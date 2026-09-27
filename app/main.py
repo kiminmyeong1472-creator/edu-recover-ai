@@ -213,7 +213,7 @@ async def owner_platform(_: None = Depends(require_owner)) -> HTMLResponse:
     return HTMLResponse(
         PILOT_HTML.replace("교사 출제 플랫폼", "소유자 운영 플랫폼", 1)
         .replace("<body>", "<body>" + OWNER_LOGOUT_BAR, 1),
-        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "same-origin"},
     )
 
 
