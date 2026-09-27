@@ -28,7 +28,7 @@ from app.services.control_plane import (
     notebook_tasks,
 )
 from app.pilot_page import PILOT_HTML
-from app.classroom_tutor import classroom_tutor_router
+from app.classroom_tutor import classroom_tutor_router, teacher_classroom_router
 from app.services.auto_generator import (
     GenerationFailed,
     GeneratorNotConfigured,
@@ -60,6 +60,7 @@ app = FastAPI(
 
 app.include_router(owner_auth_router)
 app.include_router(classroom_tutor_router)
+app.include_router(teacher_classroom_router)
 
 logger = logging.getLogger(__name__)
 

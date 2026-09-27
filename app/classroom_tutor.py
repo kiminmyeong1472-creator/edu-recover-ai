@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -45,6 +46,7 @@ TRAINING_LEDGER = TutorLearningLedger(TRAINING_DB_PATH)
 logger = logging.getLogger(__name__)
 
 classroom_tutor_router = APIRouter(prefix="/tutor", tags=["classroom-tutor"])
+teacher_classroom_router = APIRouter(prefix="/classroom", tags=["teacher-classroom-product"])
 
 SCHEMA = """
 PRAGMA foreign_keys=ON;
@@ -123,6 +125,27 @@ def row_to_session(row: sqlite3.Row) -> dict[str, Any]:
         "lesson": json_load(row["lesson_json"]),
         "status": row["status"],
     }
+
+
+def student_session_view(row: sqlite3.Row) -> dict[str, Any]:
+    """Return only the lesson fields a participating student may receive."""
+    session = row_to_session(row)
+    hidden_fields = {
+        "correct_answer",
+        "branch_map",
+        "misconception_path",
+        "content_revision_id",
+        "source_integrity_verified",
+        "content_trust",
+        "tutor_action_content_revision",
+        "answer_disclosed",
+    }
+    session["lesson"] = [
+        {key: value for key, value in segment.items() if key not in hidden_fields}
+        for segment in session["lesson"]
+    ]
+    session.pop("join_token", None)
+    return session
 
 
 class Segment(BaseModel):
@@ -372,7 +395,7 @@ def get_session_or_404(conn: sqlite3.Connection, session_id: str) -> sqlite3.Row
 
 
 def require_teacher(row: sqlite3.Row, token: str | None):
-    if not token or token != row["teacher_token"]:
+    if not token or not secrets.compare_digest(token, row["teacher_token"]):
         raise HTTPException(403, "teacher token required")
 
 
@@ -381,8 +404,7 @@ def health():
     return {"ok": True, "version": APP_VERSION, "db": str(DB_PATH)}
 
 
-@classroom_tutor_router.post("/api/sessions")
-def create_session(req: SessionCreate, _: None = Depends(require_owner)):
+def create_session_record(req: SessionCreate, *, product_prefix: str) -> dict[str, str]:
     session_id = f"cls_{uuid.uuid4().hex[:10]}"
     teacher_token = uuid.uuid4().hex
     join_token = uuid.uuid4().hex[:12]
@@ -414,10 +436,20 @@ def create_session(req: SessionCreate, _: None = Depends(require_owner)):
         "session_id": session_id,
         "teacher_token": teacher_token,
         "join_token": join_token,
-        "board_url": f"/tutor/board/{session_id}?teacher_token={teacher_token}",
-        "teacher_url": f"/tutor/teacher/{session_id}?teacher_token={teacher_token}",
-        "join_url": f"/tutor/join/{session_id}?token={join_token}",
+        "board_url": f"{product_prefix}/board/{session_id}?teacher_token={teacher_token}",
+        "teacher_url": f"{product_prefix}/teacher/{session_id}?teacher_token={teacher_token}",
+        "join_url": f"{product_prefix}/join/{session_id}?token={join_token}",
     }
+
+
+@classroom_tutor_router.post("/api/sessions")
+def create_session(req: SessionCreate, _: None = Depends(require_owner)):
+    return create_session_record(req, product_prefix="/tutor")
+
+
+@teacher_classroom_router.post("/api/sessions")
+def create_teacher_product_session(req: SessionCreate, _: None = Depends(require_owner)):
+    return create_session_record(req, product_prefix="/classroom")
 
 
 @classroom_tutor_router.get("/api/sessions/{session_id}")
@@ -428,9 +460,11 @@ def get_session(
 ):
     with db() as conn:
         row = get_session_or_404(conn, session_id)
-        if teacher_token != row["teacher_token"] and join_token != row["join_token"]:
-            raise HTTPException(403, "session token required")
-        return row_to_session(row)
+        if teacher_token and secrets.compare_digest(teacher_token, row["teacher_token"]):
+            return row_to_session(row)
+        if join_token and secrets.compare_digest(join_token, row["join_token"]):
+            return student_session_view(row)
+        raise HTTPException(403, "session token required")
 
 
 
@@ -787,7 +821,11 @@ function youtubeEmbed(url){try{let u=new URL(url);if(u.hostname==='youtu.be')ret
 """
 
 
-def board_html(session_id: str, teacher_token: str) -> str:
+def board_html(
+    session_id: str,
+    teacher_token: str,
+    product_prefix: str = "/tutor",
+) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'><title>EduRecover Board</title><style>{COMMON_CSS}</style></head>
 <body><div class='top'><div><b>EduRecover 전자칠판</b> <span class='badge' id='conn'>연결중</span></div><div><span class='badge' id='mode'></span> <button class='btn' onclick='goFull()'>전체화면</button></div></div>
 <div class='grid'><main class='stage'><div class='card'><div class='muted' id='kind'></div><div class='big' id='title'>불러오는 중...</div><p id='text' style='font-size:clamp(18px,2.1vw,32px)'></p><div id='media'></div><div id='choices'></div></div><div class='card' id='whiteWrap' style='display:none'><canvas id='whiteboard' class='board'></canvas></div></main>
@@ -796,7 +834,7 @@ def board_html(session_id: str, teacher_token: str) -> str:
 <div class='card'><b>응답 현황</b><div id='results'>아직 응답 없음</div></div>
 <div class='card'><b>장치 capability</b><pre id='caps' style='white-space:pre-wrap'></pre></div></aside></div>
 <script src='https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'></script><script>{COMMON_JS}
-const SID={json.dumps(session_id)}, TT={json.dumps(teacher_token)};let S=null,lastEvent=0,videoPausedOnce=false;
+const SID={json.dumps(session_id)}, TT={json.dumps(teacher_token)}, PFX={json.dumps(product_prefix)};let S=null,lastEvent=0,videoPausedOnce=false;
 async function refresh(){{try{{S=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);q('#conn').textContent='연결됨';q('#mode').textContent=S.launch_mode+' / '+S.connection_method;render();await loadResults();}}catch(e){{q('#conn').textContent='오프라인';}}}}
 function seg(){{return (S?.lesson||[]).find(x=>x.segment_id===S?.state?.current_segment_id)||null}}
 function render(){{let x=seg();if(!x)return;q('#kind').textContent=x.kind+(x.misconception_path?' · 오답원인: '+x.misconception_path:'');q('#title').textContent=x.title;q('#text').textContent=x.text||'';let m=q('#media');m.innerHTML='';videoPausedOnce=false;if(x.kind==='VIDEO'&&x.media_url){{let yt=youtubeEmbed(x.media_url);if(yt){{m.innerHTML=`<iframe title='수업 영상' src="${{esc(yt)}}" style='width:100%;height:min(56vw,520px);border:0;border-radius:12px' allow='autoplay; encrypted-media; picture-in-picture' allowfullscreen></iframe>`;}}else{{m.innerHTML=`<video id='vid' controls playsinline src="${{esc(x.media_url)}}"></video>`;let v=q('#vid');if(x.pause_at_sec) v.addEventListener('timeupdate',()=>{{if(!videoPausedOnce&&v.currentTime>=x.pause_at_sec){{videoPausedOnce=true;v.pause();q('#choices').innerHTML=`<div class='card'><b>생각해 볼 질문</b><p>${{esc(x.text)}}</p></div>`;}}}});}}}}
@@ -809,7 +847,7 @@ function goFull(){{document.documentElement.requestFullscreen?.();}}
 function toggleBoard(){{let w=q('#whiteWrap');w.style.display=w.style.display==='none'?'block':'none';}}
 q('#caps').textContent=JSON.stringify(capabilities(),null,2);
 const joinUrl=`${{location.origin}}/tutor/join/${{SID}}?token=${{encodeURIComponent(SID)}}`; // fallback text replaced after session fetch
-async function makeQR(){{let s=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);let url=`${{location.origin}}/tutor/join/${{SID}}?token=${{encodeURIComponent(s.join_token)}}`;q('#joinText').innerHTML=`참가 주소: <span class='muted'>${{esc(url)}}</span>`;try{{new QRCode(q('#qr'),{{text:url,width:190,height:190}});}}catch(e){{q('#qr').textContent='QR 라이브러리 로드 실패 — 위 주소 또는 참가코드를 사용하세요.';}}}}
+async function makeQR(){{let s=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);let url=`${{location.origin}}${{PFX}}/join/${{SID}}?token=${{encodeURIComponent(s.join_token)}}`;q('#joinText').innerHTML=`참가 주소: <span class='muted'>${{esc(url)}}</span>`;try{{new QRCode(q('#qr'),{{text:url,width:190,height:190}});}}catch(e){{q('#qr').textContent='QR 라이브러리 로드 실패 — 위 주소 또는 참가코드를 사용하세요.';}}}}
 // pointer-based whiteboard
 let cv=q('#whiteboard'),ctx=cv.getContext('2d'),drawing=false,scale=1;function sizeCanvas(){{let r=cv.getBoundingClientRect();let d=devicePixelRatio||1;cv.width=Math.max(1,Math.floor(r.width*d));cv.height=Math.max(1,Math.floor(r.height*d));ctx.setTransform(d,0,0,d,0,0);ctx.lineCap='round';ctx.lineWidth=3;ctx.strokeStyle='#111';}};window.addEventListener('resize',sizeCanvas);setTimeout(sizeCanvas,100);
 cv.addEventListener('pointerdown',e=>{{drawing=true;cv.setPointerCapture(e.pointerId);ctx.beginPath();let r=cv.getBoundingClientRect();ctx.moveTo(e.clientX-r.left,e.clientY-r.top);}});cv.addEventListener('pointermove',e=>{{if(!drawing)return;let r=cv.getBoundingClientRect();ctx.lineTo(e.clientX-r.left,e.clientY-r.top);ctx.stroke();}});['pointerup','pointercancel','pointerleave'].forEach(ev=>cv.addEventListener(ev,()=>drawing=false));
@@ -840,12 +878,45 @@ async function send(ans){{let a=q('#alias').value.trim();if(!a){{q('#msg').textC
 load();setInterval(load,1500);</script></body></html>"""
 
 
+PRODUCT_HTML_HEADERS = {
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
+
+
+def teacher_product_html(session_id: str, teacher_token: str) -> str:
+    """Teacher console for the standalone product, without owner training controls."""
+    return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>EduRecover Classroom Board 교사 콘솔</title><style>{COMMON_CSS}</style></head><body>
+<div class='top'><div><b>EduRecover Classroom Board</b> <span class='badge'>교사 콘솔</span></div><span class='badge'>{session_id}</span></div>
+<main style='max-width:980px;margin:auto;padding:18px'>
+<div class='card'><h2 style='margin-top:0'>전자칠판 수업 운영</h2><p class='muted'>전자칠판 자체 브라우저나 OPS에서는 전자칠판 화면을 직접 열고, HDMI·USB-C·무선 캐스트 환경에서는 해당 화면을 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/classroom/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a></div>
+<div class='grid' style='grid-template-columns:1fr 1fr;min-height:auto'>
+<div class='card'><b>수업 단계</b><div id='segments' style='margin-top:10px'></div></div>
+<div class='card'><b>실시간 학생 응답</b><div id='res' class='muted' style='margin-top:10px'>응답 대기 중</div></div>
+</div>
+<div class='card'><b>개인정보 원칙</b><p class='muted'>학생 실명 대신 가명 또는 번호만 사용합니다. 교사 화면에는 모델학습 관리나 내부 운영정보를 표시하지 않습니다.</p></div>
+</main><script>{COMMON_JS}
+const SID={json.dumps(session_id)},TT={json.dumps(teacher_token)};
+async function load(){{
+  try{{
+    const s=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);
+    q('#segments').innerHTML=(s.lesson||[]).map(x=>`<button class='choice' onclick="go('${{esc(x.segment_id)}}')"><b>${{esc(x.title)}}</b><br><span class='muted'>${{esc(x.kind)}} · ${{esc(x.text)}}</span></button>`).join('')||'<p class="muted">수업 단계가 없습니다.</p>';
+    const r=await api(`/tutor/api/sessions/${{SID}}/results?teacher_token=${{encodeURIComponent(TT)}}`);
+    q('#res').innerHTML=(r.counts||[]).length?r.counts.map(x=>`<div style='margin:8px 0'>${{esc(x.segment_id)}} / ${{esc(x.answer)}} · ${{x.n}}명</div>`).join(''):'아직 응답 없음';
+  }}catch(e){{q('#res').textContent='연결을 확인해 주세요.';}}
+}}
+async function go(id){{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action:'GOTO',segment_id:id}})}});load();}}
+load();setInterval(load,2000);
+</script></body></html>"""
+
+
 @classroom_tutor_router.get("/board/{session_id}", response_class=HTMLResponse)
 def board(session_id: str, teacher_token: str):
     with db() as conn:
         row = get_session_or_404(conn, session_id)
         require_teacher(row, teacher_token)
-    return board_html(session_id, teacher_token)
+    return HTMLResponse(board_html(session_id, teacher_token), headers=PRODUCT_HTML_HEADERS)
 
 
 @classroom_tutor_router.get("/teacher/{session_id}", response_class=HTMLResponse)
@@ -853,7 +924,7 @@ def teacher(session_id: str, teacher_token: str):
     with db() as conn:
         row = get_session_or_404(conn, session_id)
         require_teacher(row, teacher_token)
-    return teacher_html(session_id, teacher_token)
+    return HTMLResponse(teacher_html(session_id, teacher_token), headers=PRODUCT_HTML_HEADERS)
 
 
 @classroom_tutor_router.get("/join/{session_id}", response_class=HTMLResponse)
@@ -862,7 +933,38 @@ def join(session_id: str, token: str):
         row = get_session_or_404(conn, session_id)
         if token != row["join_token"]:
             raise HTTPException(403, "invalid join token")
-    return student_html(session_id, token)
+    return HTMLResponse(student_html(session_id, token), headers=PRODUCT_HTML_HEADERS)
+
+
+@teacher_classroom_router.get("/board/{session_id}", response_class=HTMLResponse)
+def teacher_product_board(session_id: str, teacher_token: str):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+    return HTMLResponse(
+        board_html(session_id, teacher_token, product_prefix="/classroom"),
+        headers=PRODUCT_HTML_HEADERS,
+    )
+
+
+@teacher_classroom_router.get("/teacher/{session_id}", response_class=HTMLResponse)
+def teacher_product_console(session_id: str, teacher_token: str):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+    return HTMLResponse(
+        teacher_product_html(session_id, teacher_token),
+        headers=PRODUCT_HTML_HEADERS,
+    )
+
+
+@teacher_classroom_router.get("/join/{session_id}", response_class=HTMLResponse)
+def teacher_product_join(session_id: str, token: str):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        if not secrets.compare_digest(token, row["join_token"]):
+            raise HTTPException(403, "invalid join token")
+    return HTMLResponse(student_html(session_id, token), headers=PRODUCT_HTML_HEADERS)
 
 
 HOME_HTML = f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>EduRecover AI 튜터</title><style>{COMMON_CSS}</style></head><body>
@@ -898,6 +1000,23 @@ async function createSession(){{
 </script></body></html>"""
 
 
+TEACHER_PRODUCT_HOME_HTML = (
+    HOME_HTML
+    .replace("<title>EduRecover AI 튜터</title>", "<title>EduRecover Classroom Board 교사용</title>")
+    .replace("EduRecover 산파식 AI 튜터·시청각 수업", "EduRecover Classroom Board 교사용")
+    .replace("새 튜터 수업 만들기", "새 전자칠판 수업 만들기")
+    .replace("AI 튜터·시청각 수업 만들기", "전자칠판 수업 만들기")
+    .replace("OWNER:CURRENT_LESSON", "TEACHER_PRODUCT:CURRENT_LESSON")
+    .replace("owner-current", "teacher-product-current")
+    .replace("api('/tutor/api/sessions'", "api('/classroom/api/sessions'")
+)
+
+
 @classroom_tutor_router.get("", response_class=HTMLResponse, include_in_schema=False)
 def home(_: None = Depends(require_owner)):
     return HTMLResponse(HOME_HTML, headers={"Cache-Control": "no-store", "Referrer-Policy": "same-origin"})
+
+
+@teacher_classroom_router.get("", response_class=HTMLResponse, include_in_schema=False)
+def teacher_product_home(_: None = Depends(require_owner)):
+    return HTMLResponse(TEACHER_PRODUCT_HOME_HTML, headers=PRODUCT_HTML_HEADERS)

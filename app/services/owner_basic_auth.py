@@ -112,7 +112,7 @@ def require_owner(
     ):
         return
     # A normal page navigation now opens an actual form, not a native auth popup.
-    if request.url.path == "/owner" and request.method in {"GET", "HEAD"}:
+    if request.url.path in {"/owner", "/classroom"} and request.method in {"GET", "HEAD"}:
         raise HTTPException(
             status_code=303, detail="Owner login required.",
             headers={"Location": "/owner/login", "Cache-Control": "no-store"},

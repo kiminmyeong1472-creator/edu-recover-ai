@@ -79,7 +79,7 @@ PILOT_HTML = r"""
   <main>
     <div class="topbar">
       <div><h1 id="pageTitle">홈 대시보드</h1><div class="meta">EduRecover AI Teacher Platform</div></div>
-      <div class="row"><span id="healthBadge" class="badge warn"><span class="status-dot"></span>서버 확인 중</span><button class="btn primary" onclick="showView('create')">+ 새 시험</button></div>
+      <div class="row"><span id="healthBadge" class="badge warn"><span class="status-dot"></span>서버 확인 중</span><a id="classroomProductLink" class="btn dark" href="/classroom" style="text-decoration:none">교사용 전자칠판</a><button class="btn primary" onclick="showView('create')">+ 새 시험</button></div>
     </div>
     <div class="mobile-nav" id="mobileNav">
       <button data-view="dashboard">홈</button><button data-view="sources">자료</button><button data-view="create">새 시험</button><button data-view="settings">설정</button><button data-view="generate">AI출제</button><button data-view="workspace">문항</button><button data-view="tutor">AI튜터</button><button data-view="media">시청각</button><button data-view="verify">검증</button><button data-view="preview">출력</button><button data-view="archive">보관</button><button data-view="system">시스템</button>
@@ -249,7 +249,7 @@ PILOT_HTML = r"""
         <div class="hero"><div><h2>산파식 AI 튜터</h2><p>현재 문항을 정답 선제공 없이 오답원인 확인·질문·분기·재시험 수업으로 전환합니다.</p></div><span class="badge good">설치 완료</span></div>
         <div class="grid c2">
           <div class="card"><h3>현재 문항으로 수업 만들기</h3><p class="muted">문항 작업실에서 선택한 문항과 해설을 전자칠판 수업으로 보냅니다. 학생은 가명이나 번호로 참가합니다.</p><button class="btn primary" onclick="startTutorFromCurrentItem()">현재 문항 AI 튜터 수업 만들기</button><div id="tutorLaunchResult" class="muted" style="margin-top:12px"></div></div>
-          <div class="card"><h3>AI 튜터 수업실</h3><p class="muted">문항·오답원인·영상·TTS·산파식 질문·재시험을 직접 설정하고 전자칠판과 교사 콘솔을 엽니다.</p><a class="btn dark" href="/tutor" style="display:inline-block;text-decoration:none">AI 튜터 수업실 열기</a></div>
+          <div class="card"><h3>AI 튜터 수업실</h3><p class="muted">문항·오답원인·영상·TTS·산파식 질문·재시험을 직접 설정하고 전자칠판과 교사 콘솔을 엽니다.</p><a class="btn dark" href="/tutor" style="display:inline-block;text-decoration:none">AI 튜터 수업실 열기</a> <a class="btn ghost" href="/classroom" style="display:inline-block;text-decoration:none">교사용 상품 열기</a></div>
           <div class="card"><h3>강화학습 연결</h3><p class="muted">실제 노출·피드백 전 응답·독립 후속문항·교사검증을 목적별 학습자격으로 판정합니다. 학생 응답 직후 모델 가중치는 자동 변경하지 않습니다.</p><div id="tutorTrainingState"><span class="badge warn">상태 확인 중</span></div></div>
         </div>
       </section>
@@ -259,7 +259,7 @@ PILOT_HTML = r"""
         <div class="card">
           <div class="form-grid"><div><label>수업 제목</label><input id="mediaTitle" value="시청각 개념 수업"></div><div><label>영상 주소</label><input id="mediaUrl" placeholder="MP4·WebM 또는 YouTube 주소"></div><div><label>영상 멈춤 시점(초)</label><input id="mediaPause" type="number" min="0" step="0.5" value="8"></div><div><label>확인 질문</label><input id="mediaQuestion" value="방금 설명에서 가장 중요한 조건은 무엇인가요?"></div></div>
           <label>설명·TTS 원고</label><textarea id="mediaScript">핵심 조건을 먼저 자기 말로 설명해 보세요. 영상 주소가 없으면 이 문장을 한국어 음성으로 읽어 줍니다.</textarea>
-          <button class="btn primary" onclick="startAudiovisualLesson()">시청각 수업 만들기</button><a class="btn ghost" href="/tutor" style="display:inline-block;text-decoration:none;margin-left:6px">상세 설정</a><div id="mediaLaunchResult" class="muted" style="margin-top:12px"></div>
+          <button class="btn primary" onclick="startAudiovisualLesson()">시청각 수업 만들기</button><a class="btn ghost" href="/classroom" style="display:inline-block;text-decoration:none;margin-left:6px">교사용 전자칠판 상품</a><div id="mediaLaunchResult" class="muted" style="margin-top:12px"></div>
         </div>
       </section>
 

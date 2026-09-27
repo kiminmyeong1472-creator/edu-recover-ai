@@ -12,7 +12,7 @@ os.environ.setdefault("EDURECOVER_TRAINING_PSEUDONYM_SALT", "test-only-training-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.classroom_tutor import classroom_tutor_router
+from app.classroom_tutor import classroom_tutor_router, teacher_classroom_router
 
 
 class ClassroomTutorTests(unittest.TestCase):
@@ -20,6 +20,7 @@ class ClassroomTutorTests(unittest.TestCase):
     def setUpClass(cls):
         app = FastAPI()
         app.include_router(classroom_tutor_router)
+        app.include_router(teacher_classroom_router)
         cls.client = TestClient(app)
         token = base64.b64encode(b"owner-test:password-test").decode("ascii")
         cls.owner_headers = {"Authorization": f"Basic {token}"}
@@ -94,6 +95,58 @@ class ClassroomTutorTests(unittest.TestCase):
         self.assertIn("산파식 AI 튜터", page.text)
         self.assertIn("영상 주소", page.text)
         self.assertIn("한국어 음성합성", page.text)
+
+    def test_teacher_product_is_separate_and_owner_gated(self):
+        unauthenticated = self.client.get("/classroom", follow_redirects=False)
+        self.assertEqual(unauthenticated.status_code, 303)
+        self.assertEqual(unauthenticated.headers["location"], "/owner/login")
+
+        page = self.client.get("/classroom", headers=self.owner_headers)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("EduRecover Classroom Board 교사용", page.text)
+        self.assertIn("전자칠판 수업 만들기", page.text)
+        self.assertNotIn("강화학습 연결 상태", page.text)
+
+    def test_teacher_product_creates_product_scoped_links(self):
+        created = self.client.post(
+            "/classroom/api/sessions",
+            headers=self.owner_headers,
+            json={"title": "교사용 상품 시험", "room_alias": "T-01"},
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        payload = created.json()
+        self.assertTrue(payload["board_url"].startswith("/classroom/board/"))
+        self.assertTrue(payload["teacher_url"].startswith("/classroom/teacher/"))
+        self.assertTrue(payload["join_url"].startswith("/classroom/join/"))
+
+        board = self.client.get(payload["board_url"])
+        self.assertEqual(board.status_code, 200)
+        self.assertEqual(board.headers["referrer-policy"], "no-referrer")
+        self.assertIn('PFX="/classroom"', board.text)
+
+        teacher = self.client.get(payload["teacher_url"])
+        self.assertEqual(teacher.status_code, 200)
+        self.assertIn("교사 콘솔", teacher.text)
+        self.assertNotIn("강화학습 연결 상태", teacher.text)
+
+    def test_student_session_hides_answers_and_internal_routing(self):
+        created = self.client.post(
+            "/classroom/api/sessions",
+            headers=self.owner_headers,
+            json={"title": "학생 정보경계 시험", "room_alias": "SAFE"},
+        ).json()
+        state = self.client.get(
+            f"/tutor/api/sessions/{created['session_id']}",
+            params={"join_token": created["join_token"]},
+        )
+        self.assertEqual(state.status_code, 200, state.text)
+        payload = state.json()
+        self.assertNotIn("join_token", payload)
+        for segment in payload["lesson"]:
+            self.assertNotIn("correct_answer", segment)
+            self.assertNotIn("branch_map", segment)
+            self.assertNotIn("misconception_path", segment)
+            self.assertNotIn("content_revision_id", segment)
 
     def test_tutor_responses_feed_fail_closed_training_eligibility(self):
         lesson = [

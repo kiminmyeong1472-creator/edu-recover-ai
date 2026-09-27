@@ -15,6 +15,7 @@ def build_teacher_html(html: str) -> str:
     teacher = teacher.replace('<button data-view="tutor">AI튜터</button>', '')
     teacher = teacher.replace('<button data-view="media">시청각 자료</button>', '')
     teacher = teacher.replace('<button data-view="media">시청각</button>', '')
+    teacher = re.sub(r'<a id="classroomProductLink".*?</a>', '', teacher)
     teacher = re.sub(
         r'<section id="(?:tutor|media)" class="view">.*?</section>',
         '',
