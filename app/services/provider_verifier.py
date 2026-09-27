@@ -17,6 +17,8 @@ from app.services.auto_generator import (
     GenerationFailed,
     GeneratorNotConfigured,
     GenerationProvider,
+    _gemini_error_metadata,
+    _log_gemini_error,
     gemini_generation_config,
 )
 
@@ -135,8 +137,11 @@ async def verify_with_provider(
         except GenerationFailed:
             raise
         except Exception as exc:
+            _log_gemini_error("verification", exc)
+            code, status = _gemini_error_metadata(exc)
             raise GenerationFailed(
-                f"Gemini verification failed ({type(exc).__name__})."
+                f"Gemini verification failed ({type(exc).__name__}; "
+                f"code={code}; status={status})."
             ) from exc
 
     if normalized == GenerationProvider.CLAUDE.value:

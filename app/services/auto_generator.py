@@ -7,6 +7,7 @@ The caller must explicitly select a provider for each request.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -22,6 +23,9 @@ from app.services.authoring_assets import build_authoring_context
 from app.services.privacy_guard import assert_provider_zdr
 
 
+logger = logging.getLogger(__name__)
+
+
 class GenerationProvider(StrEnum):
     OPENAI = "openai"
     GEMINI = "gemini"
@@ -34,6 +38,32 @@ class GeneratorNotConfigured(RuntimeError):
 
 class GenerationFailed(RuntimeError):
     """Raised when the provider response cannot be safely used."""
+
+
+def _gemini_error_metadata(exc: Exception) -> tuple[object, object]:
+    """Return non-secret upstream status fields for diagnostics."""
+    return getattr(exc, "code", None), getattr(exc, "status", None)
+
+
+def _log_gemini_error(action: str, exc: Exception) -> None:
+    """Log enough upstream detail to diagnose failures without logging the key."""
+    code, status = _gemini_error_metadata(exc)
+    message = str(getattr(exc, "message", "") or "").replace("\n", " ")[:500]
+    secret = (
+        settings.gemini_api_key.get_secret_value()
+        if settings.gemini_api_key is not None
+        else ""
+    )
+    if secret:
+        message = message.replace(secret, "[REDACTED_API_KEY]")
+    logger.error(
+        "gemini_%s_failed error_type=%s code=%s status=%s message=%s",
+        action,
+        type(exc).__name__,
+        code,
+        status,
+        message,
+    )
 
 
 def gemini_generation_config(system_instruction: str) -> types.GenerateContentConfig:
@@ -263,8 +293,11 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
     except GenerationFailed:
         raise
     except Exception as exc:
+        _log_gemini_error("generation", exc)
+        code, status = _gemini_error_metadata(exc)
         raise GenerationFailed(
-            f"Gemini generation failed ({type(exc).__name__})."
+            f"Gemini generation failed ({type(exc).__name__}; "
+            f"code={code}; status={status})."
         ) from exc
 
 
