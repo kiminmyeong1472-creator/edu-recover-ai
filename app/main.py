@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.services.authoring_assets import get_asset_manifest
 import app.services.context_overlay  # installs task-scoped provider context builders
 from app.services.human_ai_charter import CHARTER
-from app.services.owner_basic_auth import require_owner
+from app.services.owner_basic_auth import require_owner, owner_auth_router, OWNER_LOGOUT_BAR
 from app.services.teacher_view import build_teacher_html
 from app.services.private_asset_registry import (
     drive_archive_inventory_summary,
@@ -56,6 +56,8 @@ app = FastAPI(
     openapi_url=None,
 )
 
+
+app.include_router(owner_auth_router)
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +210,11 @@ async def platform_home() -> RedirectResponse:
 @app.get("/owner", response_class=HTMLResponse, include_in_schema=False)
 async def owner_platform(_: None = Depends(require_owner)) -> HTMLResponse:
     """Owner-only platform address."""
-    return HTMLResponse(PILOT_HTML.replace("교사 출제 플랫폼", "소유자 운영 플랫폼", 1))
+    return HTMLResponse(
+        PILOT_HTML.replace("교사 출제 플랫폼", "소유자 운영 플랫폼", 1)
+        .replace("<body>", "<body>" + OWNER_LOGOUT_BAR, 1),
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
 
 
 @app.get("/teacher-free", response_class=HTMLResponse, include_in_schema=False)
