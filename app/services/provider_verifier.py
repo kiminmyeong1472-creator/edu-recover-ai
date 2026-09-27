@@ -17,6 +17,7 @@ from app.services.auto_generator import (
     GenerationFailed,
     GeneratorNotConfigured,
     GenerationProvider,
+    gemini_generation_config,
 )
 
 
@@ -121,7 +122,8 @@ async def verify_with_provider(
             client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
             response = await client.aio.models.generate_content(
                 model=settings.gemini_model,
-                contents=VERIFICATION_INSTRUCTIONS + "\n\n" + payload,
+                contents=payload,
+                config=gemini_generation_config(VERIFICATION_INSTRUCTIONS),
             )
             result = _parse_result(response.text)
             return {

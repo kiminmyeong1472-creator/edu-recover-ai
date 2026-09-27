@@ -204,7 +204,7 @@ PILOT_HTML = r"""
           <div class="card">
             <h3>출제 원문</h3>
             <label>AI 출제 에이전트</label>
-            <select id="genProvider"><option value="openai" selected>ChatGPT / OpenAI · GPT-5.6 Sol</option><option value="gemini">Gemini</option><option value="claude">Claude</option></select>
+            <select id="genProvider"><option value="openai" selected>ChatGPT / OpenAI · GPT-5.6 Sol</option><option value="gemini">Gemini Pro · Extended thinking</option><option value="claude">Claude</option></select>
             <label>원문·교과서 본문·수업자료</label>
             <textarea id="generationSource" style="min-height:320px" placeholder="출제할 원문을 여기에 붙여 넣으십시오."></textarea>
             <label>추가 출제 지시</label>
@@ -372,7 +372,7 @@ async function refreshAiStatus(){
     const providers=d.providers||{};
     const parts=[
       "OpenAI "+(providers.openai?.ready?"사용 가능":"준비중"),
-      "Gemini "+(providers.gemini?.ready?"사용 가능":"준비중"),
+      "Gemini Pro Extended "+(providers.gemini?.ready?"사용 가능":"준비중"),
       "Claude "+(providers.claude?.ready?"사용 가능":"준비중")
     ];
     const anyReady=Boolean(providers.openai?.ready||providers.gemini?.ready||providers.claude?.ready);
@@ -426,7 +426,7 @@ async function generateQuestions(){
 }
 
 function providerLabel(provider){
-  return {openai:"ChatGPT / OpenAI",gemini:"Gemini",claude:"Claude"}[provider]||provider;
+  return {openai:"ChatGPT / OpenAI",gemini:"Gemini Pro Extended",claude:"Claude"}[provider]||provider;
 }
 async function showCrossVerifyPrompt(originProvider, generatedCount){
   const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
@@ -437,7 +437,7 @@ async function showCrossVerifyPrompt(originProvider, generatedCount){
     const r=await fetch("/ai-status");const status=await r.json();
     const providers=[
       ["openai","ChatGPT / OpenAI",status.providers?.openai?.ready],
-      ["gemini","Gemini",status.providers?.gemini?.ready],
+      ["gemini","Gemini Pro Extended",status.providers?.gemini?.ready],
       ["claude","Claude",status.providers?.claude?.ready]
     ].filter(([id,,ready])=>id!==originProvider&&ready);
     providers.forEach(([id,label])=>{const o=document.createElement("option");o.value=id;o.textContent=label;select.appendChild(o)});

@@ -34,8 +34,12 @@ class Settings(BaseSettings):
         validation_alias="ANTHROPIC_MODEL",
     )
     gemini_model: str = Field(
-        default="gemini-3.8-flash",
+        default="gemini-3.1-pro-preview",
         validation_alias="GEMINI_MODEL",
+    )
+    gemini_thinking_level: str = Field(
+        default="high",
+        validation_alias="GEMINI_THINKING_LEVEL",
     )
 
     model_config = SettingsConfigDict(

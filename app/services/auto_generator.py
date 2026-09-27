@@ -13,6 +13,7 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 from google import genai
+from google.genai import types
 from openai import AsyncOpenAI
 
 from app.core.config import settings
@@ -33,6 +34,26 @@ class GeneratorNotConfigured(RuntimeError):
 
 class GenerationFailed(RuntimeError):
     """Raised when the provider response cannot be safely used."""
+
+
+def gemini_generation_config(system_instruction: str) -> types.GenerateContentConfig:
+    """Return the API equivalent of Gemini Apps Pro extended thinking."""
+    normalized = settings.gemini_thinking_level.strip().upper()
+    allowed_levels = {
+        "LOW": types.ThinkingLevel.LOW,
+        "MEDIUM": types.ThinkingLevel.MEDIUM,
+        "HIGH": types.ThinkingLevel.HIGH,
+    }
+    thinking_level = allowed_levels.get(normalized)
+    if thinking_level is None:
+        raise GenerationFailed(
+            "GEMINI_THINKING_LEVEL must be LOW, MEDIUM, or HIGH for Gemini Pro."
+        )
+    return types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        response_mime_type="application/json",
+        thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
+    )
 
 
 @dataclass(frozen=True)
@@ -228,7 +249,8 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
         client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
         response = await client.aio.models.generate_content(
             model=settings.gemini_model,
-            contents=SYSTEM_INSTRUCTIONS + "\n\n" + prompt,
+            contents=prompt,
+            config=gemini_generation_config(SYSTEM_INSTRUCTIONS),
         )
         items = _parse_and_validate_items(response.text, count)
         return GenerationResult(

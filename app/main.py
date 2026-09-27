@@ -313,6 +313,8 @@ async def owner_ai_status(_: None = Depends(require_owner)) -> dict[str, Any]:
         rows[provider] = {
             "configured": _provider_secret_configured(provider),
             "model": _provider_model(provider),
+            "thinking_level": settings.gemini_thinking_level if provider == "gemini" else None,
+            "product_profile": "PRO_EXTENDED_API_EQUIVALENT" if provider == "gemini" else None,
             "control": control,
             "privacy": privacy.get("providers", {}).get(provider, {}),
         }
