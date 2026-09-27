@@ -478,9 +478,12 @@ async function refreshOwnerControl(){
 async function refreshHealth(){
   const badge=document.getElementById("healthBadge"),sys=document.getElementById("systemHealth");
   try{const r=await fetch("/health");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);
-    badge.className="badge good";badge.innerHTML='<span class="status-dot good"></span>서버 정상';
-    sys.textContent="정상 · "+d.service+" · "+d.environment;
-  }catch(e){badge.className="badge warn";badge.textContent="서버 확인 필요";sys.textContent="확인 실패: "+e.message}
+    if(badge){badge.className="badge good";badge.innerHTML='<span class="status-dot good"></span>서버 정상';}
+    if(sys) sys.textContent="정상 · "+d.service+" · "+d.environment;
+  }catch(e){
+    if(badge){badge.className="badge warn";badge.textContent="서버 확인 필요";}
+    if(sys) sys.textContent="확인 실패: "+e.message;
+  }
 }
 function updateCards(){document.getElementById("questionCountCard").textContent=workspace.items.length;document.getElementById("verifyState").textContent=workspace.teacherApproved?"교사 검토 완료":"대기";}
 function addSourceFiles(){
