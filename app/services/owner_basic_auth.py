@@ -18,9 +18,14 @@ security = HTTPBasic(auto_error=False)
 def require_owner(
     credentials: HTTPBasicCredentials | None = Depends(security),
 ) -> None:
-    expected_user = os.getenv("EDURECOVER_OWNER_USER", "")
+    expected_users = tuple(
+        user for user in (
+            os.getenv("EDURECOVER_OWNER_USER", ""),
+            os.getenv("EDURECOVER_OWNER_USER ", ""),
+        ) if user
+    )
     expected_password = os.getenv("EDURECOVER_OWNER_PASSWORD", "")
-    if not expected_user or not expected_password:
+    if not expected_users or not expected_password:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Owner authentication is not configured.",
@@ -31,7 +36,9 @@ def require_owner(
             detail="Owner authentication required.",
             headers={"WWW-Authenticate": "Basic"},
         )
-    ok_user = secrets.compare_digest(credentials.username, expected_user)
+    ok_user = any(
+        secrets.compare_digest(credentials.username, user) for user in expected_users
+    )
     ok_password = secrets.compare_digest(credentials.password, expected_password)
     if not (ok_user and ok_password):
         raise HTTPException(
