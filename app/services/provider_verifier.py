@@ -46,7 +46,7 @@ def _serialize(problems: list[dict[str, Any]], provider: str = "") -> str:
     # Verification needs the submitted learning content, not browser state,
     # tokens, execution receipts or arbitrary attached internal metadata.
     fields = {"problem_id", "question_type", "difficulty", "question", "passage",
-              "choices", "answer", "explanation", "evidence"}
+              "choices", "answer", "explanation", "evidence", "subject", "grade"}
     problems = [{key: value for key, value in problem.items() if key in fields}
                 for problem in problems]
     return json.dumps(

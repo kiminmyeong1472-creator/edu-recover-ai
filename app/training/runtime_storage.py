@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.services.secret_vault import SecretVault, import_legacy_assets, state_root
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 
 def prepare_runtime_storage():

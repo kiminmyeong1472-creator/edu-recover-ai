@@ -134,3 +134,12 @@ def test_real_request_builder_uses_saved_revision(tmp_path,monkeypatch):
     assert second['excerpts']==['updated approved rule']
     assert second['references'][0]['revision']==2
     assert len(vault.receipts())==2
+
+
+def test_verification_preserves_subject_and_grade_scope(tmp_path,monkeypatch):
+    from app.services.context_overlay import build_verification_context
+    monkeypatch.setenv('EDURECOVER_CLASSROOM_STATE_DIR',str(tmp_path))
+    vault=SecretVault();vault.save(revision(sections=[section(subjects=['수학'],grades=['고2'],purposes=['verify'])]))
+    p={'subject':'수학','grade':'고2','passage':'concept','question_type':'proof'}
+    assert build_verification_context([p],provider='openai')['selection']['excerpts']
+    assert not build_verification_context([dict(p,subject='영어')],provider='openai')['selection']['excerpts']

@@ -14,8 +14,12 @@ def build_authoring_context(*, subject, grade, source_text, question_types, prov
 def build_verification_context(problems, provider=""):
     source = "\n".join(str(p.get("passage") or p.get("evidence") or "") for p in problems)
     qtypes = [str(p.get("question_type") or "") for p in problems]
-    selection = SecretVault().select(provider=provider, purpose="verify", subject="영어",
-                                    grade="", source_text=source, question_types=qtypes)
+    subjects = {str(p.get("subject") or "영어") for p in problems}
+    grades = {str(p.get("grade") or "") for p in problems}
+    subject = next(iter(subjects)) if len(subjects) == 1 else ""
+    grade = next(iter(grades)) if len(grades) == 1 else ""
+    selection = SecretVault().select(provider=provider, purpose="verify", subject=subject,
+                                    grade=grade, source_text=source, question_types=qtypes)
     return {"delivery_scope": "single_request_only", "purpose": "verify", "selection": selection}
 
 

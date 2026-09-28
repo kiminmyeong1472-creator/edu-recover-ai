@@ -241,7 +241,7 @@ def import_legacy_assets(vault: SecretVault):
             continue
         sections = []
         for text in split_source(path.read_text(encoding="utf-8")):
-            keywords = list(dict.fromkeys(re.findall(r"[A-Za-z][A-Za-z'-]{3,}|[가-힣]{2,}", text.lower())))[:40]
+            keywords = [k for k in dict.fromkeys(re.findall(r"[A-Za-z][A-Za-z'-]{3,}|[가-힣]{2,}", text.lower())) if len(k) <= 80][:40]
             sections.append(Section(text=text, keywords=keywords, purposes=["generate", "verify"],
                                     providers=sorted(PROVIDERS), approved=policy == "excerpt_only" and bool(keywords)))
         if not sections:

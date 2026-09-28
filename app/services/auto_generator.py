@@ -418,4 +418,5 @@ async def generate_questions(
         SecretVault().mark(selection["request_id"], "FAILED_OR_UNCERTAIN")
         raise
     SecretVault().mark(selection["request_id"], "COMPLETED")
-    return result
+    return GenerationResult(provider=result.provider, model=result.model,
+        items=tuple(dict(item, subject=subject, grade=grade) for item in result.items))
