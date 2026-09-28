@@ -262,7 +262,7 @@ class OpenAIVerificationFailureTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(verification.settings, 'openai_api_key', SecretStr('test-only-key')), \
                 patch.object(verification, 'AsyncOpenAI', return_value=client):
             with self.assertRaises(generation.GenerationFailed) as caught:
-                await verification.verify_with_provider('openai', [{'question': 'q'}])
+                await verification._verify_payload('openai', [{'question': 'q'}], 'minimal')
             self.assertEqual(caught.exception.code, 'PROVIDER_AUTHENTICATION_FAILED')
             self.assertNotIn('secret-and-body', str(caught.exception))
             self.assertIs(client.responses.create.await_args.kwargs['store'], False)

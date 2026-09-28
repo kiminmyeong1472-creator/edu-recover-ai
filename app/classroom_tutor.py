@@ -958,6 +958,10 @@ def owner_training_status(_: None = Depends(require_owner)):
         "pseudonym_salt_configured": TRAINING_LEDGER.pseudonym_salt_configured,
         "dataset_snapshot": snapshot,
         "promotion_gate": "FAIL_CLOSED",
+        "training_blockers": (["NO_ELIGIBLE_EVIDENCE"] if not snapshot["record_count"] else []) + [
+            "MATERIALIZED_REVIEWED_TRAINING_DATA_REQUIRED", "GPU_TRAINING_JOB_NOT_CONNECTED"],
+        "available_training_runner": "SFT_LORA_CHECK_ONLY_SUPPORTED",
+        "reinforcement_learning_worker_connected": False,
     }
 
 

@@ -163,6 +163,7 @@ Return exactly this shape:
 
 def _build_request_text(
     *,
+    provider: str = "",
     source_text: str,
     count: int,
     subject: str,
@@ -188,6 +189,7 @@ def _build_request_text(
             "extra_instructions": extra_instructions,
             "source_text": source_text,
             "edurecover_authoring_context": build_authoring_context(
+                provider=provider,
                 subject=subject,
                 grade=grade,
                 source_text=source_text,
@@ -385,7 +387,9 @@ async def generate_questions(
     if not 1 <= count <= 50:
         raise GenerationFailed("Question count must be between 1 and 50.")
 
+    assert_provider_zdr(provider.strip().lower())
     prompt = _build_request_text(
+        provider=provider.strip().lower(),
         source_text=source_text,
         count=count,
         subject=subject,
@@ -398,12 +402,20 @@ async def generate_questions(
         extra_instructions=extra_instructions,
     )
 
+    from app.services.secret_vault import SecretVault
+    selection = json.loads(prompt)["edurecover_authoring_context"]["selection"]
+    if selection["selection_state"] == "NO_MATCH":
+        raise GenerationFailed("이 작업에 허용된 영업비밀 구간이 없습니다. 영업비밀 관리창에서 적용 범위를 확인해 주세요.",
+                               code="AUTHORIZED_ASSET_NOT_FOUND", http_status=409)
     normalized_provider = provider.strip().lower()
-    if normalized_provider == GenerationProvider.OPENAI.value:
-        return await _generate_with_openai(prompt, count)
-    if normalized_provider == GenerationProvider.GEMINI.value:
-        return await _generate_with_gemini(prompt, count)
-    if normalized_provider == GenerationProvider.CLAUDE.value:
-        return await _generate_with_anthropic(prompt, count)
-
-    raise GenerationFailed(f"Unsupported generation provider: {provider}")
+    try:
+        runner = {"openai": _generate_with_openai, "gemini": _generate_with_gemini,
+                  "claude": _generate_with_anthropic}.get(normalized_provider)
+        if runner is None:
+            raise GenerationFailed("Unsupported generation provider.")
+        result = await runner(prompt, count)
+    except BaseException:
+        SecretVault().mark(selection["request_id"], "FAILED_OR_UNCERTAIN")
+        raise
+    SecretVault().mark(selection["request_id"], "COMPLETED")
+    return result

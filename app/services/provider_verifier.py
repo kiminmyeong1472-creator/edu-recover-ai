@@ -42,7 +42,7 @@ or
 """
 
 
-def _serialize(problems: list[dict[str, Any]]) -> str:
+def _serialize(problems: list[dict[str, Any]], provider: str = "") -> str:
     # Verification needs the submitted learning content, not browser state,
     # tokens, execution receipts or arbitrary attached internal metadata.
     fields = {"problem_id", "question_type", "difficulty", "question", "passage",
@@ -53,7 +53,7 @@ def _serialize(problems: list[dict[str, Any]]) -> str:
         {
             "problem_count": len(problems),
             "problems": problems,
-            "edurecover_verification_context": build_verification_context(problems),
+            "edurecover_verification_context": build_verification_context(problems, provider=provider),
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -99,15 +99,15 @@ def _parse_result(text: str) -> dict[str, Any]:
     }
 
 
-async def verify_with_provider(
+async def _verify_payload(
     provider: str,
     problems: list[dict[str, Any]],
+    payload: str,
 ) -> dict[str, Any]:
     if not problems:
         raise GenerationFailed("At least one generated problem is required.")
 
     normalized = provider.strip().lower()
-    payload = _serialize(problems)
 
     if normalized == GenerationProvider.OPENAI.value:
         assert_provider_zdr("openai")
@@ -196,3 +196,19 @@ async def verify_with_provider(
             await client.close()
 
     raise GenerationFailed(f"Unsupported verification provider: {provider}")
+
+
+async def verify_with_provider(provider: str, problems: list[dict[str, Any]]) -> dict[str, Any]:
+    from app.services.secret_vault import SecretVault
+    assert_provider_zdr(provider.strip().lower())
+    payload = _serialize(problems, provider=provider.strip().lower())
+    selection = json.loads(payload)["edurecover_verification_context"]["selection"]
+    if selection["selection_state"] == "NO_MATCH":
+        raise GenerationFailed("검증 작업에 허용된 영업비밀 구간이 없습니다.", code="AUTHORIZED_ASSET_NOT_FOUND", http_status=409)
+    try:
+        result = await _verify_payload(provider, problems, payload)
+    except BaseException:
+        SecretVault().mark(selection["request_id"], "FAILED_OR_UNCERTAIN")
+        raise
+    SecretVault().mark(selection["request_id"], "COMPLETED")
+    return result

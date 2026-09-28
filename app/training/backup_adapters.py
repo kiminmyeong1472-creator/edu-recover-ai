@@ -165,6 +165,10 @@ class ServerBackupAdapter:
             if destination.is_symlink() or sha256_file(destination) != payload.artifact_sha256:
                 raise BackupStorageError("EXISTING_CIPHERTEXT_MISMATCH")
         else:
+            used = sum(p.stat().st_size for p in self.root.glob("*/*.edurbk") if p.is_file() and not p.is_symlink())
+            budget = 100 * 1024 * 1024
+            if used + payload.path.stat().st_size > budget or shutil.disk_usage(self.root).free < 20 * 1024 * 1024 + payload.path.stat().st_size:
+                raise BackupStorageError("LOCAL_BACKUP_CAPACITY_REACHED")
             fd, tmp = tempfile.mkstemp(prefix=".pending-", dir=folder)
             try:
                 with os.fdopen(fd, "wb") as output, payload.path.open("rb") as source:
@@ -183,21 +187,28 @@ class ServerBackupAdapter:
 
 
 class DriveBackupAdapter:
-    """Dedicated service account + explicitly selected private Shared Drive folders.
+    """Explicit user OAuth for My Drive or service account for Shared Drive.
 
     ChatGPT's Drive connector is not an application credential. My Drive uploads
-    require separately authorized user OAuth and are deliberately unsupported here.
+    use owner consent and app-created owner-only backup folders.
     The injected HTTP session makes failure paths testable without external calls.
     """
 
-    def __init__(self, *, session: Any, folders: dict[BackupTarget, str], payloads: EncryptedPayloads):
+    def __init__(self, *, session: Any, folders: dict[BackupTarget, str], payloads: EncryptedPayloads, user_oauth: bool = False):
         self.session, self.folders, self.payloads = session, folders, payloads
+        self.user_oauth = user_oauth
 
     @classmethod
     def from_environment(cls, *, payloads: EncryptedPayloads):
         from google.oauth2 import service_account
         from google.auth.transport.requests import AuthorizedSession
 
+        from app.training.drive_oauth import oauth_configured, authorized_session
+        if oauth_configured():
+            if os.getenv("EDURECOVER_BACKUP_DRIVE_SERVICE_ACCOUNT_FILE") or os.getenv("EDURECOVER_BACKUP_DRIVE_SERVICE_ACCOUNT_JSON"):
+                raise BackupStorageError("AMBIGUOUS_DRIVE_CREDENTIALS")
+            session, folders = authorized_session()
+            return cls(session=session, folders={BackupTarget(k): v for k, v in folders.items()}, payloads=payloads, user_oauth=True)
         path = os.getenv("EDURECOVER_BACKUP_DRIVE_SERVICE_ACCOUNT_FILE")
         raw = os.getenv("EDURECOVER_BACKUP_DRIVE_SERVICE_ACCOUNT_JSON")
         if bool(path) == bool(raw):
@@ -238,17 +249,20 @@ class DriveBackupAdapter:
         if not target.value.startswith("DRIVE_") or not isinstance(folder, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", folder):
             raise BackupStorageError("APPROVED_DRIVE_FOLDER_REQUIRED")
         info = self._request("GET", f"{DRIVE_API}/files/{folder}", params={
-            "supportsAllDrives": "true", "fields": "id,mimeType,trashed,driveId,capabilities(canAddChildren)"
+            "supportsAllDrives": "true", "fields": "id,mimeType,trashed,driveId,ownedByMe,capabilities(canAddChildren)"
         }).json()
         if (info.get("id") != folder or info.get("trashed") is not False
                 or info.get("mimeType") != "application/vnd.google-apps.folder"
                 or not info.get("capabilities", {}).get("canAddChildren")):
             raise BackupStorageError("DRIVE_FOLDER_NOT_WRITABLE")
-        if not info.get("driveId"):
+        if self.user_oauth:
+            if not info.get("ownedByMe") or info.get("driveId"):
+                raise BackupStorageError("OWNER_MY_DRIVE_FOLDER_REQUIRED")
+        elif not info.get("driveId"):
             raise BackupStorageError("SERVICE_ACCOUNT_REQUIRES_SHARED_DRIVE")
         page = None
         while True:
-            params = {"supportsAllDrives": "true", "fields": "nextPageToken,permissions(type)", "pageSize": 100}
+            params = {"supportsAllDrives": "true", "fields": "nextPageToken,permissions(type,role)", "pageSize": 100}
             if page:
                 params["pageToken"] = page
             permissions = self._request("GET", f"{DRIVE_API}/files/{folder}/permissions", params=params).json()
@@ -256,6 +270,8 @@ class DriveBackupAdapter:
                 raise BackupStorageError("DRIVE_PERMISSIONS_UNVERIFIED")
             if any(p.get("type") not in {"user", "group"} for p in permissions["permissions"]):
                 raise BackupStorageError("PUBLIC_OR_DOMAIN_DRIVE_SHARING_FORBIDDEN")
+            if self.user_oauth and any(p.get("type") != "user" or p.get("role") != "owner" for p in permissions["permissions"]):
+                raise BackupStorageError("OWNER_ONLY_BACKUP_FOLDER_REQUIRED")
             page = permissions.get("nextPageToken")
             if not page:
                 break

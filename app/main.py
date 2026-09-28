@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 from app.training.backup_api import backup_router
+from app.services.secret_vault_api import vault_router
+from app.training.runtime_storage import prepare_runtime_storage
+from app.training.drive_oauth import drive_router
 from app.training.backup_scheduler import start_backup_scheduler, stop_backup_scheduler
 from app.services.authoring_assets import get_asset_manifest
 import app.services.context_overlay  # installs task-scoped provider context builders
@@ -63,6 +66,9 @@ app = FastAPI(
 
 
 app.include_router(backup_router)
+app.include_router(vault_router)
+app.include_router(drive_router)
+app.router.add_event_handler("startup", prepare_runtime_storage)
 app.router.add_event_handler("startup", start_backup_scheduler)
 app.router.add_event_handler("shutdown", stop_backup_scheduler)
 app.include_router(owner_auth_router)
@@ -224,7 +230,7 @@ async def owner_platform(_: None = Depends(require_owner)) -> HTMLResponse:
     """Owner-only platform address."""
     return HTMLResponse(
         PILOT_HTML.replace("교사 출제 플랫폼", "소유자 운영 플랫폼", 1)
-        .replace("<body>", "<body>" + OWNER_LOGOUT_BAR, 1),
+        .replace("<body>", "<body>" + OWNER_LOGOUT_BAR + '<nav style="padding:12px"><a href="/owner/secrets">영업비밀 · 백업 관리</a></nav>', 1),
         headers={"Cache-Control": "no-store", "Referrer-Policy": "same-origin"},
     )
 

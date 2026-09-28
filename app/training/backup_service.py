@@ -89,9 +89,13 @@ def get_backup_service_status() -> dict[str, Any]:
     credential_sources = sum(bool(os.getenv(name)) for name in (
         "EDURECOVER_BACKUP_DRIVE_SERVICE_ACCOUNT_FILE",
         "EDURECOVER_BACKUP_DRIVE_SERVICE_ACCOUNT_JSON"))
-    if credential_sources != 1:
-        blockers.append("EXPLICIT_DRIVE_SERVICE_ACCOUNT_REQUIRED")
-    if not os.getenv("EDURECOVER_BACKUP_DRIVE_FOLDERS_JSON"):
+    from app.training.drive_oauth import oauth_configured, client_configured
+    oauth = oauth_configured()
+    if credential_sources + int(oauth) != 1:
+        blockers.append("EXPLICIT_DRIVE_AUTHORIZATION_REQUIRED")
+    if oauth and not client_configured():
+        blockers.append("DRIVE_OAUTH_CLIENT_NOT_CONFIGURED")
+    if not oauth and not os.getenv("EDURECOVER_BACKUP_DRIVE_FOLDERS_JSON"):
         blockers.append("DRIVE_DESTINATIONS_NOT_CONFIGURED")
     # A /tmp or container-layer backup is never advertised as durable production storage.
     production = bool(os.getenv("RAILWAY_SERVICE_ID")) or os.getenv("ENVIRONMENT", "").lower() == "production"
@@ -161,6 +165,12 @@ def _snapshot(item: RegisteredAsset, source_root: Path, destination: Path) -> st
             or source.suffix.lower() in {".pem", ".key", ".p12", ".pfx"}
             or "service_account" in source.name.lower() or "credentials" in source.name.lower()):
         raise BackupStorageError("CREDENTIAL_SOURCE_REQUIRES_METADATA_ONLY")
+    estimate = source.stat().st_size
+    wal = Path(str(source) + "-wal")
+    if item.sqlite_snapshot and wal.is_file():
+        estimate += wal.stat().st_size
+    if shutil.disk_usage(destination.parent).free < 3 * estimate + 20 * 1024 * 1024:
+        raise BackupStorageError("SNAPSHOT_FREE_SPACE_REQUIRED")
     if item.sqlite_snapshot:
         source_db = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True, timeout=20)
         dest_db = sqlite3.connect(destination)
@@ -193,6 +203,23 @@ def _safe_asset(item: RegisteredAsset, digest: str) -> SecretAsset:
     return SecretAsset(**values, content_hash=digest, integrity_verified=not item.contains_credentials)
 
 
+def _retain_verified_local_copies(previous, receipt, server_root):
+    """Rotate only this asset's app-generated copies after both destinations verify."""
+    prior = previous.get("retained_local_copies", [])
+    added = [{"path": w.storage_ref, "sha256": w.artifact_sha256}
+             for w in receipt.writes if w.target.value.startswith("SERVER_")]
+    retained = prior + added
+    while len(retained) > 3:
+        old = retained.pop(0)
+        path = Path(old["path"])
+        if (not path.is_symlink() and path.resolve().is_relative_to(server_root.resolve())
+                and path.name == old["sha256"] + ".edurbk" and path.is_file()
+                and sha256_file(path) == old["sha256"]):
+            path.unlink()
+            fsync_directory(path.parent)
+    return retained
+
+
 def _run_assets(*, manifest: list[RegisteredAsset], source_root: Path, server_root: Path,
                 state_dir: Path, now: datetime, drive_factory=None) -> dict:
     records, verified, skipped, failed = [], 0, 0, 0
@@ -218,6 +245,7 @@ def _run_assets(*, manifest: list[RegisteredAsset], source_root: Path, server_ro
                     asset = _safe_asset(item, digest)
                     decision = classify_secret_asset(asset)
                     last = None
+                    previous = {}
                     if success_path.exists():
                         if success_path.is_symlink():
                             raise BackupStorageError("STATE_SYMLINK_FORBIDDEN")
@@ -236,9 +264,10 @@ def _run_assets(*, manifest: list[RegisteredAsset], source_root: Path, server_ro
                     if receipt.due:
                         if not receipt.complete or not all(w.encrypted and w.integrity_verified and w.restore_verified for w in receipt.writes):
                             raise BackupStorageError("VERIFIED_ENCRYPTED_RECEIPTS_REQUIRED")
+                        retained = _retain_verified_local_copies(previous, receipt, server_root)
                         atomic_json(success_path, {
                             "content_hash": digest, "classification": decision.classification.value,
-                            "destination_revision": destination_revision,
+                            "destination_revision": destination_revision, "retained_local_copies": retained,
                             "completed_at": now.isoformat(), "receipt": receipt.model_dump(mode="json")})
                         verified += 1
                     else:
@@ -254,6 +283,8 @@ def _run_assets(*, manifest: list[RegisteredAsset], source_root: Path, server_ro
                                     "failure_code": exc.safe_code if isinstance(exc, BackupStorageError) else None})
         finally:
             payloads.close()
+            if "drive" in locals() and hasattr(drive.session, "close"):
+                drive.session.close()
     return {"status": "failed" if failed else "verified" if verified else "not_due",
             "finished_at": now.isoformat(), "verified_assets": verified,
             "skipped_assets": skipped, "failed_assets": failed, "assets": records}
