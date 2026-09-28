@@ -14,7 +14,14 @@ def _bool_env(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
     if raw is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    # A typo must not disable a default-on privacy requirement or enable
+    # an unconfirmed provider. Preserve the security default.
+    return default
 
 
 _PROVIDER_SETTINGS = {

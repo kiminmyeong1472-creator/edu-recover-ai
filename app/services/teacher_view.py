@@ -22,6 +22,8 @@ def build_teacher_html(html: str) -> str:
         teacher,
         flags=re.S,
     )
+    # Remove workspace shortcuts to sections absent from the teacher page.
+    teacher = re.sub(r'<button[^>]*onclick="showView\(\'tutor\'\)"[^>]*>.*?</button>', '', teacher)
     # Remove owner/admin system section.
     teacher = re.sub(
         r'<section id="system" class="view">.*?</section>',
@@ -50,4 +52,11 @@ def build_teacher_html(html: str) -> str:
     # Skip owner/admin refresh calls in the teacher browser.
     teacher = teacher.replace('refreshAuthoringAssets();', '')
     teacher = teacher.replace('refreshOwnerControl();', '')
+    teacher = teacher.replace(
+        "<body>",
+        '<body><aside style="padding:12px 20px;background:#edf4ff;color:#172b45">'
+        '교사 작업실에서 문항 편집·출력을 사용할 수 있습니다. AI 자동출제·교차검증은 '
+        '<a href="/owner/login">관리자 로그인</a> 후 이용해 주세요.</aside>',
+        1,
+    )
     return teacher

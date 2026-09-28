@@ -25,6 +25,14 @@ class ClassroomTutorTests(unittest.TestCase):
         token = base64.b64encode(b"owner-test:password-test").decode("ascii")
         cls.owner_headers = {"Authorization": f"Basic {token}"}
 
+    def publish_lesson(self, session):
+        base = f"/tutor/api/sessions/{session['session_id']}"
+        params = {"teacher_token": session["teacher_token"]}
+        draft = self.client.get(base, params=params).json()
+        result = self.client.post(base + "/publish-lesson", params=params,
+            json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
+        self.assertEqual(result.status_code, 200, result.text)
+
     def test_owner_can_create_and_run_token_scoped_lesson(self):
         lesson = [
             {
@@ -70,6 +78,9 @@ class ClassroomTutorTests(unittest.TestCase):
         )
         self.assertEqual(teacher_state.status_code, 200)
         self.assertEqual(len(teacher_state.json()["lesson"]), 3)
+        self.assertEqual(self.client.get(f"/tutor/api/sessions/{session_id}",
+                         params={"join_token": join_token}).status_code, 423)
+        self.publish_lesson(payload)
 
         response = self.client.post(
             f"/tutor/api/sessions/{session_id}/respond",
@@ -92,7 +103,7 @@ class ClassroomTutorTests(unittest.TestCase):
         self.assertEqual(self.client.get("/tutor").status_code, 401)
         page = self.client.get("/tutor", headers=self.owner_headers)
         self.assertEqual(page.status_code, 200)
-        self.assertIn("산파식 AI 튜터", page.text)
+        self.assertIn("구조화 AI 교수자료", page.text)
         self.assertIn("영상 주소", page.text)
         self.assertIn("한국어 음성합성", page.text)
 
@@ -135,6 +146,7 @@ class ClassroomTutorTests(unittest.TestCase):
             headers=self.owner_headers,
             json={"title": "학생 정보경계 시험", "room_alias": "SAFE"},
         ).json()
+        self.publish_lesson(created)
         state = self.client.get(
             f"/tutor/api/sessions/{created['session_id']}",
             params={"join_token": created["join_token"]},
@@ -142,6 +154,7 @@ class ClassroomTutorTests(unittest.TestCase):
         self.assertEqual(state.status_code, 200, state.text)
         payload = state.json()
         self.assertNotIn("join_token", payload)
+        self.assertEqual(len(payload["lesson"]), 1)
         for segment in payload["lesson"]:
             self.assertNotIn("correct_answer", segment)
             self.assertNotIn("branch_map", segment)
@@ -180,6 +193,7 @@ class ClassroomTutorTests(unittest.TestCase):
             json={"title": "학습자격 시험", "room_alias": "RL", "lesson": lesson},
         ).json()
         sid, tt, jt = created["session_id"], created["teacher_token"], created["join_token"]
+        self.publish_lesson(created)
         first = self.client.post(
             f"/tutor/api/sessions/{sid}/respond",
             json={
@@ -192,6 +206,8 @@ class ClassroomTutorTests(unittest.TestCase):
         )
         self.assertEqual(first.status_code, 200, first.text)
         self.assertIsNone(first.json()["correct"], "최초응답 정오를 학생에게 즉시 누출하면 안 됩니다.")
+        self.client.post(f"/tutor/api/sessions/{sid}/command", params={"teacher_token": tt},
+                         json={"action": "GOTO", "segment_id": "transfer"})
         transfer = self.client.post(
             f"/tutor/api/sessions/{sid}/respond",
             json={
@@ -203,6 +219,17 @@ class ClassroomTutorTests(unittest.TestCase):
             },
         )
         self.assertEqual(transfer.status_code, 200, transfer.text)
+        pre_reviewed = self.client.post(
+            f"/tutor/api/sessions/{sid}/training-review",
+            params={"teacher_token": tt},
+            json={
+                "response_id": first.json()["response_id"],
+                "teacher_validated": True,
+                "source_integrity_verified": True,
+                "content_trust": "VERIFIED",
+            },
+        )
+        self.assertEqual(pre_reviewed.status_code, 200, pre_reviewed.text)
         reviewed = self.client.post(
             f"/tutor/api/sessions/{sid}/training-review",
             params={"teacher_token": tt},

@@ -34,7 +34,12 @@ def _bool_env(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
     if raw is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return True if name == "EDURECOVER_AI_HOLD" else default
 
 
 def _csv_env(name: str) -> set[str]:
@@ -52,6 +57,13 @@ def _manifest_from_env() -> dict[str, Any]:
         raise RuntimeError("EDURECOVER_CONTROL_MANIFEST_JSON is invalid JSON.") from exc
     if not isinstance(value, dict):
         raise RuntimeError("EDURECOVER_CONTROL_MANIFEST_JSON must be a JSON object.")
+    for field in ("hold_all_ai", "require_explicit_provider_allow", "require_cross_verification"):
+        if field in value and type(value[field]) is not bool:
+            raise RuntimeError("Provider control manifest contains an invalid boolean field.")
+    for field in ("blocked_providers", "restricted_providers", "allowed_providers"):
+        if field in value and (not isinstance(value[field], list) or
+                               any(not isinstance(item, str) for item in value[field])):
+            raise RuntimeError("Provider control manifest contains an invalid provider list.")
     return value
 
 
@@ -137,7 +149,10 @@ def evaluate_provider(provider: str, action: str) -> ControlDecision:
 
 
 def assert_provider_allowed(provider: str, action: str) -> ControlDecision:
-    decision = evaluate_provider(provider, action)
+    try:
+        decision = evaluate_provider(provider, action)
+    except RuntimeError as exc:
+        raise ProviderHeld("AI execution is held: invalid owner control configuration.") from exc
     if not decision.allowed:
         raise ProviderHeld(
             f"{provider} {action} is held by owner control ({decision.state}; epoch={decision.control_epoch})."

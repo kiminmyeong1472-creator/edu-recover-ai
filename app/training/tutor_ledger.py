@@ -8,6 +8,7 @@ import json
 import os
 import sqlite3
 import uuid
+import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +34,16 @@ def _canonical_hash(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _task_fingerprint(segment: dict[str, Any]) -> str:
+    """Ignore revision/title changes when detecting a repeated assessment."""
+    def normalized(value: Any) -> str:
+        return " ".join(unicodedata.normalize("NFKC", str(value or "")).split())
+    return _canonical_hash({
+        "text": normalized(segment.get("text")),
+        "choices": sorted(normalized(x) for x in (segment.get("choices") or [])),
+    })
+
+
 SCHEMA = """
 PRAGMA foreign_keys=ON;
 PRAGMA journal_mode=WAL;
@@ -47,7 +58,8 @@ CREATE TABLE IF NOT EXISTS tutor_exposures (
   source_integrity_verified INTEGER NOT NULL,
   content_trust TEXT NOT NULL,
   pseudonym_salt_configured INTEGER NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  task_fingerprint TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_tutor_exposure_group
   ON tutor_exposures(session_id,learner_key,concept_key);
@@ -141,6 +153,9 @@ class TutorLearningLedger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._db() as conn:
             conn.executescript(SCHEMA)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(tutor_exposures)")}
+            if "task_fingerprint" not in columns:
+                conn.execute("ALTER TABLE tutor_exposures ADD COLUMN task_fingerprint TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def _db(self):
@@ -187,11 +202,11 @@ class TutorLearningLedger:
         source_integrity = bool(segment.get("source_integrity_verified", False))
         trust = str(segment.get("content_trust") or ContentTrustState.UNVERIFIED.value)
         conn.execute(
-            """INSERT INTO tutor_exposures VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO tutor_exposures VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 exposure_id, session_id, learner_key, str(segment.get("segment_id")), concept_key,
                 content_revision_id, content_hash, int(source_integrity), trust,
-                int(self.pseudonym_salt_configured), _now(),
+                int(self.pseudonym_salt_configured), _now(), _task_fingerprint(segment),
             ),
         )
         return exposure_id
@@ -268,20 +283,39 @@ class TutorLearningLedger:
         content_revision_id = str(segment.get("content_revision_id") or f"{session_id}:{segment.get('segment_id')}:v1")
         kind = str(segment.get("kind") or "")
         phase = str(segment.get("feedback_phase") or "")
-        independent = bool(segment.get("independent_followup", False))
-        delayed_hours = float(segment.get("delayed_hours") or 0)
-        if phase == "PRE_FEEDBACK":
-            evidence_type = EvidenceType.PRE_FEEDBACK_RESPONSE
-        elif independent and delayed_hours >= 24:
-            evidence_type = EvidenceType.DELAYED_FOLLOWUP_RESPONSE
-        elif independent or kind == "RETEST":
-            evidence_type = EvidenceType.INDEPENDENT_FOLLOWUP_RESPONSE
-        elif kind == "VIDEO":
-            evidence_type = EvidenceType.HINT_USE
-        else:
-            evidence_type = EvidenceType.RETRY_RESPONSE
+        hint_level = max(0, int(segment.get("hint_level") or 0))
+        answer_disclosed = bool(segment.get("answer_disclosed", False))
+        independent = bool(segment.get("independent_followup", False)) and hint_level == 0 and not answer_disclosed
+        delayed_hours = max(0.0, float(segment.get("delayed_hours") or 0))
 
         with self._db() as conn:
+            history = conn.execute(
+                "SELECT task_fingerprint,created_at FROM tutor_exposures WHERE session_id=? AND learner_key=? AND concept_key=?",
+                (session_id, learner_key, concept_key),
+            ).fetchall()
+            fingerprint = _task_fingerprint(segment)
+            if not str(segment.get("text") or "").strip() or any(
+                not row["task_fingerprint"] or row["task_fingerprint"] == fingerprint for row in history
+            ):
+                independent = False
+            if history:
+                first_at = min(datetime.fromisoformat(row["created_at"]) for row in history)
+                elapsed_hours = max(0.0, (datetime.now(timezone.utc) - first_at).total_seconds() / 3600)
+                delayed_hours = min(delayed_hours, elapsed_hours)
+            else:
+                delayed_hours = 0.0
+            if independent and delayed_hours >= 24:
+                evidence_type = EvidenceType.DELAYED_FOLLOWUP_RESPONSE
+            elif independent:
+                evidence_type = EvidenceType.INDEPENDENT_FOLLOWUP_RESPONSE
+            elif segment.get("independent_followup") or kind == "RETEST":
+                evidence_type = EvidenceType.RETRY_RESPONSE
+            elif phase == "PRE_FEEDBACK" and not answer_disclosed and hint_level == 0:
+                evidence_type = EvidenceType.PRE_FEEDBACK_RESPONSE
+            elif kind in {"VIDEO", "EXPLANATION", "WORKED_EXAMPLE"}:
+                evidence_type = EvidenceType.HINT_USE
+            else:
+                evidence_type = EvidenceType.RETRY_RESPONSE
             exposure_id = self._insert_exposure(conn, session_id=session_id, learner_key=learner_key, segment=segment)
             evidence_revision_id = self._insert_evidence(
                 conn,
@@ -295,8 +329,8 @@ class TutorLearningLedger:
                 correct=correct,
                 reason_present=reason_present,
                 confidence=confidence,
-                hint_level=int(segment.get("hint_level") or 0),
-                answer_disclosed=bool(segment.get("answer_disclosed", False)),
+                hint_level=hint_level,
+                answer_disclosed=answer_disclosed,
                 independent=independent,
                 delayed_hours=delayed_hours,
             )
@@ -313,6 +347,8 @@ class TutorLearningLedger:
                     correct=True,
                     reason_present=reason_present,
                     confidence=confidence,
+                    hint_level=hint_level,
+                    answer_disclosed=answer_disclosed,
                     independent=independent,
                     delayed_hours=delayed_hours,
                 )
@@ -337,6 +373,8 @@ class TutorLearningLedger:
             (session_id, learner_key, concept_key),
         ).fetchall()]
         statuses = self._latest_statuses(conn, session_id, learner_key, concept_key)
+        validations = {row["response_ref"]: row for row in rows
+                       if row["evidence_type"] == EvidenceType.TEACHER_VALIDATION.value and row["response_ref"]}
         for row in rows:
             status = statuses.get(str(row["content_revision_id"]))
             row["source_integrity_verified"] = bool(status["source_integrity_verified"]) if status else bool(row["exposure_integrity"])
@@ -344,6 +382,10 @@ class TutorLearningLedger:
             for key in ("correct", "reason_present", "answer_disclosed", "independent", "teacher_validated", "pseudonym_salt_configured"):
                 if row.get(key) is not None:
                     row[key] = bool(row[key])
+            validation = validations.get(row.get("response_ref"))
+            if validation and validation["content_revision_id"] == row["content_revision_id"] and validation["correct"] is not None:
+                row["correct"] = bool(validation["correct"])
+                row["reason_present"] = bool(validation["reason_present"])
         return rows
 
     @staticmethod
@@ -439,8 +481,8 @@ class TutorLearningLedger:
         content_revision_id = str(segment.get("content_revision_id") or f"{session_id}:{segment.get('segment_id')}:v1")
         with self._db() as conn:
             exposures = conn.execute(
-                """SELECT * FROM tutor_exposures WHERE session_id=? AND learner_key=? AND concept_key=? ORDER BY created_at""",
-                (session_id, learner_key, concept_key),
+                """SELECT * FROM tutor_exposures WHERE session_id=? AND learner_key=? AND concept_key=? AND content_revision_id=? ORDER BY created_at""",
+                (session_id, learner_key, concept_key, content_revision_id),
             ).fetchall()
             if not exposures:
                 raise ValueError("학습증거로 회수된 학생 응답이 없습니다.")
@@ -461,9 +503,9 @@ class TutorLearningLedger:
                     ),
                 )
             response_evidence = conn.execute(
-                """SELECT * FROM tutor_evidence_revisions WHERE session_id=? AND learner_key=? AND response_ref=?
+                """SELECT * FROM tutor_evidence_revisions WHERE session_id=? AND learner_key=? AND response_ref=? AND concept_key=? AND content_revision_id=?
                    ORDER BY created_at DESC LIMIT 1""",
-                (session_id, learner_key, response_ref),
+                (session_id, learner_key, response_ref, concept_key, content_revision_id),
             ).fetchone()
             if not response_evidence:
                 raise ValueError("해당 응답의 학습증거 revision을 찾을 수 없습니다.")

@@ -8,3 +8,4 @@ anthropic>=1.0,<2.0
 google-genai>=1.0,<2.0
 python-docx>=1.1,<2.0
 cryptography>=43,<50
+google-auth[requests]>=2.35,<3

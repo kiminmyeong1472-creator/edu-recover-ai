@@ -10,6 +10,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
+from app.training.backup_api import backup_router
+from app.training.backup_scheduler import start_backup_scheduler, stop_backup_scheduler
 from app.services.authoring_assets import get_asset_manifest
 import app.services.context_overlay  # installs task-scoped provider context builders
 from app.services.human_ai_charter import CHARTER
@@ -35,6 +37,9 @@ from app.services.auto_generator import (
     generate_questions,
 )
 from app.services.provider_verifier import verify_with_provider
+from app.services.generation_provenance import (
+    ProvenanceError, issue_origin_proof, verify_origin_proof, issue_verification_proof,
+)
 from app.services.docx_export import build_exam_docx
 from app.services.encrypted_backup import (
     backup_encryption_status,
@@ -42,7 +47,6 @@ from app.services.encrypted_backup import (
 )
 from app.services.agent_access_guard import agent_access_status, evaluate_agent_access
 from app.services.socratic_trap import detect_socratic_traps
-from app.services.trust_chain import run_trust_chain
 
 
 app = FastAPI(
@@ -58,16 +62,14 @@ app = FastAPI(
 )
 
 
+app.include_router(backup_router)
+app.router.add_event_handler("startup", start_backup_scheduler)
+app.router.add_event_handler("shutdown", stop_backup_scheduler)
 app.include_router(owner_auth_router)
 app.include_router(classroom_tutor_router)
 app.include_router(teacher_classroom_router)
 
 logger = logging.getLogger(__name__)
-
-# Runtime-only provider hold used when a configured credential is rejected by
-# the upstream provider. This does not modify or delete any API key.
-_runtime_generation_holds: set[str] = set()
-
 
 @app.on_event("startup")
 async def backup_encryption_startup_self_test() -> None:
@@ -125,7 +127,7 @@ class GenerateQuestionsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: Literal["openai", "gemini", "claude"]
     explicit_authorization: Literal[True]
-    source_text: str = Field(..., min_length=1)
+    source_text: str = Field(..., min_length=1, max_length=100000)
     count: int = Field(default=20, ge=1, le=50)
     subject: str = "영어"
     school_level: str = "고등학교"
@@ -141,9 +143,16 @@ class VerifyWithProviderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: Literal["openai", "gemini", "claude"]
     origin_provider: Literal["openai", "gemini", "claude"]
-    origin_invocation_id: str | None = Field(default=None, min_length=8, max_length=128)
+    origin_invocation_id: str = Field(min_length=8, max_length=128)
+    origin_proof: str = Field(min_length=64, max_length=4096)
     explicit_authorization: Literal[True]
-    problems: list[dict[str, Any]] = Field(..., min_length=1)
+    problems: list[dict[str, Any]] = Field(..., min_length=1, max_length=50)
+
+
+class ReviseAuthoringRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    origin_proof: str = Field(min_length=64, max_length=4096)
+    problems: list[dict[str, Any]] = Field(min_length=1, max_length=50)
 
 
 class ExportDocxRequest(BaseModel):
@@ -260,12 +269,10 @@ def _provider_model(provider: str) -> str:
     }[provider]
 
 
-def _provider_ready_for_teacher(provider: str) -> bool:
-    if provider in _runtime_generation_holds:
-        return False
+def _provider_ready_for_teacher(provider: str, action: str = "generate") -> bool:
     configured = _provider_secret_configured(provider)
     try:
-        decision = evaluate_provider(provider, "generate")
+        decision = evaluate_provider(provider, action)
         control_allowed = decision.allowed
     except RuntimeError:
         control_allowed = False
@@ -283,8 +290,13 @@ async def ai_status() -> dict[str, Any]:
     """Teacher-safe provider readiness. Detailed configuration is owner-only."""
     return {
         "provider_selection_required": True,
+        "execution_authentication": "owner_login_required",
+        "readiness_basis": "configuration_only_not_live_provider_success",
         "providers": {
-            provider: {"ready": _provider_ready_for_teacher(provider)}
+            provider: {
+                "ready": _provider_ready_for_teacher(provider),
+                "verify_ready": _provider_ready_for_teacher(provider, "verify"),
+            }
             for provider in ("openai", "gemini", "claude")
         },
     }
@@ -315,7 +327,7 @@ async def owner_ai_status(_: None = Depends(require_owner)) -> dict[str, Any]:
             "configured": _provider_secret_configured(provider),
             "model": _provider_model(provider),
             "thinking_level": settings.gemini_thinking_level if provider == "gemini" else None,
-            "product_profile": "PRO_EXTENDED_API_EQUIVALENT" if provider == "gemini" else None,
+            "product_profile": "CONFIGURED_API_THINKING_LEVEL" if provider == "gemini" else None,
             "control": control,
             "privacy": privacy.get("providers", {}).get(provider, {}),
         }
@@ -418,20 +430,10 @@ async def _run_generation_channel(
     if payload.provider != provider:
         raise HTTPException(status_code=400, detail="Provider/channel mismatch.")
 
-    requested_provider = provider
-    effective_provider = provider
-    fallback_used = False
-    fallback_reason: str | None = None
-
-    if provider == "openai" and "openai" in _runtime_generation_holds:
-        effective_provider = "gemini"
-        fallback_used = True
-        fallback_reason = "openai_runtime_auth_hold"
-
-    async def _generate(selected_provider: Literal["openai", "gemini", "claude"]):
-        selected_decision = assert_provider_allowed(selected_provider, "generate")
-        selected_result = await generate_questions(
-            provider=selected_provider,
+    try:
+        decision = assert_provider_allowed(provider, "generate")
+        result = await generate_questions(
+            provider=provider,
             source_text=payload.source_text,
             count=payload.count,
             subject=payload.subject,
@@ -443,60 +445,21 @@ async def _run_generation_channel(
             scope_memo=payload.scope_memo,
             extra_instructions=payload.extra_instructions,
         )
-        return selected_decision, selected_result
-
-    try:
-        decision, result = await _generate(effective_provider)
-    except ProviderHeld as exc:
-        raise HTTPException(status_code=423, detail=str(exc)) from exc
-    except ProviderZDRHeld as exc:
+    except (ProviderHeld, ProviderZDRHeld) as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
     except GeneratorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except GenerationFailed as exc:
-        # Keep the owner's existing OpenAI key untouched. If OpenAI itself
-        # rejects that credential, route this generation attempt to the
-        # already-configured Gemini channel instead of forcing a key change.
-        if provider == "openai" and "AuthenticationError" in str(exc):
-            _runtime_generation_holds.add("openai")
-            effective_provider = "gemini"
-            fallback_used = True
-            fallback_reason = "openai_authentication_failed"
-            try:
-                decision, result = await _generate("gemini")
-            except ProviderHeld as fallback_exc:
-                raise HTTPException(status_code=423, detail=str(fallback_exc)) from fallback_exc
-            except ProviderZDRHeld as fallback_exc:
-                raise HTTPException(status_code=423, detail=str(fallback_exc)) from fallback_exc
-            except GeneratorNotConfigured as fallback_exc:
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        "OpenAI authentication failed and Gemini fallback is not configured: "
-                        + str(fallback_exc)
-                    ),
-                ) from fallback_exc
-            except GenerationFailed as fallback_exc:
-                raise HTTPException(
-                    status_code=502,
-                    detail=(
-                        "OpenAI authentication failed; Gemini fallback also failed: "
-                        + str(fallback_exc)
-                    ),
-                ) from fallback_exc
-        else:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.http_status, detail=str(exc),
+                            headers={"X-EduRecover-Error-Code": exc.code}) from exc
 
+    if result.provider != provider:
+        raise HTTPException(status_code=502, detail="AI 응답의 공급자 식별이 요청과 일치하지 않습니다.")
     response = result.to_dict()
-    response["requested_provider"] = requested_provider
-    response["effective_provider"] = effective_provider
-    response["fallback_used"] = fallback_used
-    if fallback_reason is not None:
-        response["fallback_reason"] = fallback_reason
-
+    response["requested_provider"] = provider
+    response["effective_provider"] = provider
+    response["fallback_used"] = False
     receipt_request = payload.model_dump(mode="json")
-    receipt_request["requested_provider"] = requested_provider
-    receipt_request["effective_provider"] = effective_provider
 
     response["execution_receipt"] = _execution_receipt(
         provider=result.provider,
@@ -505,20 +468,37 @@ async def _run_generation_channel(
         result_payload=response,
         control_epoch=decision.control_epoch,
     )
+    receipt = response["execution_receipt"]
+    receipt["origin_proof"] = issue_origin_proof(provider, receipt["invocation_id"], response["items"])
     return response
 
 
-@app.post("/channel/openai/generate", tags=["authoring"])
+@app.post("/owner/authoring/revise", tags=["authoring"], dependencies=[Depends(require_owner)])
+async def revise_authoring(payload: ReviseAuthoringRequest) -> dict[str, Any]:
+    """Record teacher edits while preserving the authenticated original provider."""
+    try:
+        origin = verify_origin_proof(payload.origin_proof)
+        invocation_id = str(uuid.uuid4())
+        proof = issue_origin_proof(origin["provider"], invocation_id, payload.problems,
+                                   origin["generation_invocation_id"])
+    except (ProvenanceError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"provider": origin["provider"], "invocation_id": invocation_id,
+            "generation_invocation_id": origin["generation_invocation_id"],
+            "origin_proof": proof, "verification_state": "REQUIRED_FOR_REVISED_CONTENT"}
+
+
+@app.post("/channel/openai/generate", tags=["authoring"], dependencies=[Depends(require_owner)])
 async def generate_openai_channel(payload: GenerateQuestionsRequest) -> dict[str, Any]:
     return await _run_generation_channel("openai", payload)
 
 
-@app.post("/channel/gemini/generate", tags=["authoring"])
+@app.post("/channel/gemini/generate", tags=["authoring"], dependencies=[Depends(require_owner)])
 async def generate_gemini_channel(payload: GenerateQuestionsRequest) -> dict[str, Any]:
     return await _run_generation_channel("gemini", payload)
 
 
-@app.post("/channel/claude/generate", tags=["authoring"])
+@app.post("/channel/claude/generate", tags=["authoring"], dependencies=[Depends(require_owner)])
 async def generate_claude_channel(payload: GenerateQuestionsRequest) -> dict[str, Any]:
     return await _run_generation_channel("claude", payload)
 
@@ -534,7 +514,12 @@ async def _run_verification_channel(
 ) -> dict[str, Any]:
     if payload.provider != provider:
         raise HTTPException(status_code=400, detail="Provider/channel mismatch.")
-    if payload.origin_provider == provider:
+    try:
+        origin_claims = verify_origin_proof(payload.origin_proof, provider=payload.origin_provider,
+            invocation_id=payload.origin_invocation_id, problems=payload.problems)
+    except (ProvenanceError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if origin_claims["provider"] == provider:
         raise HTTPException(
             status_code=409,
             detail="Cross-verification must use a provider different from the generation provider.",
@@ -549,7 +534,8 @@ async def _run_verification_channel(
     except GeneratorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except GenerationFailed as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.http_status, detail=str(exc),
+                            headers={"X-EduRecover-Error-Code": exc.code}) from exc
 
     response = dict(result)
     response["origin_provider"] = payload.origin_provider
@@ -562,20 +548,24 @@ async def _run_verification_channel(
         origin_provider=payload.origin_provider,
         origin_invocation_id=payload.origin_invocation_id,
     )
+    if response.get("verdict") == "PASS":
+        receipt = response["execution_receipt"]
+        receipt["verification_proof"] = issue_verification_proof(provider,
+            receipt["invocation_id"], payload.problems, origin_claims, "PASS")
     return response
 
 
-@app.post("/channel/openai/verify", tags=["authoring"])
+@app.post("/channel/openai/verify", tags=["authoring"], dependencies=[Depends(require_owner)])
 async def verify_openai_channel(payload: VerifyWithProviderRequest) -> dict[str, Any]:
     return await _run_verification_channel("openai", payload)
 
 
-@app.post("/channel/gemini/verify", tags=["authoring"])
+@app.post("/channel/gemini/verify", tags=["authoring"], dependencies=[Depends(require_owner)])
 async def verify_gemini_channel(payload: VerifyWithProviderRequest) -> dict[str, Any]:
     return await _run_verification_channel("gemini", payload)
 
 
-@app.post("/channel/claude/verify", tags=["authoring"])
+@app.post("/channel/claude/verify", tags=["authoring"], dependencies=[Depends(require_owner)])
 async def verify_claude_channel(payload: VerifyWithProviderRequest) -> dict[str, Any]:
     return await _run_verification_channel("claude", payload)
 
@@ -585,12 +575,14 @@ async def legacy_verify_provider(payload: VerifyWithProviderRequest) -> dict[str
     raise HTTPException(status_code=410, detail="Use the provider-isolated channel endpoint.")
 
 
-@app.post("/verify-problem", tags=["trust-chain"])
+@app.post("/verify-problem", tags=["trust-chain"], deprecated=True,
+          dependencies=[Depends(require_owner)])
 async def verify_problem(payload: VerifyProblemRequest) -> dict[str, Any]:
-    """Cross-validate a teacher-selected problem set with strict unanimity."""
-
-    result = await run_trust_chain(payload.problems)
-    return result.to_dict()
+    """The legacy automatic multi-provider route cannot authorize an AI call."""
+    raise HTTPException(
+        status_code=410,
+        detail="교차검증 창에서 출제 AI와 다른 AI 한 개를 선택해 주세요. /channel/{provider}/verify 경로를 사용합니다.",
+    )
 
 
 @app.post("/export-docx", tags=["output"])

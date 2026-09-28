@@ -11,13 +11,13 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.access_notice import AI_ACCESS_NOTICE
-from app.services.authoring_assets import build_verification_context
+from app.services.context_overlay import build_verification_context
 from app.services.privacy_guard import assert_provider_zdr
 from app.services.auto_generator import (
     GenerationFailed,
     GeneratorNotConfigured,
     GenerationProvider,
-    _gemini_error_metadata,
+    provider_failure,
     _log_gemini_error,
     gemini_generation_config,
 )
@@ -43,6 +43,12 @@ or
 
 
 def _serialize(problems: list[dict[str, Any]]) -> str:
+    # Verification needs the submitted learning content, not browser state,
+    # tokens, execution receipts or arbitrary attached internal metadata.
+    fields = {"problem_id", "question_type", "difficulty", "question", "passage",
+              "choices", "answer", "explanation", "evidence"}
+    problems = [{key: value for key, value in problem.items() if key in fields}
+                for problem in problems]
     return json.dumps(
         {
             "problem_count": len(problems),
@@ -73,12 +79,19 @@ def _parse_result(text: str) -> dict[str, Any]:
     except (json.JSONDecodeError, TypeError) as exc:
         raise GenerationFailed("Verifier returned non-JSON output.") from exc
 
+    if not isinstance(payload, dict):
+        raise GenerationFailed("Verifier returned an invalid JSON object.")
     verdict = str(payload.get("verdict", "")).strip().upper()
     reasons = payload.get("reasons", [])
     if verdict not in {"PASS", "FAIL"}:
         raise GenerationFailed("Verifier returned an invalid verdict.")
-    if not isinstance(reasons, list):
+    if not isinstance(reasons, list) or any(not isinstance(reason, str) for reason in reasons):
         raise GenerationFailed("Verifier returned an invalid reasons field.")
+    reasons = [reason.strip() for reason in reasons if reason.strip()]
+    if verdict == "PASS" and reasons:
+        raise GenerationFailed("Verifier returned PASS with unresolved concerns.")
+    if verdict == "FAIL" and not reasons:
+        reasons = ["Verifier rejected the batch without a reason."]
 
     return {
         "verdict": verdict,
@@ -113,6 +126,10 @@ async def verify_with_provider(
                 "provider": normalized,
                 **result,
             }
+        except GenerationFailed:
+            raise
+        except Exception as exc:
+            raise provider_failure("openai", exc) from exc
         finally:
             await client.close()
 
@@ -120,6 +137,7 @@ async def verify_with_provider(
         assert_provider_zdr("gemini")
         if settings.gemini_api_key is None:
             raise GeneratorNotConfigured("GEMINI_API_KEY is not configured.")
+        client = None
         try:
             client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
             response = await client.aio.models.generate_content(
@@ -138,11 +156,11 @@ async def verify_with_provider(
             raise
         except Exception as exc:
             _log_gemini_error("verification", exc)
-            code, status = _gemini_error_metadata(exc)
-            raise GenerationFailed(
-                f"Gemini verification failed ({type(exc).__name__}; "
-                f"code={code}; status={status})."
-            ) from exc
+            raise provider_failure("gemini", exc) from exc
+        finally:
+            if client is not None:
+                await client.aio.aclose()
+                client.close()
 
     if normalized == GenerationProvider.CLAUDE.value:
         assert_provider_zdr("claude")
@@ -173,9 +191,7 @@ async def verify_with_provider(
         except GenerationFailed:
             raise
         except Exception as exc:
-            raise GenerationFailed(
-                f"Claude verification failed ({type(exc).__name__})."
-            ) from exc
+            raise provider_failure("claude", exc) from exc
         finally:
             await client.close()
 

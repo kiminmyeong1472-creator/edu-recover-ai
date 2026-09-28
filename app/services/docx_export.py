@@ -1,4 +1,4 @@
-"""Generate a teacher-ready DOCX exam and answer/explanation sheet."""
+"""Generate a clearly marked teacher-review draft and answer sheet."""
 
 from __future__ import annotations
 
@@ -41,7 +41,10 @@ def _choice_label(index: int) -> str:
 
 
 def build_exam_docx(exam: dict[str, Any], items: list[dict[str, Any]]) -> bytes:
-    """Return a .docx payload for the current EduRecover teacher workspace."""
+    """Export an editable draft, never an unverified student release.
+
+    Client-side PASS/approval flags are not accepted as release evidence here.
+    """
     document = Document()
 
     section = document.sections[0]
@@ -49,6 +52,10 @@ def build_exam_docx(exam: dict[str, Any], items: list[dict[str, Any]]) -> bytes:
     section.bottom_margin = Inches(0.65)
     section.left_margin = Inches(0.7)
     section.right_margin = Inches(0.7)
+    draft_notice = "교사용 검토 초안 · 학생 배포 전 문항·정답·근거 검증 필요"
+    header = section.header.paragraphs[0]
+    header.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_run_font(header.add_run(draft_notice), size=9, bold=True)
 
     normal = document.styles["Normal"]
     normal.font.name = DOCX_FONT
@@ -65,6 +72,7 @@ def build_exam_docx(exam: dict[str, Any], items: list[dict[str, Any]]) -> bytes:
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = heading.add_run(title)
     _set_run_font(run, size=16, bold=True)
+    _add_text_paragraph(document, draft_notice, bold=True, size=10)
 
     meta_parts = [part for part in (school_level, grade, exam_type) if part]
     if meta_parts:

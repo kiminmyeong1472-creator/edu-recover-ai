@@ -15,6 +15,8 @@ from pydantic import BaseModel, Field
 
 
 class DiagnosticStage(StrEnum):
+    EXPLANATION = "EXPLANATION"
+    WORKED_EXAMPLE = "WORKED_EXAMPLE"
     INITIAL_RESPONSE = "INITIAL_RESPONSE"
     REASON_PROBE = "REASON_PROBE"
     HYPOTHESIS_SEPARATION = "HYPOTHESIS_SEPARATION"
@@ -29,6 +31,7 @@ class DiagnosticStage(StrEnum):
 
 class AnswerPolicy(StrEnum):
     WITHHOLD_UNTIL_CONCEPT_RECOVERY = "WITHHOLD_UNTIL_CONCEPT_RECOVERY"
+    EXPLAIN_THEN_INDEPENDENT_TRANSFER = "EXPLAIN_THEN_INDEPENDENT_TRANSFER"
 
 
 class MisconceptionHypothesis(BaseModel):
@@ -57,7 +60,7 @@ class ConceptTargetPlan(BaseModel):
         "context",
     )
     answer_policy: AnswerPolicy = (
-        AnswerPolicy.WITHHOLD_UNTIL_CONCEPT_RECOVERY
+        AnswerPolicy.EXPLAIN_THEN_INDEPENDENT_TRANSFER
     )
     question_plan_hash: str = Field(min_length=1)
 
@@ -99,7 +102,11 @@ class SocraticTrajectory(BaseModel):
     used_for_choice_rate_ranking: bool = False
 
     def assert_owner_tutoring_policy(self) -> None:
-        """Enforce concept-first, no-answer-leak and non-ADG boundaries."""
+        """Allow instruction while keeping independent assessment unaided.
+
+        The legacy Socratic policy remains selectable; it is not a requirement
+        for every lesson. Historical trajectories retain their policy values.
+        """
 
         target = self.concept_plan.target_concept_id
 
@@ -126,14 +133,19 @@ class SocraticTrajectory(BaseModel):
                     "precommitted target concept."
                 )
 
-            if (
-                turn.answer_revealed
-                and not self.concept_recovery_passed
-            ):
+            if turn.stage in {DiagnosticStage.TRANSFER_CHECK, DiagnosticStage.DELAYED_REVIEW} and (turn.answer_revealed or turn.hint_level > 0):
+                raise ValueError("Independent transfer/delayed assessment must not disclose its answer or provide hints.")
+
+            if (turn.answer_revealed
+                and turn.stage not in {DiagnosticStage.EXPLANATION, DiagnosticStage.WORKED_EXAMPLE}
+                and not self.concept_recovery_passed):
                 raise ValueError(
-                    "The answer was revealed before concept recovery was "
-                    "established."
+                    "Answer disclosure belongs to an explicit instruction stage, not a diagnostic probe."
                 )
+            if (turn.answer_revealed
+                and self.concept_plan.answer_policy is AnswerPolicy.WITHHOLD_UNTIL_CONCEPT_RECOVERY
+                and not self.concept_recovery_passed):
+                raise ValueError("The explicitly selected legacy withholding policy has not passed concept recovery.")
 
     def assert_transfer_is_same_concept(self) -> None:
         target = self.concept_plan.target_concept_id
@@ -148,4 +160,3 @@ class SocraticTrajectory(BaseModel):
                 raise ValueError(
                     "Transfer/delayed checks must test the same target concept."
                 )
-

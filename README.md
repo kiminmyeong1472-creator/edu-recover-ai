@@ -2,7 +2,11 @@
 
 EduRecover AI is a verification-first educational AI system designed to generate, validate, recover, and safely release learning content under strict integrity controls.
 
-The system is organized around three core architectures.
+The teaching goal is structured mastery: show the overall learning map and the
+conditional reasoning links from basic concepts to advanced applications.
+AI teaching materials implement this goal through explanations, worked examples,
+diagrams, audio, condition comparisons and separate independent assessments.
+The following integrity architectures support that goal.
 
 ## 1. Trust Chain
 
@@ -55,9 +59,11 @@ Core ideas:
 
 A recovered artifact is not considered safe merely because it was regenerated. It must prove that no active path from a quarantined or invalid source reaches the final active output.
 
-## 3. Socratic Trap
+## 3. Optional Socratic diagnosis
 
-Socratic Trap is the learning-recovery architecture for diagnosing and correcting misconceptions.
+Socratic questioning is one selectable aid for diagnosing misconceptions. It is
+not required in every lesson, and explanations and worked examples may be
+provided when a learner needs basic knowledge.
 
 The system converts a wrong answer into a structured error operator and generates a controlled sequence of questions that exposes contradiction, counterexample, or missing inference without simply revealing the answer.
 
@@ -70,7 +76,31 @@ Core ideas:
 - Exit only after the target concept is reconstructed
 - Isomorphic follow-up item to verify actual recovery
 
-The mechanism is intended to distinguish accidental guessing from genuine conceptual repair.
+These observations are separated from independent transfer evidence. Repeating
+an explained item, watching a video or agreeing with an explanation does not
+establish mastery. The optional legacy withholding policy applies only when
+explicitly selected; it does not govern all AI teaching materials.
+
+## 4. Structured AI teaching materials
+
+Teacher materials bind premises, applicability conditions, inference rules,
+conclusions and evidence to per-scenario revisions. A reviewed bundle binds its
+scene, audio script, questions and answers. Editing conditions withdraws the old
+publication; unreviewed or mismatched bundles cannot reach the student or board
+display. Structural consistency checks and a teacher's content review are
+distinct, and neither is a claim of automated mathematical proof or measured
+learning efficacy. See `app/services/structured_materials.py`.
+
+Execution requires owner authentication and an explicitly selected AI provider.
+Independent verification uses one different provider for the whole authored
+batch; failures do not silently switch providers. Exported DOCX files are marked
+teacher-review drafts. API configuration readiness is not proof of a successful
+live provider call.
+
+The training plane records evidence and eligibility separately from actual
+weight updates. Backup adapters and the opt-in 30-minute worker require verified
+persistent storage and explicit Drive configuration; code existence alone is
+not a successful production backup. See `docs/BACKUP_RUNTIME_20260928.md`.
 
 ## System Philosophy
 
