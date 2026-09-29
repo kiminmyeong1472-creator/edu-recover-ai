@@ -8,6 +8,7 @@ making backup execution and receipts testable.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Mapping, Protocol
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,12 @@ class StorageWriteReceipt(BaseModel):
     content_hash: str = Field(min_length=1)
     storage_ref: str = Field(min_length=1)
     raw_content_written: bool
+    encrypted: bool = False
+    artifact_sha256: str | None = None
+    stored_bytes: int | None = None
+    integrity_verified: bool = False
+    restore_verified: bool = False
+    metadata_only: bool = False
     completed_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -39,6 +46,9 @@ class BackupCycleReceipt(BaseModel):
     complete: bool
     plan: BackupPlan
     writes: tuple[StorageWriteReceipt, ...] = ()
+    failure_stage: str | None = None
+    error_type: str | None = None
+    failure_code: str | None = None
     completed_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -55,6 +65,15 @@ class BackupAdapter(Protocol):
         source_ref: str | None,
     ) -> StorageWriteReceipt:
         """Write raw content or metadata-only backup and return a receipt."""
+
+
+class BackupCycleError(ValueError):
+    """Failure with a safe, incomplete receipt, including successful partial writes."""
+
+    def __init__(self, receipt: BackupCycleReceipt):
+        self.receipt = receipt
+        # Never copy provider messages, credentials, source paths or file content.
+        super().__init__(f"Backup failed at {receipt.failure_stage}: {receipt.error_type}")
 
 
 def execute_backup_cycle(
@@ -96,36 +115,49 @@ def execute_backup_cycle(
         source_ref if plan.raw_content_backup_allowed else None
     )
 
+    def fail(stage: str, exc: Exception) -> None:
+        code = getattr(exc, "safe_code", None)
+        if not isinstance(code, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,99}", code):
+            code = None
+        raise BackupCycleError(BackupCycleReceipt(
+            asset_id=asset.asset_id, due=True, complete=False, plan=plan,
+            writes=tuple(writes), failure_stage=stage,
+            error_type=type(exc).__name__,
+            failure_code=code,
+        )) from None
+
+    # Resolve and validate EVERY destination before starting the first write.
+    # Legacy injected adapters can omit preflight; production adapters implement it.
     for target in plan.targets:
-        adapter = adapters.get(target)
-        if adapter is None:
-            raise ValueError(
-                f"Missing backup adapter for required target {target.value}."
+        try:
+            adapter = adapters.get(target)
+            if adapter is None:
+                raise ValueError("Missing required backup adapter")
+            preflight = getattr(adapter, "preflight", None)
+            if preflight is not None:
+                preflight(target=target)
+        except Exception as exc:
+            fail("preflight", exc)
+
+    for target in plan.targets:
+        try:
+            receipt = adapters[target].write(
+                asset=asset, decision=decision, plan=plan,
+                target=target, source_ref=effective_source_ref,
             )
 
-        receipt = adapter.write(
-            asset=asset,
-            decision=decision,
-            plan=plan,
-            target=target,
-            source_ref=effective_source_ref,
-        )
+            if receipt.asset_id != asset.asset_id:
+                raise ValueError("Backup receipt asset_id mismatch.")
+            if receipt.target is not target:
+                raise ValueError("Backup receipt target mismatch.")
+            if receipt.content_hash != asset.content_hash:
+                raise ValueError("Backup receipt content_hash mismatch.")
+            if not plan.raw_content_backup_allowed and receipt.raw_content_written:
+                raise ValueError("Raw content was written despite metadata-only policy.")
 
-        if receipt.asset_id != asset.asset_id:
-            raise ValueError("Backup receipt asset_id mismatch.")
-        if receipt.target is not target:
-            raise ValueError("Backup receipt target mismatch.")
-        if receipt.content_hash != asset.content_hash:
-            raise ValueError("Backup receipt content_hash mismatch.")
-        if (
-            not plan.raw_content_backup_allowed
-            and receipt.raw_content_written
-        ):
-            raise ValueError(
-                "Raw content was written despite metadata-only policy."
-            )
-
-        writes.append(receipt)
+            writes.append(receipt)
+        except Exception as exc:
+            fail("write_or_verify", exc)
 
     return BackupCycleReceipt(
         asset_id=asset.asset_id,
@@ -134,4 +166,3 @@ def execute_backup_cycle(
         plan=plan,
         writes=tuple(writes),
     )
-

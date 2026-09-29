@@ -19,7 +19,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.access_notice import AI_ACCESS_NOTICE
-from app.services.authoring_assets import build_authoring_context
+from app.services.context_overlay import build_authoring_context
 from app.services.privacy_guard import assert_provider_zdr
 
 
@@ -37,37 +37,62 @@ class GeneratorNotConfigured(RuntimeError):
 
 
 class GenerationFailed(RuntimeError):
-    """Raised when the provider response cannot be safely used."""
+    """A safe, classified failure; raw provider response bodies are never exposed."""
+
+    def __init__(self, message: str, *, code: str = "INVALID_PROVIDER_OUTPUT", http_status: int = 502):
+        super().__init__(message)
+        self.code = code
+        self.http_status = http_status
 
 
-def _gemini_error_metadata(exc: Exception) -> tuple[object, object]:
-    """Return non-secret upstream status fields for diagnostics."""
-    return getattr(exc, "code", None), getattr(exc, "status", None)
+def _gemini_error_metadata(exc: Exception) -> tuple[int | None, str | None]:
+    raw_code = getattr(exc, "code", None)
+    code = raw_code if type(raw_code) is int and 100 <= raw_code <= 599 else None
+    raw_status = getattr(exc, "status", None)
+    status = raw_status if isinstance(raw_status, str) and raw_status in {
+        "UNAUTHENTICATED", "PERMISSION_DENIED", "RESOURCE_EXHAUSTED",
+        "UNAVAILABLE", "INTERNAL", "INVALID_ARGUMENT", "NOT_FOUND",
+        "DEADLINE_EXCEEDED",
+    } else None
+    return code, status
 
 
 def _log_gemini_error(action: str, exc: Exception) -> None:
-    """Log enough upstream detail to diagnose failures without logging the key."""
+    # Provider messages may echo source passages or secrets, so log only
+    # bounded status metadata, never the exception message or response body.
     code, status = _gemini_error_metadata(exc)
-    message = str(getattr(exc, "message", "") or "").replace("\n", " ")[:500]
-    secret = (
-        settings.gemini_api_key.get_secret_value()
-        if settings.gemini_api_key is not None
-        else ""
-    )
-    if secret:
-        message = message.replace(secret, "[REDACTED_API_KEY]")
-    logger.error(
-        "gemini_%s_failed error_type=%s code=%s status=%s message=%s",
-        action,
-        type(exc).__name__,
-        code,
-        status,
-        message,
-    )
+    logger.error("gemini_%s_failed code=%s status=%s", action, code, status)
+
+
+def provider_failure(provider: str, exc: Exception) -> GenerationFailed:
+    """Classify upstream failures without disclosing its body, headers or key."""
+    code = getattr(exc, "status_code", None)
+    gemini_code, _ = _gemini_error_metadata(exc)
+    if type(code) is not int:
+        code = gemini_code
+    error_type = type(exc).__name__
+    label = {"openai": "OpenAI", "gemini": "Gemini", "claude": "Claude"}.get(provider, "AI")
+    if code == 401 or error_type == "AuthenticationError":
+        return GenerationFailed(
+            f"{label} API 인증이 거부되었습니다. 관리자에게 서버 API 인증 설정 확인을 요청해 주세요. 다른 AI로 자동 전환하지 않았습니다.",
+            code="PROVIDER_AUTHENTICATION_FAILED", http_status=502,
+        )
+    if code == 429 or error_type == "RateLimitError":
+        return GenerationFailed(
+            f"{label} API 할당량 또는 호출 한도에 도달했습니다. 관리자에게 해당 API 프로젝트의 사용 한도·결제 상태 확인을 요청해 주세요. 앱 구독과 API 이용 한도는 별개입니다.",
+            code="PROVIDER_QUOTA_OR_RATE_LIMIT", http_status=429,
+        )
+    if code == 403 or error_type == "PermissionDeniedError":
+        return GenerationFailed(f"{label} API 프로젝트 또는 모델 접근 권한을 확인해 주세요.", code="PROVIDER_PERMISSION_DENIED")
+    if code == 404 or error_type == "NotFoundError":
+        return GenerationFailed(f"{label}의 설정된 모델 또는 요청 경로를 확인해 주세요.", code="PROVIDER_MODEL_OR_ENDPOINT_UNAVAILABLE")
+    if code in {408, 504} or error_type in {"APITimeoutError", "TimeoutError"}:
+        return GenerationFailed(f"{label} API 응답 시간이 초과되었습니다. 잠시 후 같은 AI로 다시 시도해 주세요.", code="PROVIDER_TIMEOUT", http_status=504)
+    return GenerationFailed(f"{label} API 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.", code="PROVIDER_REQUEST_FAILED")
 
 
 def gemini_generation_config(system_instruction: str) -> types.GenerateContentConfig:
-    """Return the API equivalent of Gemini Apps Pro extended thinking."""
+    """Configure the API thinking level independently of any consumer subscription."""
     normalized = settings.gemini_thinking_level.strip().upper()
     allowed_levels = {
         "LOW": types.ThinkingLevel.LOW,
@@ -138,6 +163,7 @@ Return exactly this shape:
 
 def _build_request_text(
     *,
+    provider: str = "",
     source_text: str,
     count: int,
     subject: str,
@@ -163,6 +189,7 @@ def _build_request_text(
             "extra_instructions": extra_instructions,
             "source_text": source_text,
             "edurecover_authoring_context": build_authoring_context(
+                provider=provider,
                 subject=subject,
                 grade=grade,
                 source_text=source_text,
@@ -261,9 +288,7 @@ async def _generate_with_openai(prompt: str, count: int) -> GenerationResult:
     except GenerationFailed:
         raise
     except Exception as exc:
-        raise GenerationFailed(
-            f"OpenAI generation failed ({type(exc).__name__})."
-        ) from exc
+        raise provider_failure("openai", exc) from exc
     finally:
         await client.close()
 
@@ -275,6 +300,7 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
             "GEMINI_API_KEY is not configured in the server secret store."
         )
 
+    client = None
     try:
         client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
         response = await client.aio.models.generate_content(
@@ -294,11 +320,11 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
         raise
     except Exception as exc:
         _log_gemini_error("generation", exc)
-        code, status = _gemini_error_metadata(exc)
-        raise GenerationFailed(
-            f"Gemini generation failed ({type(exc).__name__}; "
-            f"code={code}; status={status})."
-        ) from exc
+        raise provider_failure("gemini", exc) from exc
+    finally:
+        if client is not None:
+            await client.aio.aclose()
+            client.close()
 
 
 async def _generate_with_anthropic(prompt: str, count: int) -> GenerationResult:
@@ -334,9 +360,7 @@ async def _generate_with_anthropic(prompt: str, count: int) -> GenerationResult:
     except GenerationFailed:
         raise
     except Exception as exc:
-        raise GenerationFailed(
-            f"Claude generation failed ({type(exc).__name__})."
-        ) from exc
+        raise provider_failure("claude", exc) from exc
     finally:
         await client.close()
 
@@ -363,7 +387,9 @@ async def generate_questions(
     if not 1 <= count <= 50:
         raise GenerationFailed("Question count must be between 1 and 50.")
 
+    assert_provider_zdr(provider.strip().lower())
     prompt = _build_request_text(
+        provider=provider.strip().lower(),
         source_text=source_text,
         count=count,
         subject=subject,
@@ -376,12 +402,21 @@ async def generate_questions(
         extra_instructions=extra_instructions,
     )
 
+    from app.services.secret_vault import SecretVault
+    selection = json.loads(prompt)["edurecover_authoring_context"]["selection"]
+    if selection["selection_state"] == "NO_MATCH":
+        raise GenerationFailed("이 작업에 허용된 영업비밀 구간이 없습니다. 영업비밀 관리창에서 적용 범위를 확인해 주세요.",
+                               code="AUTHORIZED_ASSET_NOT_FOUND", http_status=409)
     normalized_provider = provider.strip().lower()
-    if normalized_provider == GenerationProvider.OPENAI.value:
-        return await _generate_with_openai(prompt, count)
-    if normalized_provider == GenerationProvider.GEMINI.value:
-        return await _generate_with_gemini(prompt, count)
-    if normalized_provider == GenerationProvider.CLAUDE.value:
-        return await _generate_with_anthropic(prompt, count)
-
-    raise GenerationFailed(f"Unsupported generation provider: {provider}")
+    try:
+        runner = {"openai": _generate_with_openai, "gemini": _generate_with_gemini,
+                  "claude": _generate_with_anthropic}.get(normalized_provider)
+        if runner is None:
+            raise GenerationFailed("Unsupported generation provider.")
+        result = await runner(prompt, count)
+    except BaseException:
+        SecretVault().mark(selection["request_id"], "FAILED_OR_UNCERTAIN")
+        raise
+    SecretVault().mark(selection["request_id"], "COMPLETED")
+    return GenerationResult(provider=result.provider, model=result.model,
+        items=tuple(dict(item, subject=subject, grade=grade) for item in result.items))

@@ -117,6 +117,9 @@ def _parse_worker_response(worker: str, text: str) -> WorkerResult:
             reasons=("Provider returned a non-JSON validation response.",),
         )
 
+    if not isinstance(payload, dict):
+        return WorkerResult(worker=worker, verdict=WorkerVerdict.FAIL,
+                            reasons=("Provider returned an invalid JSON object.",))
     verdict_raw = str(payload.get("verdict", "")).strip().upper()
     reasons_raw = payload.get("reasons", [])
 
@@ -127,8 +130,9 @@ def _parse_worker_response(worker: str, text: str) -> WorkerResult:
             reasons=("Provider returned an invalid verdict.",),
         )
 
-    if not isinstance(reasons_raw, list):
-        reasons_raw = ["Provider returned an invalid reasons field."]
+    if not isinstance(reasons_raw, list) or any(not isinstance(reason, str) for reason in reasons_raw):
+        return WorkerResult(worker=worker, verdict=WorkerVerdict.FAIL,
+                            reasons=("Provider returned an invalid reasons field.",))
 
     reasons = tuple(
         str(reason).strip()
@@ -137,6 +141,8 @@ def _parse_worker_response(worker: str, text: str) -> WorkerResult:
     )
 
     verdict = WorkerVerdict(verdict_raw)
+    if verdict is WorkerVerdict.PASS and reasons:
+        verdict = WorkerVerdict.FAIL
     if verdict is WorkerVerdict.FAIL and not reasons:
         reasons = ("Provider rejected the batch without a reason.",)
 
@@ -174,6 +180,7 @@ async def _validate_with_openai(
             model=settings.openai_model,
             instructions=VALIDATION_INSTRUCTIONS,
             input=_serialize_problems(problems),
+            store=False,
         )
         return _parse_worker_response(worker, response.output_text)
     except Exception as exc:

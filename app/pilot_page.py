@@ -204,7 +204,7 @@ PILOT_HTML = r"""
           <div class="card">
             <h3>출제 원문</h3>
             <label>AI 출제 에이전트</label>
-            <select id="genProvider"><option value="openai" selected>ChatGPT / OpenAI · GPT-5.6 Sol</option><option value="gemini">Gemini Pro · Extended thinking</option><option value="claude">Claude</option></select>
+            <select id="genProvider"><option value="openai" selected>OpenAI API</option><option value="gemini">Gemini API · 고수준 사고 설정</option><option value="claude">Claude</option></select>
             <label>원문·교과서 본문·수업자료</label>
             <textarea id="generationSource" style="min-height:320px" placeholder="출제할 원문을 여기에 붙여 넣으십시오."></textarea>
             <label>추가 출제 지시</label>
@@ -246,19 +246,20 @@ PILOT_HTML = r"""
       </section>
 
       <section id="tutor" class="view">
-        <div class="hero"><div><h2>산파식 AI 튜터</h2><p>현재 문항을 정답 선제공 없이 오답원인 확인·질문·분기·재시험 수업으로 전환합니다.</p></div><span class="badge good">설치 완료</span></div>
+        <div class="hero"><div><h2>구조화 AI 교수자료</h2><p>기초 설명과 성립조건을 추론·심화 적용으로 연결합니다. 산파식 질문은 학생 상태에 따라 선택합니다.</p></div><span class="badge good">교사 검토 후 제공</span></div>
         <div class="grid c2">
           <div class="card"><h3>현재 문항으로 수업 만들기</h3><p class="muted">문항 작업실에서 선택한 문항과 해설을 전자칠판 수업으로 보냅니다. 학생은 가명이나 번호로 참가합니다.</p><button class="btn primary" onclick="startTutorFromCurrentItem()">현재 문항 AI 튜터 수업 만들기</button><div id="tutorLaunchResult" class="muted" style="margin-top:12px"></div></div>
-          <div class="card"><h3>AI 튜터 수업실</h3><p class="muted">문항·오답원인·영상·TTS·산파식 질문·재시험을 직접 설정하고 전자칠판과 교사 콘솔을 엽니다.</p><a class="btn dark" href="/tutor" style="display:inline-block;text-decoration:none">AI 튜터 수업실 열기</a> <a class="btn ghost" href="/classroom" style="display:inline-block;text-decoration:none">교사용 상품 열기</a></div>
+          <div class="card"><h3>AI 교수자료 수업실</h3><p class="muted">전체 학습지도·조건 비교·그림·TTS·연습문항을 함께 검토합니다. 독립 적용은 새로운 문항에서 따로 확인합니다.</p><a class="btn dark" href="/tutor" style="display:inline-block;text-decoration:none">AI 튜터 수업실 열기</a> <a class="btn ghost" href="/classroom" style="display:inline-block;text-decoration:none">교사용 상품 열기</a></div>
           <div class="card"><h3>강화학습 연결</h3><p class="muted">실제 노출·피드백 전 응답·독립 후속문항·교사검증을 목적별 학습자격으로 판정합니다. 학생 응답 직후 모델 가중치는 자동 변경하지 않습니다.</p><div id="tutorTrainingState"><span class="badge warn">상태 확인 중</span></div></div>
         </div>
       </section>
 
       <section id="media" class="view">
-        <div class="hero"><div><h2>시청각 자료</h2><p>영상 또는 한국어 TTS 설명을 산파식 확인 질문과 함께 수업으로 구성합니다.</p></div><span class="badge good">영상·음성 실행</span></div>
+        <div class="hero"><div><h2>시청각 자료</h2><p>영상·한국어 TTS 설명과 학습 중 이해 확인을 구성합니다. 이해했다는 응답만으로 숙달을 판정하지 않습니다.</p></div><span class="badge good">영상·음성 실행</span></div>
         <div class="card">
           <div class="form-grid"><div><label>수업 제목</label><input id="mediaTitle" value="시청각 개념 수업"></div><div><label>영상 주소</label><input id="mediaUrl" placeholder="MP4·WebM 또는 YouTube 주소"></div><div><label>영상 멈춤 시점(초)</label><input id="mediaPause" type="number" min="0" step="0.5" value="8"></div><div><label>확인 질문</label><input id="mediaQuestion" value="방금 설명에서 가장 중요한 조건은 무엇인가요?"></div></div>
-          <label>설명·TTS 원고</label><textarea id="mediaScript">핵심 조건을 먼저 자기 말로 설명해 보세요. 영상 주소가 없으면 이 문장을 한국어 음성으로 읽어 줍니다.</textarea>
+          <label>설명·TTS 원고</label><textarea id="mediaScript">필요한 기초 개념과 성립조건을 설명하고, 심화 문제에서 쓰이는 과정을 시범 보입니다. 영상 주소가 없으면 이 원고를 한국어 음성으로 읽어 줍니다.</textarea>
+          <label><input id="mediaUseSocratic" type="checkbox"> 산파식 확인 질문 사용(선택)</label>
           <button class="btn primary" onclick="startAudiovisualLesson()">시청각 수업 만들기</button><a class="btn ghost" href="/classroom" style="display:inline-block;text-decoration:none;margin-left:6px">교사용 전자칠판 상품</a><div id="mediaLaunchResult" class="muted" style="margin-top:12px"></div>
         </div>
       </section>
@@ -266,7 +267,7 @@ PILOT_HTML = r"""
       <section id="verify" class="view">
         <div class="hero"><div><h2>검증 센터</h2><p>교사가 만든 문항 데이터에 Trust Chain과 Socratic Trap을 적용합니다.</p></div></div>
         <div class="grid c3">
-          <div class="card"><h3>Trust Chain</h3><p class="muted">검증 결과가 모두 통과해야 승인합니다. 다수결로 실패를 덮지 않습니다.</p><button class="btn dark" onclick="runWorkspaceApi('/verify-problem')">현재 문항 검증</button></div>
+          <div class="card"><h3>Trust Chain</h3><p class="muted">출제 AI와 다른 AI 한 개를 선택하여 현재 문항 전체를 검증합니다. 수정하면 이전 검증은 무효가 됩니다.</p><button class="btn dark" onclick="requestWorkspaceVerification()">현재 문항 검증</button></div>
           <div class="card"><h3>Socratic Trap</h3><p class="muted">근거 약화, 과도한 일반화, 추측·인과 비약 위험을 역질문으로 재검토합니다.</p><button class="btn dark" onclick="runWorkspaceApi('/apply-trap')">함정 점검</button></div>
           <div class="card"><h3>교사 최종 승인</h3><p class="muted">AI 검증 결과와 별개로 최종 시험 사용 여부는 교사가 확인합니다.</p><button class="btn primary" onclick="approveTeacher()">교사 검토 완료 표시</button></div>
         </div>
@@ -352,8 +353,12 @@ let workspace=JSON.parse(localStorage.getItem("edurecover_workspace")||"null")||
   ],teacherApproved:false
 };
 let currentItem=0;
+let generationInFlight=false;
+let verificationInFlight=false;
+let workspaceRevision=0;
 function persist(){localStorage.setItem("edurecover_workspace",JSON.stringify(workspace));updateCards();renderItems();renderArchive();}
 function showView(id){
+  const target=document.getElementById(id);if(!target)return;
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   document.querySelectorAll("[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===id));
@@ -371,15 +376,15 @@ async function refreshAiStatus(){
     const r=await fetch("/ai-status");const d=await r.json();if(!r.ok)throw new Error("HTTP "+r.status);
     const providers=d.providers||{};
     const parts=[
-      "OpenAI "+(providers.openai?.ready?"사용 가능":"준비중"),
-      "Gemini Pro Extended "+(providers.gemini?.ready?"사용 가능":"준비중"),
-      "Claude "+(providers.claude?.ready?"사용 가능":"준비중")
+      "OpenAI "+(providers.openai?.ready?"설정 준비됨":"준비중"),
+      "Gemini API "+(providers.gemini?.ready?"설정 준비됨":"준비중"),
+      "Claude "+(providers.claude?.ready?"설정 준비됨":"준비중")
     ];
     const anyReady=Boolean(providers.openai?.ready||providers.gemini?.ready||providers.claude?.ready);
     if(cell) cell.innerHTML="<span class='badge "+(anyReady?"good":"warn")+"'>"+parts.join(" · ")+"</span>";
     if(badge){
       badge.className=anyReady?"badge good":"badge warn";
-      badge.textContent=anyReady?"AI 출제 에이전트 사용 가능":"AI 출제 에이전트 준비중";
+      badge.textContent=anyReady?"AI 출제 설정 준비됨":"AI 출제 에이전트 준비중";
     }
   }catch(e){
     if(cell) cell.innerHTML="<span class='badge warn'>상태 확인 실패</span>";
@@ -398,6 +403,7 @@ function selectedQuestionTypes(){
 }
 async function generateQuestions(){
   const out=document.getElementById("generationOutput"),provider=document.getElementById("genProvider").value,source=document.getElementById("generationSource").value,instructions=document.getElementById("generationInstructions").value;
+  if(generationInFlight||verificationInFlight){out.textContent="현재 AI 작업이 끝난 뒤 다시 실행해 주세요.";return;}
   if(!source.trim()){out.textContent="출제 원문을 입력하십시오.";return;}
   const payload={
     provider,
@@ -414,19 +420,21 @@ async function generateQuestions(){
     extra_instructions:instructions
   };
   out.textContent="AI가 문항 초안을 생성 중입니다...";
+  generationInFlight=true;
   try{
     const route={openai:"/channel/openai/generate",gemini:"/channel/gemini/generate",claude:"/channel/claude/generate"}[provider];
     const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
-    if(!r.ok){out.textContent="자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
-    workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;workspace.lastGenerationReceipt=d.execution_receipt||null;persist();
+    if(!r.ok){out.textContent=r.status===401?"로그인이 필요합니다. 관리자 로그인 후 다시 실행해 주세요.":"자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
+    workspaceRevision++;workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;workspace.lastGenerationReceipt=d.execution_receipt||null;workspace.lastCrossVerification=null;workspace.crossVerificationState="PENDING_CHOICE";workspace.authoringRevisionRequired=false;persist();
     out.textContent=providerLabel(d.provider)+" · "+d.count+"문항 생성 완료. 문항 작업실에서 교사가 확인·수정하십시오.";
     await showCrossVerifyPrompt(d.provider, Number(d.count)||workspace.items.length);
   }catch(e){out.textContent="자동출제 요청 실패: "+e.message;}
+  finally{generationInFlight=false;}
 }
 
 function providerLabel(provider){
-  return {openai:"ChatGPT / OpenAI",gemini:"Gemini Pro Extended",claude:"Claude"}[provider]||provider;
+  return {openai:"OpenAI API",gemini:"Gemini API",claude:"Claude"}[provider]||provider;
 }
 async function showCrossVerifyPrompt(originProvider, generatedCount){
   const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
@@ -435,10 +443,11 @@ async function showCrossVerifyPrompt(originProvider, generatedCount){
   select.innerHTML="";
   try{
     const r=await fetch("/ai-status");const status=await r.json();
+    if(!r.ok)throw new Error("AI 상태 확인 실패");
     const providers=[
-      ["openai","ChatGPT / OpenAI",status.providers?.openai?.ready],
-      ["gemini","Gemini Pro Extended",status.providers?.gemini?.ready],
-      ["claude","Claude",status.providers?.claude?.ready]
+      ["openai","OpenAI API",status.providers?.openai?.verify_ready],
+      ["gemini","Gemini API",status.providers?.gemini?.verify_ready],
+      ["claude","Claude",status.providers?.claude?.verify_ready]
     ].filter(([id,,ready])=>id!==originProvider&&ready);
     providers.forEach(([id,label])=>{const o=document.createElement("option");o.value=id;o.textContent=label;select.appendChild(o)});
     if(!providers.length){
@@ -453,23 +462,36 @@ async function showCrossVerifyPrompt(originProvider, generatedCount){
 }
 async function runCrossVerification(){
   const modal=document.getElementById("crossVerifyModal"),select=document.getElementById("crossVerifyProvider"),message=document.getElementById("crossVerifyMessage"),result=document.getElementById("crossVerifyResult"),yes=document.getElementById("crossVerifyYes"),no=document.getElementById("crossVerifyNo"),workspaceBtn=document.getElementById("crossVerifyWorkspace");
-  const provider=select.value;if(!provider)return;
+  const provider=select.value;if(!provider||verificationInFlight||generationInFlight)return;
+  if(!workspace.lastGenerationReceipt?.origin_proof){result.hidden=false;result.textContent="출제 출처 증명이 없어 독립 검증을 시작하지 않았습니다.";message.textContent="서명된 출제 기록이 없는 이전 자료입니다. 새로 AI 출제를 실행해 주세요.";return;}
+  const revision=workspaceRevision,origin=workspace.lastGenerationProvider;
+  const snapshot=JSON.stringify(workspace.items),problems=JSON.parse(snapshot);
+  verificationInFlight=true;
   yes.disabled=true;no.hidden=true;message.textContent=providerLabel(provider)+" AI 검증 에이전트가 출제된 전체 문항을 검증 중입니다...";
   try{
+    if(workspace.authoringRevisionRequired){
+      const rr=await fetch("/owner/authoring/revise",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({origin_proof:workspace.lastGenerationReceipt.origin_proof,problems})});
+      const rd=await rr.json();if(!rr.ok)throw new Error(rd.detail||"편집 문항의 출처 기록을 저장하지 못했습니다.");
+      if(workspaceRevision!==revision||JSON.stringify(workspace.items)!==snapshot)throw new Error("저장 중 문항이 변경되었습니다. 다시 검증해 주세요.");
+      workspace.lastGenerationReceipt={...workspace.lastGenerationReceipt,...rd};workspace.authoringRevisionRequired=false;persist();
+    }
     const route={openai:"/channel/openai/verify",gemini:"/channel/gemini/verify",claude:"/channel/claude/verify"}[provider];
-    const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,origin_provider:workspace.lastGenerationProvider,origin_invocation_id:workspace.lastGenerationReceipt?.invocation_id||null,explicit_authorization:true,problems:workspace.items})});
+    const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider,origin_provider:origin,origin_invocation_id:workspace.lastGenerationReceipt.invocation_id,origin_proof:workspace.lastGenerationReceipt.origin_proof,explicit_authorization:true,problems})});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok)throw new Error(d.detail||t);
-    workspace.lastCrossVerification=d;persist();
+    if(workspaceRevision!==revision||workspace.lastGenerationProvider!==origin||JSON.stringify(workspace.items)!==snapshot)throw new Error("검증 중 문항이 변경되었습니다. 현재 문항 전체를 다시 검증해 주세요.");
+    workspace.lastCrossVerification=d;workspace.crossVerificationState=d.verdict;persist();
     result.hidden=false;result.textContent=JSON.stringify(d,null,2);
     message.textContent=providerLabel(provider)+" AI 검증 에이전트 교차검증 완료: "+d.verdict;
   }catch(e){
+    workspace.lastCrossVerification=null;workspace.crossVerificationState="ERROR";persist();
     result.hidden=false;result.textContent="교차검증 실패: "+e.message;
     message.textContent="교차검증을 완료하지 못했습니다.";
   }
+  finally{verificationInFlight=false;}
   yes.hidden=true;workspaceBtn.hidden=false;
 }
-document.getElementById("crossVerifyNo").addEventListener("click",()=>{document.getElementById("crossVerifyModal").hidden=true;showView("workspace")});
+document.getElementById("crossVerifyNo").addEventListener("click",()=>{workspace.crossVerificationState="SKIPPED";workspace.lastCrossVerification=null;persist();document.getElementById("crossVerifyModal").hidden=true;showView("workspace")});
 document.getElementById("crossVerifyYes").addEventListener("click",runCrossVerification);
 document.getElementById("crossVerifyWorkspace").addEventListener("click",()=>{document.getElementById("crossVerifyModal").hidden=true;showView("workspace")});
 
@@ -529,37 +551,48 @@ function renderItems(){
   if(workspace.items.length) loadEditor();
 }
 function loadEditor(){const it=workspace.items[currentItem];if(!it)return;editQuestion.value=it.question||"";editPassage.value=it.passage||"";editAnswer.value=it.answer||"";editExplanation.value=it.explanation||"";editorTitle.textContent="문항 "+(currentItem+1)+" 편집";}
-function saveCurrentItem(){if(!workspace.items[currentItem])return;workspace.items[currentItem]={...workspace.items[currentItem],question:editQuestion.value,passage:editPassage.value,answer:editAnswer.value,explanation:editExplanation.value};persist();}
-function addSampleItem(){workspace.items.push({question:"새 문항 발문",passage:"",answer:"",explanation:""});currentItem=workspace.items.length-1;persist();}
+function invalidateWorkspaceReview(){workspaceRevision++;workspace.authoringRevisionRequired=true;workspace.teacherApproved=false;workspace.lastCrossVerification=null;workspace.crossVerificationState="EDITED_REVIEW_REQUIRED";}
+function requestWorkspaceVerification(){
+  if(!workspace.items.length){document.getElementById("verifyOutput").textContent="검증할 문항이 없습니다.";return;}
+  if(!workspace.lastGenerationProvider){document.getElementById("verifyOutput").textContent="이 작업공간에는 출제 AI 기록이 없습니다. AI 자동출제로 생성한 문항의 출제 기록이 있어야 독립 검증자를 선택할 수 있습니다.";return;}
+  showCrossVerifyPrompt(workspace.lastGenerationProvider,workspace.items.length);
+}
+function saveCurrentItem(){if(!workspace.items[currentItem])return;workspace.items[currentItem]={...workspace.items[currentItem],question:editQuestion.value,passage:editPassage.value,answer:editAnswer.value,explanation:editExplanation.value};invalidateWorkspaceReview();persist();}
+function addSampleItem(){workspace.items.push({question:"새 문항 발문",passage:"",answer:"",explanation:""});currentItem=workspace.items.length-1;invalidateWorkspaceReview();persist();}
 function tutorLinks(r){
   return "<a class='btn primary' target='_blank' href='"+escapeHtml(r.board_url)+"'>전자칠판 열기</a> "+
     "<a class='btn dark' target='_blank' href='"+escapeHtml(r.teacher_url)+"'>교사 콘솔</a> "+
     "<a class='btn ghost' target='_blank' href='"+escapeHtml(r.join_url)+"'>학생 화면 확인</a>";
 }
-async function createTutorSession(title,lesson,resultId){
+async function createTutorSession(title,lesson,resultId,sourceContext={}){
   const out=document.getElementById(resultId);out.textContent="수업을 만드는 중입니다...";
   try{
-    const body={title,room_alias:"CLASS-A",institution_type:"SCHOOL",launch_mode:"DIRECT_BOARD_WEB",connection_method:"BROWSER",privacy_mode:"ALIAS_ONLY",lesson};
+    const body={title,room_alias:"CLASS-A",institution_type:"SCHOOL",launch_mode:"DIRECT_BOARD_WEB",connection_method:"BROWSER",privacy_mode:"ALIAS_ONLY",lesson,...sourceContext};
     const r=await fetch("/tutor/api/sessions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok)throw new Error(d.detail||("HTTP "+r.status));
-    out.innerHTML=tutorLinks(d);
+    out.innerHTML="<p>초안 수업을 만들었습니다. 교사 콘솔에서 문항·정답·설명을 검토하고 확정한 뒤 학생에게 제공해 주세요.</p>"+tutorLinks(d);
   }catch(e){out.textContent="수업 생성 실패: "+e.message;}
 }
 function startTutorFromCurrentItem(){
   if(!workspace.items[currentItem]){document.getElementById("tutorLaunchResult").textContent="문항 작업실에 문항을 먼저 추가해 주세요.";return;}
+  if(workspace.lastGenerationProvider){
+    const originProof=workspace.lastGenerationReceipt?.origin_proof,verificationProof=workspace.lastCrossVerification?.execution_receipt?.verification_proof;
+    if(!originProof||!verificationProof||workspace.crossVerificationState!=="PASS"){
+      document.getElementById("tutorLaunchResult").textContent="현재 AI 문항 전체를 다른 AI로 교차검증한 뒤 연결해 주세요. 문항 편집·교사용 초안 검토는 계속할 수 있습니다.";return;
+    }
+    createTutorSession((workspace.exam?.name||"EduRecover")+" · 문항 "+(currentItem+1),[],"tutorLaunchResult",{source_items:workspace.items,source_item_index:currentItem,origin_proof:originProof,verification_proof:verificationProof});return;
+  }
   const it=workspace.items[currentItem],raw=Array.isArray(it.choices)?it.choices:[];
   const choices=raw.map((c,i)=>typeof c==="string"?c:(c?.text||c?.content||("선택지 "+(i+1)))).filter(Boolean);
-  if(!choices.length)choices.push("A. 첫 번째 선택지","B. 두 번째 선택지","C. 세 번째 선택지","D. 네 번째 선택지");
-  const answer=String(it.answer||choices[0]),misconception=String(it.misconception_path||it.error_pattern||"학생이 선택한 근거와 문제의 실제 조건이 일치하지 않음");
+  const answer=it.answer?String(it.answer):null,misconception=String(it.misconception_path||it.error_pattern||"오답 원인은 아직 확인되지 않음");
   const prompt=[it.passage,it.question].filter(Boolean).join("\n\n")||"현재 문항의 조건을 자기 말로 설명해 보세요.";
-  const explanation=String(it.explanation||"정답을 바로 말하지 않고, 문제에 실제로 적힌 조건부터 다시 확인합니다.");
+  const explanation=String(it.explanation||"필요한 기초 개념과 성립조건을 설명하고, 추론이 목표 문제에 연결되는 과정을 시범 보입니다.");
   const revision=String(it.problem_id||it.question_id||("workspace-"+(currentItem+1))),concept=String(it.concept_key||it.target_concept||("QUESTION:"+revision));
   const lesson=[
     {segment_id:"problem",kind:"EXPLAIN",title:"문제와 조건 확인",text:prompt+"\n"+choices.join(" | "),choices,correct_answer:answer,misconception_path:misconception,concept_key:concept,content_revision_id:revision+":problem",feedback_phase:"PRE_FEEDBACK"},
     {segment_id:"media",kind:"VIDEO",title:"오답원인 짧은 설명",text:explanation,media_url:null,pause_at_sec:null,misconception_path:misconception,concept_key:concept,content_revision_id:revision+":hint",hint_level:1},
-    {segment_id:"socratic",kind:"SOCRATIC",title:"스스로 확인하기",text:"문제에서 실제로 주어진 조건과 내가 덧붙여 생각한 조건을 나누어 볼까요?",choices:["조건을 다시 확인했다","아직 헷갈린다"],correct_answer:"조건을 다시 확인했다",branch_map:{"조건을 다시 확인했다":"retest","아직 헷갈린다":"media"},misconception_path:misconception,concept_key:concept,content_revision_id:revision+":probe",feedback_phase:"POST_FEEDBACK",tutor_action_content_revision:revision+":hint"},
-    {segment_id:"retest",kind:"RETEST",title:"전이 재시험",text:prompt,choices,correct_answer:answer,branch_map:{},misconception_path:misconception,concept_key:concept,content_revision_id:revision+":transfer",independent_followup:true,tutor_action_content_revision:revision+":hint"}
+    {segment_id:"practice",kind:"PRACTICE",title:"설명 후 연습",text:prompt,choices,correct_answer:answer,branch_map:{},misconception_path:misconception,concept_key:concept,content_revision_id:revision+":problem",independent_followup:false,hint_level:1,feedback_phase:"POST_FEEDBACK",tutor_action_content_revision:revision+":hint"}
   ];
   createTutorSession((workspace.exam?.name||"EduRecover")+" · 문항 "+(currentItem+1),lesson,"tutorLaunchResult");
 }
@@ -569,8 +602,7 @@ function startAudiovisualLesson(){
   const lesson=[
     {segment_id:"prepare",kind:"EXPLAIN",title:"학습 목표 확인",text:"설명을 듣기 전에 무엇을 알고 있는지 자기 말로 이야기해 보세요.",choices:["설명할 수 있다","아직 모르겠다"],concept_key:concept,content_revision_id:revision+":pre",feedback_phase:"PRE_FEEDBACK"},
     {segment_id:"media",kind:"VIDEO",title:"짧은 영상·TTS 설명",text:script,media_url:url,pause_at_sec:pause,concept_key:concept,content_revision_id:revision+":hint",hint_level:1},
-    {segment_id:"socratic",kind:"SOCRATIC",title:"산파식 확인 질문",text:question,choices:["핵심 조건을 설명할 수 있다","한 번 더 보고 싶다"],correct_answer:"핵심 조건을 설명할 수 있다",branch_map:{"핵심 조건을 설명할 수 있다":"retest","한 번 더 보고 싶다":"media"},concept_key:concept,content_revision_id:revision+":probe",feedback_phase:"POST_FEEDBACK",tutor_action_content_revision:revision+":hint"},
-    {segment_id:"retest",kind:"RETEST",title:"전이 재확인",text:"방금 배운 내용을 다른 예에 적용할 수 있나요?",choices:["적용할 수 있다","조금 더 연습이 필요하다"],correct_answer:"적용할 수 있다",branch_map:{},concept_key:concept,content_revision_id:revision+":transfer",independent_followup:true,tutor_action_content_revision:revision+":hint"}
+    {segment_id:"reflection",kind:document.getElementById("mediaUseSocratic").checked?"SOCRATIC":"PRACTICE",title:"학습 중 이해 확인",text:question,choices:["핵심 조건을 설명할 수 있다","한 번 더 보고 싶다"],correct_answer:null,branch_map:{"한 번 더 보고 싶다":"media"},concept_key:concept,content_revision_id:revision+":reflection",feedback_phase:"POST_FEEDBACK",independent_followup:false,hint_level:1,tutor_action_content_revision:revision+":hint"}
   ];
   createTutorSession(title,lesson,"mediaLaunchResult");
 }

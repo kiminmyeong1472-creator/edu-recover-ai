@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,7 @@ def validate_manifest(
         raise ValueError("Dataset manifest is not ELIGIBLE.")
 
     snapshot_hash = str(manifest.get("snapshot_hash", ""))
-    if len(snapshot_hash) != 64:
+    if not re.fullmatch(r"[0-9a-f]{64}", snapshot_hash):
         raise ValueError("Dataset snapshot_hash is missing or invalid.")
 
     expected_file_hash = str(manifest.get("dataset_file_sha256", ""))
@@ -61,6 +62,15 @@ def validate_manifest(
         raise ValueError("Dataset manifest contains no records.")
 
     source_classes = set(manifest.get("source_classes", []))
+    allowed_sources = {"FIRST_PARTY_TUTORING", "OWNER_AUTHORED", "LICENSED_CORPUS", "OPEN_WEIGHT_SELF_GENERATED"}
+    if not source_classes or not source_classes <= allowed_sources:
+        raise ValueError("Explicit approved source classes are required.")
+    if manifest.get("allowed_use_scopes") != ["TUTOR_POLICY"]:
+        raise ValueError("Only the tutor policy training scope is supported by this runner.")
+    if manifest.get("rights_state") != "CONFIRMED" or manifest.get("consent_state") not in {"CONFIRMED", "NOT_REQUIRED"}:
+        raise ValueError("Rights and consent review is incomplete.")
+    if "FIRST_PARTY_TUTORING" in source_classes and manifest.get("patent_clearance") != "CLEARED_FOR_TUTOR_MODEL_TRAINING":
+        raise ValueError("First-party tutoring data has not passed the existing training review gate.")
     blocked = sorted(source_classes & BLOCKED_SOURCE_CLASSES)
     if blocked:
         raise ValueError(
@@ -74,6 +84,23 @@ def validate_manifest(
 
     if manifest.get("provenance_complete") is not True:
         raise ValueError("Dataset provenance is incomplete.")
+    count = 0
+    with dataset_path.open(encoding="utf-8") as source:
+        for line in source:
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            messages = record.get("messages") if isinstance(record, dict) else None
+            if not isinstance(messages, list) or not messages:
+                raise ValueError("Every record must contain an explicit training conversation.")
+            if any(not isinstance(m, dict) or m.get("role") not in {"system", "user", "assistant"}
+                   or not isinstance(m.get("content"), str) or not m["content"].strip() for m in messages):
+                raise ValueError("Invalid training conversation.")
+            if not any(m["role"] == "assistant" for m in messages):
+                raise ValueError("A teacher target response is required; evidence metadata alone is not SFT data.")
+            count += 1
+    if count != manifest["record_count"]:
+        raise ValueError("Dataset record count differs from the reviewed manifest.")
 
 
 def load_recipe(path: Path) -> dict[str, Any]:
@@ -101,6 +128,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--recipe", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--check-only", action="store_true", help="Validate data and recipe without importing GPU libraries or starting training.")
     parser.add_argument(
         "--model-id",
         default="openai/gpt-oss-20b",
@@ -114,6 +142,10 @@ def main() -> None:
     manifest = load_json(args.manifest)
     recipe = load_recipe(args.recipe)
     validate_manifest(dataset_path=args.dataset, manifest=manifest)
+    if args.check_only:
+        print(json.dumps({"validation": "passed", "record_count": manifest["record_count"],
+                          "gpu_training_started": False, "method": "SFT_LORA"}))
+        return
 
     # Heavy dependencies are imported only after all fail-closed data checks.
     import torch
@@ -196,6 +228,8 @@ def main() -> None:
             )
 
     receipt = {
+        "method": "SFT_LORA",
+        "reinforcement_learning": False,
         "base_model": args.model_id,
         "dataset_snapshot_hash": manifest["snapshot_hash"],
         "dataset_file_sha256": manifest["dataset_file_sha256"],

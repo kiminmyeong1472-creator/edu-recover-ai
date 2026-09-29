@@ -75,11 +75,28 @@ def _truthy(rows: list[dict[str, Any]], key: str) -> bool:
     return any(bool(row.get(key)) for row in rows)
 
 
+def _unaided_followup(row: dict[str, Any], *, delayed: bool = False) -> bool:
+    """A response label alone cannot establish independent transfer."""
+    allowed = {EvidenceType.DELAYED_FOLLOWUP_RESPONSE.value} if delayed else {
+        EvidenceType.INDEPENDENT_FOLLOWUP_RESPONSE.value,
+        EvidenceType.DELAYED_FOLLOWUP_RESPONSE.value,
+    }
+    return (
+        row.get("evidence_type") in allowed
+        and row.get("correct") is True
+        and row.get("independent") is True
+        and int(row.get("hint_level") or 0) == 0
+        and not row.get("answer_disclosed")
+        and (not delayed or float(row.get("delayed_hours") or 0) >= 24)
+    )
+
+
 def evaluate_tutor_reward(evidence: Iterable[dict[str, Any]]) -> RewardEvaluation:
     """Score educational outcomes while preserving non-compensatory blocks.
 
-    A high numeric score cannot cancel answer leakage, defective content, or a
-    missing pseudonymization secret.  Those findings remain hard blocks.
+    Explanations and worked examples are allowed during instruction. Answer
+    disclosure during an assessment, defective content, and missing integrity
+    evidence cannot be offset by a high numeric score.
     """
 
     rows = list(evidence)
@@ -87,29 +104,24 @@ def evaluate_tutor_reward(evidence: Iterable[dict[str, Any]]) -> RewardEvaluatio
     types = {str(row.get("evidence_type")) for row in rows}
     hard_blocks: list[str] = []
 
-    if _truthy(rows, "answer_disclosed"):
-        hard_blocks.append("ANSWER_DISCLOSED_BEFORE_CONCEPT_RECOVERY")
+    assessment_types = {
+        EvidenceType.PRE_FEEDBACK_RESPONSE.value,
+        EvidenceType.INDEPENDENT_FOLLOWUP_RESPONSE.value,
+        EvidenceType.DELAYED_FOLLOWUP_RESPONSE.value,
+    }
+    if any(row.get("answer_disclosed") and row.get("evidence_type") in assessment_types for row in rows):
+        hard_blocks.append("ASSESSMENT_ANSWER_DISCLOSED")
     if any(row.get("content_trust") == ContentTrustState.DEFECT_CONFIRMED.value for row in rows):
         hard_blocks.append("DEFECT_CONFIRMED_CONTENT")
     if any(row.get("source_integrity_verified") is False for row in rows):
         hard_blocks.append("SOURCE_INTEGRITY_NOT_VERIFIED")
+    if any(row.get("content_trust") != ContentTrustState.VERIFIED.value for row in rows):
+        hard_blocks.append("CONTENT_NOT_VERIFIED")
     if any(row.get("pseudonym_salt_configured") is False for row in rows):
         hard_blocks.append("PSEUDONYMIZATION_SECRET_NOT_CONFIGURED")
 
-    independent_correct = any(
-        row.get("evidence_type") in {
-            EvidenceType.INDEPENDENT_FOLLOWUP_RESPONSE.value,
-            EvidenceType.DELAYED_FOLLOWUP_RESPONSE.value,
-        }
-        and row.get("correct") is True
-        for row in rows
-    )
-    delayed_correct = any(
-        row.get("evidence_type") == EvidenceType.DELAYED_FOLLOWUP_RESPONSE.value
-        and row.get("correct") is True
-        and float(row.get("delayed_hours") or 0) >= 24
-        for row in rows
-    )
+    independent_correct = any(_unaided_followup(row) for row in rows)
+    delayed_correct = any(_unaided_followup(row, delayed=True) for row in rows)
     teacher_verified_reason = any(
         row.get("evidence_type") == EvidenceType.TEACHER_VALIDATION.value
         and row.get("teacher_validated") is True
@@ -162,7 +174,7 @@ def evaluate_purpose_eligibility(
         state = (
             EligibilityState.INELIGIBLE
             if "DEFECT_CONFIRMED_CONTENT" in reward.hard_block_reasons
-            or "ANSWER_DISCLOSED_BEFORE_CONCEPT_RECOVERY" in reward.hard_block_reasons
+            or "ASSESSMENT_ANSWER_DISCLOSED" in reward.hard_block_reasons
             else EligibilityState.HOLD
         )
         return PurposeEligibilityDecision(
@@ -179,20 +191,8 @@ def evaluate_purpose_eligibility(
         for row in rows
     )
     initial_present = EvidenceType.PRE_FEEDBACK_RESPONSE.value in types
-    independent_correct = any(
-        row.get("evidence_type") in {
-            EvidenceType.INDEPENDENT_FOLLOWUP_RESPONSE.value,
-            EvidenceType.DELAYED_FOLLOWUP_RESPONSE.value,
-        }
-        and row.get("correct") is True
-        for row in rows
-    )
-    delayed_correct = any(
-        row.get("evidence_type") == EvidenceType.DELAYED_FOLLOWUP_RESPONSE.value
-        and row.get("correct") is True
-        and float(row.get("delayed_hours") or 0) >= 24
-        for row in rows
-    )
+    independent_correct = any(_unaided_followup(row) for row in rows)
+    delayed_correct = any(_unaided_followup(row, delayed=True) for row in rows)
     tutor_action_present = EvidenceType.HINT_USE.value in types or any(int(row.get("hint_level") or 0) > 0 for row in rows)
 
     requirements: dict[LearningPurpose, list[tuple[bool, str]]] = {
