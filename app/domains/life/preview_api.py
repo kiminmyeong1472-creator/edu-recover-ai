@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header
 
 from app.domains.life.activity_ledger import ActivityEntry
 from app.domains.life.api_models import ActivityCreateRequest
 from app.platform_core.domain_scope import DomainScope
-from app.platform_core.request_guards import require_domain_header, require_subject_header
+from app.platform_core.request_guards import domain_guard, require_subject_header
 
 
 router = APIRouter(prefix="/preview/life", tags=["preview-life"])
 _activities: list[ActivityEntry] = []
+_life_guard = domain_guard(DomainScope.LIFE)
 
 
 @router.post("/activities")
 def create_activity(
     payload: ActivityCreateRequest,
     x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
-    _: DomainScope = require_domain_header(DomainScope.LIFE),
+    _: DomainScope = Depends(_life_guard),
 ) -> dict[str, str]:
     require_subject_header(payload.subject_id, x_subject_id)
     activity = ActivityEntry.create(
@@ -34,7 +35,7 @@ def create_activity(
 def list_activities(
     subject_id: str,
     x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
-    _: DomainScope = require_domain_header(DomainScope.LIFE),
+    _: DomainScope = Depends(_life_guard),
 ) -> dict:
     require_subject_header(subject_id, x_subject_id)
     activities = [item for item in _activities if item.subject_id == subject_id]
