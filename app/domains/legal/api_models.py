@@ -27,6 +27,14 @@ class LegalDeadlineCreateRequest(BaseModel):
     legal_basis_ref: str | None = None
 
 
+class LegalDeadlineVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject_id: str = Field(min_length=1)
+    deadline_id: str = Field(min_length=1)
+    verification_note: str = Field(min_length=1)
+
+
 class LegalDeadlineResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
