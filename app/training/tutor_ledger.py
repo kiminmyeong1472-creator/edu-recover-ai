@@ -142,6 +142,20 @@ CREATE TABLE IF NOT EXISTS tutor_training_use_receipts (
   created_at TEXT NOT NULL,
   FOREIGN KEY(eligibility_revision_id) REFERENCES tutor_eligibility_revisions(eligibility_revision_id)
 );
+CREATE TABLE IF NOT EXISTS tutor_lesson_batches (
+  batch_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL,
+  snapshot_hash TEXT NOT NULL,
+  eligibility_refs_json TEXT NOT NULL,
+  eligible_record_count INTEGER NOT NULL,
+  hold_record_count INTEGER NOT NULL,
+  rejected_record_count INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tutor_lesson_batches_status
+  ON tutor_lesson_batches(status,updated_at);
 """
 
 
@@ -585,7 +599,116 @@ class TutorLearningLedger:
                 affected.add((str(exposure["learner_key"]), str(exposure["concept_key"])))
             for learner_key, concept_key in affected:
                 self._reevaluate(conn, session_id, learner_key, concept_key)
+        self.refresh_lesson_batch(session_id)
         return len(affected)
+
+    def refresh_lesson_batch(self, session_id: str, *, create: bool = False) -> dict[str, Any] | None:
+        """Create or refresh exactly one offline-training batch per closed lesson.
+
+        The batch is an eligibility queue entry.  It never starts a GPU or
+        updates model weights.  Reviews and defect corrections refresh the
+        same row so repeated STOP commands cannot create duplicate jobs.
+        """
+        with self._db() as conn:
+            current = conn.execute(
+                """SELECT eligibility_revision_id,learner_key,concept_key,learning_purpose,state,
+                          reward_revision_id,decision_hash
+                   FROM tutor_eligibility_revisions
+                   WHERE session_id=? AND is_current=1
+                   ORDER BY eligibility_revision_id""",
+                (session_id,),
+            ).fetchall()
+            existing = conn.execute(
+                "SELECT * FROM tutor_lesson_batches WHERE session_id=?", (session_id,)
+            ).fetchone()
+            if not existing and not create:
+                return None
+            refs = [dict(row) for row in current]
+            counts = {state.value: 0 for state in EligibilityState}
+            for row in refs:
+                counts[row["state"]] = counts.get(row["state"], 0) + 1
+            eligible = counts.get(EligibilityState.ELIGIBLE.value, 0)
+            hold = counts.get(EligibilityState.HOLD.value, 0) + counts.get(EligibilityState.NOT_TRAINABLE.value, 0)
+            rejected = (
+                counts.get(EligibilityState.INELIGIBLE.value, 0)
+                + counts.get(EligibilityState.RESTRICTED.value, 0)
+                + counts.get(EligibilityState.CORRECTED.value, 0)
+            )
+            if not refs:
+                status = "EMPTY"
+            elif eligible:
+                status = "READY_FOR_EXPORT"
+            else:
+                status = "REVIEW_PENDING"
+            payload = {
+                "session_id": session_id,
+                "eligible_records": [row for row in refs if row["state"] == EligibilityState.ELIGIBLE.value],
+            }
+            snapshot_hash = _canonical_hash(payload)
+            timestamp = _now()
+            if existing:
+                batch_id = str(existing["batch_id"])
+                conn.execute(
+                    """UPDATE tutor_lesson_batches
+                       SET status=?,snapshot_hash=?,eligibility_refs_json=?,eligible_record_count=?,
+                           hold_record_count=?,rejected_record_count=?,updated_at=?
+                       WHERE batch_id=?""",
+                    (status, snapshot_hash, json.dumps(refs, ensure_ascii=False), eligible,
+                     hold, rejected, timestamp, batch_id),
+                )
+                created_at = str(existing["created_at"])
+            else:
+                batch_id = f"tlb_{uuid.uuid4().hex}"
+                created_at = timestamp
+                conn.execute(
+                    "INSERT INTO tutor_lesson_batches VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (batch_id, session_id, status, snapshot_hash,
+                     json.dumps(refs, ensure_ascii=False), eligible, hold, rejected,
+                     created_at, timestamp),
+                )
+        return {
+            "batch_id": batch_id,
+            "session_id": session_id,
+            "status": status,
+            "snapshot_hash": snapshot_hash,
+            "eligible_record_count": eligible,
+            "hold_record_count": hold,
+            "rejected_record_count": rejected,
+            "created_at": created_at,
+            "updated_at": timestamp,
+            "gpu_started": False,
+        }
+
+    def lesson_batch(self, session_id: str) -> dict[str, Any] | None:
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT * FROM tutor_lesson_batches WHERE session_id=?", (session_id,)
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        item["eligibility_refs"] = json.loads(item.pop("eligibility_refs_json"))
+        item["gpu_started"] = False
+        return item
+
+    def list_lesson_batches(self, status: str | None = None) -> list[dict[str, Any]]:
+        with self._db() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM tutor_lesson_batches WHERE status=? ORDER BY updated_at",
+                    (status,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM tutor_lesson_batches ORDER BY updated_at"
+                ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["eligibility_refs"] = json.loads(item.pop("eligibility_refs_json"))
+            item["gpu_started"] = False
+            result.append(item)
+        return result
 
     def session_status(self, session_id: str) -> dict[str, Any]:
         with self._db() as conn:
@@ -618,6 +741,7 @@ class TutorLearningLedger:
             "evidence_revision_count": evidence,
             "eligibility_counts": counts,
             "current_eligibility": current,
+            "lesson_batch": self.lesson_batch(session_id),
             "blocked_reuse": ["ITEM_GENERATOR", "DISTRACTOR_RANKER", "CONTENT_RECOMMENDATION_MODEL"],
         }
 
