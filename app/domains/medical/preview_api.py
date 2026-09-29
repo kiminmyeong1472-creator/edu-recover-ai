@@ -2,24 +2,25 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header
 
 from app.domains.medical.api_models import MedicationCreateRequest
 from app.domains.medical.medication_passport import build_medication_passport
 from app.domains.medical.models import MedicationRecord
 from app.platform_core.domain_scope import DomainScope
-from app.platform_core.request_guards import require_domain_header, require_subject_header
+from app.platform_core.request_guards import domain_guard, require_subject_header
 
 
 router = APIRouter(prefix="/preview/medical", tags=["preview-medical"])
 _records: dict[str, MedicationRecord] = {}
+_medical_guard = domain_guard(DomainScope.MEDICAL)
 
 
 @router.post("/medications")
 def create_medication(
     payload: MedicationCreateRequest,
     x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
-    _: DomainScope = require_domain_header(DomainScope.MEDICAL),
+    _: DomainScope = Depends(_medical_guard),
 ) -> dict[str, str]:
     require_subject_header(payload.subject_id, x_subject_id)
     medication_id = f"med_{uuid.uuid4().hex}"
@@ -49,7 +50,7 @@ def create_medication(
 def medication_passport(
     subject_id: str,
     x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
-    _: DomainScope = require_domain_header(DomainScope.MEDICAL),
+    _: DomainScope = Depends(_medical_guard),
 ) -> dict:
     require_subject_header(subject_id, x_subject_id)
     records = [record for record in _records.values() if record.subject_id == subject_id]
