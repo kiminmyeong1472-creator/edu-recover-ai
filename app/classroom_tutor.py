@@ -723,7 +723,14 @@ def command(session_id: str, req: Command, teacher_token: str):
             (json.dumps(state, ensure_ascii=False), now_iso(), session_id),
         )
         event_id = emit(conn, session_id, "TEACHER_COMMAND", {"action": req.action, "state": state})
-        return {"ok": True, "event_id": event_id, "state": state}
+    training_batch = None
+    if req.action == "STOP":
+        try:
+            training_batch = TRAINING_LEDGER.refresh_lesson_batch(session_id, create=True)
+        except Exception as exc:
+            logger.exception("tutor_lesson_batch_failed session_id=%s error_type=%s", session_id, type(exc).__name__)
+            training_batch = {"session_id": session_id, "status": "QUEUE_FAILED_HOLD", "gpu_started": False}
+    return {"ok": True, "event_id": event_id, "state": state, "training_batch": training_batch}
 
 
 @classroom_tutor_router.post("/api/sessions/{session_id}/respond")
@@ -856,6 +863,18 @@ def training_status(session_id: str, teacher_token: str):
     return TRAINING_LEDGER.session_status(session_id)
 
 
+@classroom_tutor_router.get("/api/training-batches")
+def training_batches(status: str | None = None, _: None = Depends(require_owner)):
+    allowed = {None, "EMPTY", "REVIEW_PENDING", "READY_FOR_EXPORT"}
+    if status not in allowed:
+        raise HTTPException(400, "unknown training batch status")
+    return {
+        "batches": TRAINING_LEDGER.list_lesson_batches(status),
+        "automatic_gpu_rental": False,
+        "policy": "ONE_OFFLINE_BATCH_PER_STOPPED_LESSON",
+    }
+
+
 @classroom_tutor_router.get("/api/sessions/{session_id}/training-review-candidates")
 def training_review_candidates(session_id: str, teacher_token: str):
     with db() as conn:
@@ -926,6 +945,7 @@ def training_review(
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+    TRAINING_LEDGER.refresh_lesson_batch(session_id)
     return {**result, "training_status": TRAINING_LEDGER.session_status(session_id)}
 
 
