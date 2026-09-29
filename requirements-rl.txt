@@ -1,0 +1,8 @@
+# Candidate single-GPU environment. NOT yet verified on a real GPU.
+# Install torch==2.8.0 from the CUDA 12.8 PyTorch index separately.
+# Keeps the reviewed TRL 0.24 API stable; not a claim that these are latest versions.
+transformers==4.57.1
+trl==0.24.0
+peft==0.17.1
+accelerate==1.10.1
+datasets==4.2.0
