@@ -5,6 +5,9 @@ on:
     paths:
       - "app/**"
       - "tests/**"
+      - "scripts/**"
+      - "training/**"
+      - "requirements-rl.txt"
       - "requirements.txt"
       - ".github/workflows/training-plane-tests.yml"
   workflow_dispatch:

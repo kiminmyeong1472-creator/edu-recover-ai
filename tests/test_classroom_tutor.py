@@ -219,6 +219,21 @@ class ClassroomTutorTests(unittest.TestCase):
             },
         )
         self.assertEqual(transfer.status_code, 200, transfer.text)
+        stopped = self.client.post(
+            f"/tutor/api/sessions/{sid}/command",
+            params={"teacher_token": tt},
+            json={"action": "STOP"},
+        )
+        self.assertEqual(stopped.status_code, 200, stopped.text)
+        pending_batch = stopped.json()["training_batch"]
+        self.assertEqual(pending_batch["status"], "REVIEW_PENDING")
+        self.assertFalse(pending_batch["gpu_started"])
+        stopped_again = self.client.post(
+            f"/tutor/api/sessions/{sid}/command",
+            params={"teacher_token": tt},
+            json={"action": "STOP"},
+        )
+        self.assertEqual(stopped_again.json()["training_batch"]["batch_id"], pending_batch["batch_id"])
         pre_reviewed = self.client.post(
             f"/tutor/api/sessions/{sid}/training-review",
             params={"teacher_token": tt},
@@ -249,6 +264,14 @@ class ClassroomTutorTests(unittest.TestCase):
         self.assertEqual(states["TUTOR_POLICY_MODEL"], "ELIGIBLE")
         self.assertEqual(states["REVIEW_TIMING_MODEL"], "HOLD")
         self.assertFalse(status["automatic_weight_update"])
+        self.assertEqual(status["lesson_batch"]["batch_id"], pending_batch["batch_id"])
+        self.assertEqual(status["lesson_batch"]["status"], "READY_FOR_EXPORT")
+        self.assertEqual(status["lesson_batch"]["eligible_record_count"], 3)
+        queue = self.client.get("/tutor/api/training-batches", headers=self.owner_headers)
+        self.assertEqual(queue.status_code, 200, queue.text)
+        queued = {row["batch_id"]: row for row in queue.json()["batches"]}
+        self.assertEqual(queued[pending_batch["batch_id"]]["status"], "READY_FOR_EXPORT")
+        self.assertFalse(queue.json()["automatic_gpu_rental"])
 
 
 if __name__ == "__main__":
