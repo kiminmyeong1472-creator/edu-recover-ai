@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.domains.life.preview_api import router as life_preview_router
 from app.domains.medical.preview_api import router as medical_preview_router
 from app.domains.legal.preview_api import router as legal_preview_router
+from app.platform_core.preview_api import router as core_preview_router
 
 
 preview_app = FastAPI(
@@ -12,6 +13,7 @@ preview_app = FastAPI(
     openapi_url=None,
 )
 
+preview_app.include_router(core_preview_router)
 preview_app.include_router(life_preview_router)
 preview_app.include_router(medical_preview_router)
 preview_app.include_router(legal_preview_router)
@@ -23,4 +25,5 @@ def preview_health() -> dict[str, object]:
         "status": "ok",
         "production_wired": False,
         "domains": ["life", "medical", "legal"],
+        "core_controls": ["consent", "sharing", "audit"],
     }
