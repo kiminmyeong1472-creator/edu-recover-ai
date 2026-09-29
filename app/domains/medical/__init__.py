@@ -1,0 +1,1 @@
+"""Medical domain package."""
