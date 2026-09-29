@@ -1,0 +1,1 @@
+"""Life Recover domain package."""
