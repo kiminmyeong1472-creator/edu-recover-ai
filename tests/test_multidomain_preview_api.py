@@ -133,10 +133,11 @@ class MultidomainPreviewApiTests(unittest.TestCase):
         deadline_id = response.json()["deadline_id"]
 
         verified = self.client.post(
-            f"/preview/legal/deadlines/{deadline_id}/verify",
+            "/preview/legal/deadlines/verify",
             headers=self.headers("p1", "legal"),
-            params={
+            json={
                 "subject_id": "p1",
+                "deadline_id": deadline_id,
                 "verification_note": "official notice checked",
             },
         )
@@ -156,12 +157,13 @@ class MultidomainPreviewApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_public_support_defaults_to_actionable_official_programs(self):
+    def test_public_support_lists_only_actionable_official_programs(self):
         self.client.delete("/preview/life/_test/reset")
+
         open_program = self.client.post(
-            "/preview/life/public-support",
+            "/preview/life/support-programs",
             headers=self.headers("p1", "life"),
-            params={
+            json={
                 "program_id": "prog_1",
                 "domain": "MEDICAL",
                 "title": "official medical support",
@@ -174,9 +176,9 @@ class MultidomainPreviewApiTests(unittest.TestCase):
         self.assertTrue(open_program.json()["actionable"])
 
         closed_program = self.client.post(
-            "/preview/life/public-support",
+            "/preview/life/support-programs",
             headers=self.headers("p1", "life"),
-            params={
+            json={
                 "program_id": "prog_2",
                 "domain": "MEDICAL",
                 "title": "closed support",
@@ -189,9 +191,10 @@ class MultidomainPreviewApiTests(unittest.TestCase):
         self.assertFalse(closed_program.json()["actionable"])
 
         listed = self.client.get(
-            "/preview/life/public-support",
+            "/preview/life/support-programs/actionable",
             headers=self.headers("p1", "life"),
         )
+        self.assertEqual(listed.status_code, 200, listed.text)
         ids = [program["program_id"] for program in listed.json()["programs"]]
         self.assertIn("prog_1", ids)
         self.assertNotIn("prog_2", ids)
