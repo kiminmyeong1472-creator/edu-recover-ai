@@ -1,24 +1,25 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header
 
 from app.domains.legal.api_models import CaseEventCreateRequest, LegalDeadlineCreateRequest
 from app.domains.legal.case_timeline import CaseTimelineEvent, ordered_timeline
 from app.domains.legal.deadlines import LegalDeadline
 from app.platform_core.domain_scope import DomainScope
-from app.platform_core.request_guards import require_domain_header, require_subject_header
+from app.platform_core.request_guards import domain_guard, require_subject_header
 
 
 router = APIRouter(prefix="/preview/legal", tags=["preview-legal"])
 _events: list[CaseTimelineEvent] = []
 _deadlines: dict[str, LegalDeadline] = {}
+_legal_guard = domain_guard(DomainScope.LEGAL)
 
 
 @router.post("/events")
 def create_case_event(
     payload: CaseEventCreateRequest,
     x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
-    _: DomainScope = require_domain_header(DomainScope.LEGAL),
+    _: DomainScope = Depends(_legal_guard),
 ) -> dict[str, str]:
     require_subject_header(payload.subject_id, x_subject_id)
     event = CaseTimelineEvent.create(
@@ -39,7 +40,7 @@ def get_case_timeline(
     case_id: str,
     subject_id: str,
     x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
-    _: DomainScope = require_domain_header(DomainScope.LEGAL),
+    _: DomainScope = Depends(_legal_guard),
 ) -> dict:
     require_subject_header(subject_id, x_subject_id)
     events = [
@@ -66,7 +67,7 @@ def get_case_timeline(
 def create_deadline(
     payload: LegalDeadlineCreateRequest,
     x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
-    _: DomainScope = require_domain_header(DomainScope.LEGAL),
+    _: DomainScope = Depends(_legal_guard),
 ) -> dict[str, str]:
     require_subject_header(payload.subject_id, x_subject_id)
     deadline = LegalDeadline.create(
