@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.domains.legal.api_models import CaseEventCreateRequest, LegalDeadlineCreateRequest
 from app.domains.legal.case_timeline import CaseTimelineEvent, ordered_timeline
-from app.domains.legal.deadlines import LegalDeadline
+from app.domains.legal.deadlines import LegalDeadline, verify_deadline
 from app.platform_core.domain_scope import DomainScope
 from app.platform_core.request_guards import domain_guard, require_subject_header
 
@@ -80,6 +80,25 @@ def create_deadline(
     )
     _deadlines[deadline.deadline_id] = deadline
     return {"deadline_id": deadline.deadline_id, "state": deadline.state}
+
+
+@router.post("/deadlines/{deadline_id}/verify")
+def verify_deadline_api(
+    deadline_id: str,
+    subject_id: str,
+    verification_note: str,
+    x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
+    _: DomainScope = Depends(_legal_guard),
+) -> dict[str, str]:
+    require_subject_header(subject_id, x_subject_id)
+    deadline = _deadlines.get(deadline_id)
+    if deadline is None:
+        raise HTTPException(status_code=404, detail="deadline_not_found")
+    if deadline.subject_id != subject_id:
+        raise HTTPException(status_code=403, detail="subject_scope_mismatch")
+    verified = verify_deadline(deadline, verification_note=verification_note)
+    _deadlines[deadline_id] = verified
+    return {"deadline_id": deadline_id, "state": verified.state}
 
 
 @router.delete("/_test/reset")
