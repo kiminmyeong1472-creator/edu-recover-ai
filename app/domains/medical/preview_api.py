@@ -1,23 +1,19 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
-from app.domains.medical.api_models import (
-    MedicationCreateRequest,
-    TreatmentPurposeConfirmationRequest,
-)
+from app.domains.medical.api_models import MedicationCreateRequest, TreatmentPurposeConfirmationRequest
 from app.domains.medical.medication_passport import build_medication_passport
 from app.domains.medical.models import MedicationRecord
 from app.platform_core.domain_scope import DomainScope
 from app.platform_core.request_guards import domain_guard, require_subject_header
 
-
 router = APIRouter(prefix="/preview/medical", tags=["preview-medical"])
 _records: dict[str, MedicationRecord] = {}
 _medical_guard = domain_guard(DomainScope.MEDICAL)
-
 
 @router.post("/medications")
 def create_medication(
@@ -27,11 +23,7 @@ def create_medication(
 ) -> dict[str, str]:
     require_subject_header(payload.subject_id, x_subject_id)
     medication_id = f"med_{uuid.uuid4().hex}"
-    verification_state = (
-        "USER_CONFIRMED"
-        if payload.actual_treatment_purpose
-        else "UNCONFIRMED"
-    )
+    verification_state = "USER_CONFIRMED" if payload.actual_treatment_purpose else "UNCONFIRMED"
     _records[medication_id] = MedicationRecord(
         medication_id=medication_id,
         subject_id=payload.subject_id,
@@ -48,7 +40,6 @@ def create_medication(
     )
     return {"medication_id": medication_id, "verification_state": verification_state}
 
-
 @router.post("/treatment-purpose/confirm")
 def confirm_treatment_purpose(
     payload: TreatmentPurposeConfirmationRequest,
@@ -61,34 +52,12 @@ def confirm_treatment_purpose(
         raise HTTPException(status_code=404, detail="medication_not_found")
     if record.subject_id != payload.subject_id:
         raise HTTPException(status_code=403, detail="subject_scope_mismatch")
-
-    verification_state = {
-        "USER_REPORT": "USER_CONFIRMED",
-        "CLINICAL_DOCUMENT": "DOCUMENT",
-        "CLINICIAN_CONFIRMED": "OFFICIAL",
-    }[payload.source]
-
-    _records[payload.medication_id] = MedicationRecord(
-        medication_id=record.medication_id,
-        subject_id=record.subject_id,
-        product_name=record.product_name,
-        ingredient_name=record.ingredient_name,
-        dose_text=record.dose_text,
-        prescribing_org=record.prescribing_org,
-        department=record.department,
-        prescribed_at=record.prescribed_at,
-        approved_indications=record.approved_indications,
-        actual_treatment_purpose=payload.purpose,
-        user_reported_purpose=(
-            payload.purpose if payload.source == "USER_REPORT" else record.user_reported_purpose
-        ),
-        verification_state=verification_state,
-    )
-    return {
-        "medication_id": payload.medication_id,
-        "verification_state": verification_state,
-    }
-
+    if payload.source == "USER_REPORT":
+        updated = replace(record, user_reported_purpose=payload.purpose, verification_state="USER_CONFIRMED")
+    else:
+        updated = replace(record, actual_treatment_purpose=payload.purpose, verification_state="DOCUMENT")
+    _records[payload.medication_id] = updated
+    return {"medication_id": payload.medication_id, "verification_state": updated.verification_state}
 
 @router.get("/passport/{subject_id}")
 def medication_passport(
@@ -116,7 +85,6 @@ def medication_passport(
         ],
         "confirmation_needed": list(passport.confirmation_needed),
     }
-
 
 @router.delete("/_test/reset")
 def reset_preview_store() -> dict[str, str]:
