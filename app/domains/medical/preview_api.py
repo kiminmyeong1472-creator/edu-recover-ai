@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 
-from app.domains.medical.api_models import MedicationCreateRequest
+from app.domains.medical.api_models import (
+    MedicationCreateRequest,
+    TreatmentPurposeConfirmationRequest,
+)
 from app.domains.medical.medication_passport import build_medication_passport
 from app.domains.medical.models import MedicationRecord
 from app.platform_core.domain_scope import DomainScope
@@ -44,6 +47,47 @@ def create_medication(
         verification_state=verification_state,
     )
     return {"medication_id": medication_id, "verification_state": verification_state}
+
+
+@router.post("/treatment-purpose/confirm")
+def confirm_treatment_purpose(
+    payload: TreatmentPurposeConfirmationRequest,
+    x_subject_id: str | None = Header(default=None, alias="X-Subject-Id"),
+    _: DomainScope = Depends(_medical_guard),
+) -> dict[str, str]:
+    require_subject_header(payload.subject_id, x_subject_id)
+    record = _records.get(payload.medication_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="medication_not_found")
+    if record.subject_id != payload.subject_id:
+        raise HTTPException(status_code=403, detail="subject_scope_mismatch")
+
+    verification_state = {
+        "USER_REPORT": "USER_CONFIRMED",
+        "CLINICAL_DOCUMENT": "DOCUMENT",
+        "CLINICIAN_CONFIRMED": "OFFICIAL",
+    }[payload.source]
+
+    _records[payload.medication_id] = MedicationRecord(
+        medication_id=record.medication_id,
+        subject_id=record.subject_id,
+        product_name=record.product_name,
+        ingredient_name=record.ingredient_name,
+        dose_text=record.dose_text,
+        prescribing_org=record.prescribing_org,
+        department=record.department,
+        prescribed_at=record.prescribed_at,
+        approved_indications=record.approved_indications,
+        actual_treatment_purpose=payload.purpose,
+        user_reported_purpose=(
+            payload.purpose if payload.source == "USER_REPORT" else record.user_reported_purpose
+        ),
+        verification_state=verification_state,
+    )
+    return {
+        "medication_id": payload.medication_id,
+        "verification_state": verification_state,
+    }
 
 
 @router.get("/passport/{subject_id}")
