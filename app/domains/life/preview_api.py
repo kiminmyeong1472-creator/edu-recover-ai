@@ -3,17 +3,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header
 
 from app.domains.life.activity_ledger import ActivityEntry
-from app.domains.life.api_models import ActivityCreateRequest
+from app.domains.life.api_models import ActivityCreateRequest, PublicSupportProgramCreateRequest
 from app.domains.life.public_support import PublicSupportProgram, is_actionable
 from app.platform_core.domain_scope import DomainScope
 from app.platform_core.request_guards import domain_guard, require_subject_header
-
 
 router = APIRouter(prefix="/preview/life", tags=["preview-life"])
 _activities: list[ActivityEntry] = []
 _programs: dict[str, PublicSupportProgram] = {}
 _life_guard = domain_guard(DomainScope.LIFE)
-
 
 @router.post("/activities")
 def create_activity(
@@ -31,7 +29,6 @@ def create_activity(
     )
     _activities.append(activity)
     return {"activity_id": activity.activity_id, "state": activity.state}
-
 
 @router.get("/activities/{subject_id}")
 def list_activities(
@@ -56,37 +53,20 @@ def list_activities(
         ],
     }
 
-
-@router.post("/public-support")
-def upsert_public_support(
-    program_id: str,
-    domain: str,
-    title: str,
-    provider: str,
-    official_source_ref: str,
-    state: str,
+@router.post("/support-programs")
+def create_support_program(
+    payload: PublicSupportProgramCreateRequest,
     _: DomainScope = Depends(_life_guard),
 ) -> dict[str, object]:
-    program = PublicSupportProgram(
-        program_id=program_id,
-        domain=domain,
-        title=title,
-        provider=provider,
-        official_source_ref=official_source_ref,
-        state=state,
-    )
-    _programs[program_id] = program
-    return {"program_id": program_id, "actionable": is_actionable(program)}
+    program = PublicSupportProgram(**payload.model_dump())
+    _programs[program.program_id] = program
+    return {"program_id": program.program_id, "actionable": is_actionable(program)}
 
-
-@router.get("/public-support")
-def list_public_support(
-    actionable_only: bool = True,
+@router.get("/support-programs/actionable")
+def list_actionable_programs(
     _: DomainScope = Depends(_life_guard),
 ) -> dict:
-    programs = list(_programs.values())
-    if actionable_only:
-        programs = [program for program in programs if is_actionable(program)]
+    programs = [program for program in _programs.values() if is_actionable(program)]
     return {
         "programs": [
             {
@@ -96,12 +76,11 @@ def list_public_support(
                 "provider": program.provider,
                 "official_source_ref": program.official_source_ref,
                 "state": program.state,
-                "actionable": is_actionable(program),
+                "actionable": True,
             }
             for program in programs
         ]
     }
-
 
 @router.delete("/_test/reset")
 def reset_preview_store() -> dict[str, str]:
