@@ -22,8 +22,10 @@ import json
 import base64
 import binascii
 import hashlib
+import hmac
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import uuid
@@ -33,10 +35,11 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 
-from app.services.owner_basic_auth import require_owner
+from app.services.owner_basic_auth import require_owner, _credentials, _matches, _valid_session, _COOKIE, _same_origin
 from app.services.structured_materials import (
     StructuredMaterialBundle, affected_assets, bundle_digest, bundle_lesson, publication_issues, example_bundle,
 )
@@ -53,6 +56,9 @@ logger = logging.getLogger(__name__)
 
 classroom_tutor_router = APIRouter(prefix="/tutor", tags=["classroom-tutor"])
 teacher_classroom_router = APIRouter(prefix="/classroom", tags=["teacher-classroom-product"])
+classroom_basic = HTTPBasic(auto_error=False)
+TEACHER_COOKIE = "__Host-edurecover_teacher"
+TEACHER_SESSION_SECONDS = 8 * 3600
 
 SCHEMA = """
 PRAGMA foreign_keys=ON;
@@ -127,6 +133,19 @@ CREATE TABLE IF NOT EXISTS classroom_media (
   created_at TEXT NOT NULL,
   FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS classroom_teachers (
+  username TEXT PRIMARY KEY,
+  password_salt TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS classroom_teacher_sessions (
+  session_hash TEXT PRIMARY KEY,
+  username TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  FOREIGN KEY(username) REFERENCES classroom_teachers(username) ON DELETE CASCADE
+);
 """
 
 
@@ -139,6 +158,12 @@ def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    if "owner_teacher" not in {x["name"] for x in conn.execute("PRAGMA table_info(sessions)").fetchall()}:
+        try:
+            conn.execute("ALTER TABLE sessions ADD COLUMN owner_teacher TEXT")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
     try:
         yield conn
         conn.commit()
@@ -148,6 +173,99 @@ def db():
 
 def json_load(text: str) -> Any:
     return json.loads(text) if text else None
+
+
+def _teacher_password(password: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 260_000).hex()
+
+
+def require_classroom_user(
+    request: Request, credentials: HTTPBasicCredentials | None = Depends(classroom_basic),
+) -> str:
+    users, owner_password = _credentials()
+    if _valid_session(request.cookies.get(_COOKIE), users, owner_password):
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and not _same_origin(request):
+            raise HTTPException(403, "Same-origin request required.")
+        return "__OWNER__"
+    if credentials and _matches(credentials.username, credentials.password, users, owner_password):
+        return "__OWNER__"
+    cookie = request.cookies.get(TEACHER_COOKIE, "")
+    username = None
+    if cookie and len(cookie) <= 120:
+        with db() as conn:
+            row = conn.execute(
+                """SELECT t.username FROM classroom_teacher_sessions s
+                   JOIN classroom_teachers t ON t.username=s.username
+                   WHERE s.session_hash=? AND s.expires_at>? AND t.active=1""",
+                (hashlib.sha256(cookie.encode()).hexdigest(), int(datetime.now(timezone.utc).timestamp())),
+            ).fetchone()
+            username = row["username"] if row else None
+        if username and request.method not in {"GET", "HEAD", "OPTIONS"} and not _same_origin(request):
+            raise HTTPException(403, "Same-origin request required.")
+    if not username and credentials:
+        with db() as conn:
+            row = conn.execute("SELECT * FROM classroom_teachers WHERE username=? AND active=1",
+                               (credentials.username,)).fetchone()
+        if row and hmac.compare_digest(_teacher_password(credentials.password, row["password_salt"]),
+                                       row["password_hash"]):
+            username = row["username"]
+    if username:
+        return username
+    if request.method in {"GET", "HEAD"} and request.url.path == "/classroom":
+        raise HTTPException(303, "교사 로그인 필요", headers={"Location": "/classroom/login"})
+    raise HTTPException(401, "교사 로그인 필요", headers={"WWW-Authenticate": "Basic"})
+
+
+class ClassroomTeacherCredentials(BaseModel):
+    username: str = Field(min_length=3, max_length=60)
+    password: str = Field(min_length=12, max_length=256)
+
+
+@teacher_classroom_router.post("/api/teachers")
+def create_classroom_teacher(req: ClassroomTeacherCredentials, _: None = Depends(require_owner)):
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{3,60}", req.username):
+        raise HTTPException(400, "교사 아이디는 영문·숫자·밑줄·하이픈을 사용해 주세요.")
+    salt = secrets.token_hex(16)
+    with db() as conn:
+        try:
+            conn.execute("INSERT INTO classroom_teachers VALUES(?,?,?,?,?)",
+                         (req.username, salt, _teacher_password(req.password, salt), 1, now_iso()))
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(409, "이미 등록된 교사 아이디입니다.") from exc
+    return {"username": req.username, "created": True}
+
+
+@teacher_classroom_router.post("/api/login")
+def classroom_teacher_login(req: ClassroomTeacherCredentials, response: Response):
+    with db() as conn:
+        row = conn.execute("SELECT * FROM classroom_teachers WHERE username=? AND active=1",
+                           (req.username,)).fetchone()
+        valid = bool(row and hmac.compare_digest(_teacher_password(req.password, row["password_salt"]),
+                                                row["password_hash"]))
+        if not valid:
+            raise HTTPException(401, "아이디 또는 비밀번호가 일치하지 않습니다.")
+        token = secrets.token_urlsafe(32)
+        expiry = int(datetime.now(timezone.utc).timestamp()) + TEACHER_SESSION_SECONDS
+        conn.execute("DELETE FROM classroom_teacher_sessions WHERE expires_at<?", (expiry - TEACHER_SESSION_SECONDS,))
+        conn.execute("INSERT INTO classroom_teacher_sessions VALUES(?,?,?)",
+                     (hashlib.sha256(token.encode()).hexdigest(), req.username, expiry))
+    response.set_cookie(TEACHER_COOKIE, token, max_age=TEACHER_SESSION_SECONDS,
+                        httponly=True, secure=True, samesite="strict", path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return {"ok": True}
+
+
+@teacher_classroom_router.post("/api/logout")
+def classroom_teacher_logout(request: Request, response: Response):
+    token = request.cookies.get(TEACHER_COOKIE, "")
+    if not _same_origin(request):
+        raise HTTPException(403, "Same-origin request required.")
+    if token:
+        with db() as conn:
+            conn.execute("DELETE FROM classroom_teacher_sessions WHERE session_hash=?",
+                         (hashlib.sha256(token.encode()).hexdigest(),))
+    response.delete_cookie(TEACHER_COOKIE, path="/", secure=True, httponly=True, samesite="strict")
+    return {"ok": True}
 
 
 def row_to_session(row: sqlite3.Row) -> dict[str, Any]:
@@ -437,7 +555,7 @@ def material_example(_: None = Depends(require_owner)):
     return example_bundle().model_dump()
 
 
-def create_session_record(req: SessionCreate, *, product_prefix: str) -> dict[str, str]:
+def create_session_record(req: SessionCreate, *, product_prefix: str, owner_teacher: str | None = None) -> dict[str, str]:
     session_id = f"cls_{uuid.uuid4().hex[:10]}"
     teacher_token = uuid.uuid4().hex
     join_token = uuid.uuid4().hex[:12]
@@ -481,7 +599,11 @@ def create_session_record(req: SessionCreate, *, product_prefix: str) -> dict[st
     t = now_iso()
     with db() as conn:
         conn.execute(
-            """INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO sessions
+               (session_id,created_at,updated_at,title,room_alias,institution_type,
+                launch_mode,connection_method,privacy_mode,teacher_token,join_token,
+                state_json,lesson_json,status,owner_teacher)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 session_id,
                 t,
@@ -497,6 +619,7 @@ def create_session_record(req: SessionCreate, *, product_prefix: str) -> dict[st
                 json.dumps(state, ensure_ascii=False),
                 json.dumps(lesson, ensure_ascii=False),
                 "ACTIVE",
+                owner_teacher,
             ),
         )
         emit(conn, session_id, "SESSION_CREATED", {"state": state})
@@ -516,8 +639,9 @@ def create_session(req: SessionCreate, _: None = Depends(require_owner)):
 
 
 @teacher_classroom_router.post("/api/sessions")
-def create_teacher_product_session(req: SessionCreate, _: None = Depends(require_owner)):
-    return create_session_record(req, product_prefix="/classroom")
+def create_teacher_product_session(req: SessionCreate, teacher: str = Depends(require_classroom_user)):
+    return create_session_record(req, product_prefix="/classroom",
+                                 owner_teacher=None if teacher == "__OWNER__" else teacher)
 
 
 @classroom_tutor_router.get("/api/sessions/{session_id}")
@@ -1311,10 +1435,16 @@ const SID={json.dumps(session_id)},TT={json.dumps(teacher_token)};let S;
 const teacherBoard=setupSharedBoard(q('#whiteboard'));
 async function control(action,board_mode){{try{{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action,board_mode}})}});await load();}}catch(e){{alert('수업 조작 실패: '+e.message);}}}}
 async function clearTeacherBoard(){{if(confirm('이 수업의 판서를 모두 지울까요?'))await teacherBoard.clear();}}
+function previewMedia(x){{if(!x.media_url)return '';const url=esc(x.media_url),yt=youtubeEmbed(x.media_url);
+  if(x.media_type?.startsWith('image/'))return `<img alt="검토할 수업 그림" src="${{url}}" style="max-width:100%;max-height:260px">`;
+  if(x.media_type?.startsWith('audio/'))return `<audio controls src="${{url}}"></audio>`;
+  if(yt)return `<iframe title="검토할 수업 영상" src="${{esc(yt)}}" style="width:100%;height:220px;border:0" allowfullscreen></iframe>`;
+  return `<video controls playsinline src="${{url}}" style="width:100%;max-height:260px"></video>`;
+}}
 async function load(){{
   try{{
     const s=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);S=s;
-    q('#segments').innerHTML=(s.lesson||[]).map(x=>`<button class='choice' data-segment='${{esc(x.segment_id)}}' onclick="go(this.dataset.segment)"><b>${{esc(x.title)}}</b><br><span class='muted'>${{esc(x.kind)}} · ${{esc(x.text)}}<br>선택지: ${{esc((x.choices||[]).join(' / '))}}<br>정답: ${{esc(x.correct_answer||'채점 없음')}}</span></button>`).join('')||'<p class="muted">수업 단계가 없습니다.</p>';
+    q('#segments').innerHTML=(s.lesson||[]).map(x=>`<div class='card'><button class='choice' data-segment='${{esc(x.segment_id)}}' onclick="go(this.dataset.segment)"><b>${{esc(x.title)}}</b><br><span class='muted'>${{esc(x.kind)}} · ${{esc(x.text)}}<br>선택지: ${{esc((x.choices||[]).join(' / '))}}<br>정답: ${{esc(x.correct_answer||'채점 없음')}}</span></button>${{previewMedia(x)}}</div>`).join('')||'<p class="muted">수업 단계가 없습니다.</p>';
     const r=await api(`/tutor/api/sessions/${{SID}}/results?teacher_token=${{encodeURIComponent(TT)}}`);
     q('#res').innerHTML=(r.counts||[]).length?r.counts.map(x=>`<div style='margin:8px 0'>${{esc(x.segment_id)}} / ${{esc(x.answer)}} · ${{x.n}}명</div>`).join(''):'아직 응답 없음';
   }}catch(e){{q('#res').textContent='연결을 확인해 주세요.';}}
@@ -1492,7 +1622,76 @@ TEACHER_PRODUCT_HOME_HTML = (
     .replace("OWNER:CURRENT_LESSON", "TEACHER_PRODUCT:CURRENT_LESSON")
     .replace("owner-current", "teacher-product-current")
     .replace("api('/tutor/api/sessions'", "api('/classroom/api/sessions'")
+    .replace("운영 플랫폼으로</a>", "내 수업으로</a>")
+    .replace("href='/owner'", "href='/classroom/sessions'")
 )
+
+TEACHER_LOGIN_HTML = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EduRecover 교사 로그인</title><style>
+body{font-family:system-ui,sans-serif;background:#f2f5fa;color:#172b45}
+main{max-width:420px;margin:8vh auto;background:white;padding:28px;border-radius:18px}
+input,button{box-sizing:border-box;display:block;width:100%;padding:14px;margin:12px 0;font-size:17px}
+button{background:#185bc4;color:white;border:0;border-radius:8px}
+</style></head><body><main><h1>교사 로그인</h1><p>관리자가 발급한 교사 계정으로 접속해 주세요.</p>
+<label>교사 아이디<input id="username" autocomplete="username"></label>
+<label>비밀번호<input id="password" type="password" autocomplete="current-password"></label>
+<button onclick="login()">로그인</button><p id="message" role="alert"></p></main>
+<script>async function login(){let r=await fetch('/classroom/api/login',{method:'POST',
+headers:{'content-type':'application/json'},body:JSON.stringify({
+username:document.querySelector('#username').value,password:document.querySelector('#password').value})});
+if(r.ok)location.href='/classroom';else document.querySelector('#message').textContent='로그인 정보를 확인해 주세요.';}
+</script></body></html>"""
+
+
+@teacher_classroom_router.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def classroom_login_page():
+    return HTMLResponse(TEACHER_LOGIN_HTML, headers=PRODUCT_HTML_HEADERS)
+
+
+@teacher_classroom_router.get("/api/my-sessions")
+def classroom_my_sessions(teacher: str = Depends(require_classroom_user)):
+    with db() as conn:
+        if teacher == "__OWNER__":
+            rows = conn.execute("SELECT * FROM sessions WHERE owner_teacher IS NULL ORDER BY created_at DESC LIMIT 100").fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM sessions WHERE owner_teacher=? ORDER BY created_at DESC LIMIT 100",
+                                (teacher,)).fetchall()
+    return {"sessions": [{"title": x["title"], "created_at": x["created_at"],
+                          "board_url": f"/classroom/board/{x['session_id']}?teacher_token={x['teacher_token']}",
+                          "teacher_url": f"/classroom/teacher/{x['session_id']}?teacher_token={x['teacher_token']}"}
+                         for x in rows]}
+
+
+@teacher_classroom_router.get("/sessions", response_class=HTMLResponse, include_in_schema=False)
+def classroom_sessions_page(teacher: str = Depends(require_classroom_user)):
+    html = """<!doctype html><html lang="ko"><meta charset="utf-8"><title>내 전자칠판 수업</title>
+<body style="font:18px system-ui;max-width:900px;margin:32px auto">
+<h1>내 전자칠판 수업</h1><a href="/classroom">새 수업 만들기</a><div id="list">불러오는 중...</div>
+<script>fetch('/classroom/api/my-sessions').then(r=>r.json()).then(d=>{
+const root=document.querySelector('#list');root.textContent='';
+for(const s of d.sessions){let p=document.createElement('p'),name=document.createElement('strong');
+name.textContent=s.title+' · '+s.created_at;p.append(name);
+for(const [label,url] of [['교사 콘솔',s.teacher_url],['전자칠판',s.board_url]]){
+let a=document.createElement('a');a.href=url;a.textContent=label;a.style.marginLeft='18px';p.append(a);}root.append(p);}
+if(!d.sessions.length)root.textContent='저장된 수업이 없습니다.';}).catch(()=>document.querySelector('#list').textContent='수업 목록을 불러오지 못했습니다.');</script></body></html>"""
+    return HTMLResponse(html, headers=PRODUCT_HTML_HEADERS)
+
+
+@teacher_classroom_router.get("/accounts", response_class=HTMLResponse, include_in_schema=False)
+def classroom_accounts_page(_: None = Depends(require_owner)):
+    html = """<!doctype html><html lang="ko"><meta charset="utf-8"><title>교사 계정 발급</title>
+<body style="font:18px system-ui;max-width:520px;margin:32px auto"><h1>교사 계정 발급</h1>
+<p>교사에게 전달할 아이디와 임시 비밀번호를 직접 정해 입력해 주세요.</p>
+<label>아이디<input id="username" autocomplete="off"></label>
+<label>임시 비밀번호(12자 이상)<input id="password" type="password" autocomplete="new-password"></label>
+<button onclick="createTeacher()">계정 발급</button><p id="result" role="status"></p>
+<script>async function createTeacher(){let r=await fetch('/classroom/api/teachers',{method:'POST',
+headers:{'content-type':'application/json'},body:JSON.stringify({
+username:document.querySelector('#username').value,password:document.querySelector('#password').value})});
+document.querySelector('#result').textContent=r.ok?'교사 계정을 발급했습니다. 로그인 주소: /classroom/login':'발급 실패: 아이디 중복 또는 입력값을 확인해 주세요.';}
+</script></body></html>"""
+    return HTMLResponse(html, headers=PRODUCT_HTML_HEADERS)
 
 
 @classroom_tutor_router.get("", response_class=HTMLResponse, include_in_schema=False)
@@ -1501,5 +1700,5 @@ def home(_: None = Depends(require_owner)):
 
 
 @teacher_classroom_router.get("", response_class=HTMLResponse, include_in_schema=False)
-def teacher_product_home(_: None = Depends(require_owner)):
+def teacher_product_home(_: str = Depends(require_classroom_user)):
     return HTMLResponse(TEACHER_PRODUCT_HOME_HTML, headers=PRODUCT_HTML_HEADERS)
