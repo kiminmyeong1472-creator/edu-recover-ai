@@ -82,9 +82,16 @@ def _same_origin(request: Request) -> bool:
     origin = request.headers.get("origin", "")
     try:
         parsed = urlsplit(origin)
+        forwarded_host = request.headers.get("x-forwarded-host", "").split(",", 1)[0].strip()
+        host = request.headers.get("host", "").strip()
+        candidate_hosts = {value for value in (request.url.netloc, forwarded_host, host) if value}
+        forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+        expected_schemes = {"https"}
+        if forwarded_proto:
+            expected_schemes.add(forwarded_proto)
         return (
-            parsed.scheme == "https"
-            and parsed.netloc == request.url.netloc
+            parsed.scheme in expected_schemes
+            and parsed.netloc in candidate_hosts
             and not parsed.path and not parsed.query and not parsed.fragment
             and parsed.username is None and parsed.password is None
         )
