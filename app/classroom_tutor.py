@@ -28,6 +28,7 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -59,6 +60,7 @@ teacher_classroom_router = APIRouter(prefix="/classroom", tags=["teacher-classro
 classroom_basic = HTTPBasic(auto_error=False)
 TEACHER_COOKIE = "__Host-edurecover_teacher"
 TEACHER_SESSION_SECONDS = 8 * 3600
+MIGRATION_LOCK = threading.Lock()
 
 SCHEMA = """
 PRAGMA foreign_keys=ON;
@@ -159,12 +161,18 @@ def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
-    if "owner_teacher" not in {x["name"] for x in conn.execute("PRAGMA table_info(sessions)").fetchall()}:
-        try:
+    with MIGRATION_LOCK:
+        if "owner_teacher" not in {x["name"] for x in conn.execute("PRAGMA table_info(sessions)").fetchall()}:
+            backup = DB_PATH.with_name("classroom_tutor.pre_teacher_migration.sqlite3")
+            if not backup.exists() and conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]:
+                temporary = backup.with_suffix(".tmp")
+                try:
+                    with sqlite3.connect(temporary) as destination:
+                        conn.backup(destination)
+                    os.replace(temporary, backup)
+                finally:
+                    temporary.unlink(missing_ok=True)
             conn.execute("ALTER TABLE sessions ADD COLUMN owner_teacher TEXT")
-        except sqlite3.OperationalError as exc:
-            if "duplicate column" not in str(exc).lower():
-                raise
     try:
         yield conn
         conn.commit()
