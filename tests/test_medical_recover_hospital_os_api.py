@@ -118,3 +118,74 @@ def test_uncertain_verified_source_is_rejected(monkeypatch, tmp_path):
         },
     )
     assert response.status_code == 409
+
+
+
+def test_identity_and_medication_safety_api(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    _register(client, "hospital-user-3")
+
+    identity = client.post(
+        "/life/api/medical/hospital-os/identity/verify",
+        json={
+            "patient_id": "patient-1",
+            "expected": {"name": "Kim", "second_identifier": "1234"},
+            "observed": {"name": "Kim", "second_identifier": ""},
+        },
+    )
+    assert identity.status_code == 200, identity.text
+    assert identity.json()["status"] == "UNRESOLVED"
+    assert identity.json()["completion_allowed"] is False
+
+    source = client.post(
+        "/life/api/medical/hospital-os/source-revisions",
+        json={
+            "source_id": "rx-2",
+            "payload": {"dose": "10mg"},
+            "source_state": "CURRENT",
+            "verification_state": "VERIFIED",
+        },
+    )
+    source_id = source.json()["source_revision_id"]
+
+    action = client.post(
+        "/life/api/medical/hospital-os/clinical-actions",
+        json={
+            "patient_id": "patient-1",
+            "action_type": "medication-administration",
+            "responsible_role": "NURSE",
+            "action_state": "INCOMPLETE",
+            "risk_tier": "HIGH",
+        },
+    )
+    action_id = action.json()["clinical_action_id"]
+
+    medication = client.post(
+        "/life/api/medical/hospital-os/medication-objects",
+        json={
+            "patient_id": "patient-1",
+            "clinical_action_id": action_id,
+            "prescription_revision_id": source_id,
+            "custody_stage": "AT_BEDSIDE",
+            "prepared_fields": {"drug": "A", "dose": "10mg"},
+        },
+    )
+    assert medication.status_code == 200, medication.text
+    medication_id = medication.json()["medication_object_id"]
+
+    held = client.post(
+        f"/life/api/medical/hospital-os/medication-objects/{medication_id}/prescription-change",
+        json={
+            "changed_from_revision_id": source_id,
+            "changed_fields": ["dose"],
+            "identity_status": "UNRESOLVED",
+        },
+    )
+    assert held.status_code == 200, held.text
+    assert held.json()["next_state"] == "HOLD"
+    assert held.json()["required_action"] == "VERIFY_PATIENT_IDENTITY"
+
+    status = client.get("/life/api/medical/hospital-os/status")
+    assert status.status_code == 200
+    assert status.json()["identity_checks"] == 1
+    assert status.json()["medication_holds"] == 1
