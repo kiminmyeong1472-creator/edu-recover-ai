@@ -14,6 +14,7 @@ from app.platform_core.persistent_domain_store import (
     put_resource,
     storage_status,
 )
+from app.services.owner_basic_auth import require_owner
 
 
 router = APIRouter(tags=["life-recover-runtime"])
@@ -52,7 +53,15 @@ main{{max-width:760px;margin:auto;padding:20px}}header{{padding:20px 0}}h1{{marg
 <div class='card'><b>법률</b><p>사건 타임라인·증거·기한관리</p></div>
 <div class='card'><b>개인정보</b><p>동의·공유범위·감사기록</p></div>
 </div></main></body></html>"""
-    return HTMLResponse(html, headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer"})
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control":"no-store",
+            "Referrer-Policy":"no-referrer",
+            "X-Content-Type-Options":"nosniff",
+            "Content-Security-Policy":"default-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+        },
+    )
 
 
 @router.get("/life/api/me")
@@ -88,5 +97,5 @@ def resource(domain: Literal["life","medical","legal"], resource_id: str, reques
 
 
 @router.get("/owner/liferecover-storage-status")
-def owner_storage_status(_: None = Depends(lambda: None)) -> dict:
+def owner_storage_status(_: None = Depends(require_owner)) -> dict:
     return storage_status()
