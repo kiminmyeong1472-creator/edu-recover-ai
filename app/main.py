@@ -12,6 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.config import settings
 from app.training.backup_api import backup_router
 from app.services.secret_vault_api import vault_router
+from app.services.private_document_store import (
+    import_private_documents_from_env,
+    private_document_router,
+)
 from app.training.runtime_storage import prepare_runtime_storage
 from app.training.drive_oauth import drive_router
 from app.training.backup_scheduler import start_backup_scheduler, stop_backup_scheduler
@@ -67,8 +71,10 @@ app = FastAPI(
 
 app.include_router(backup_router)
 app.include_router(vault_router)
+app.include_router(private_document_router)
 app.include_router(drive_router)
 app.router.add_event_handler("startup", prepare_runtime_storage)
+app.router.add_event_handler("startup", import_private_documents_from_env)
 app.router.add_event_handler("startup", start_backup_scheduler)
 app.router.add_event_handler("shutdown", stop_backup_scheduler)
 app.include_router(owner_auth_router)
