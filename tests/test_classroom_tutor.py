@@ -2,6 +2,7 @@
 import base64
 import os
 import tempfile
+import sqlite3
 import unittest
 
 os.environ.setdefault("EDURECOVER_OWNER_USER", "owner-test")
@@ -13,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.classroom_tutor import classroom_tutor_router, teacher_classroom_router
+import app.classroom_tutor as classroom_module
 
 
 class ClassroomTutorTests(unittest.TestCase):
@@ -32,6 +34,82 @@ class ClassroomTutorTests(unittest.TestCase):
         result = self.client.post(base + "/publish-lesson", params=params,
             json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
         self.assertEqual(result.status_code, 200, result.text)
+
+    def test_existing_classroom_database_is_backed_up_before_migration(self):
+        original = classroom_module.DB_PATH
+        with tempfile.TemporaryDirectory() as folder:
+            path = classroom_module.Path(folder) / "classroom_tutor.sqlite3"
+            with sqlite3.connect(path) as conn:
+                conn.execute("""CREATE TABLE sessions (
+                    session_id TEXT PRIMARY KEY,created_at TEXT,updated_at TEXT,title TEXT,
+                    room_alias TEXT,institution_type TEXT,launch_mode TEXT,connection_method TEXT,
+                    privacy_mode TEXT,teacher_token TEXT,join_token TEXT,state_json TEXT,
+                    lesson_json TEXT,status TEXT)""")
+                conn.execute("INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    ("old", "t", "t", "보존할 수업", "A", "SCHOOL", "DIRECT_BOARD_WEB",
+                     "BROWSER", "ALIAS_ONLY", "teacher", "join", "{}", "[]", "ACTIVE"))
+            classroom_module.DB_PATH = path
+            try:
+                with classroom_module.db() as conn:
+                    self.assertEqual(conn.execute(
+                        "SELECT title FROM sessions WHERE session_id='old'").fetchone()[0], "보존할 수업")
+                    self.assertIn("owner_teacher", [x[1] for x in conn.execute("PRAGMA table_info(sessions)")])
+                backup = path.with_name("classroom_tutor.pre_teacher_migration.sqlite3")
+                self.assertTrue(backup.is_file())
+                with sqlite3.connect(backup) as conn:
+                    self.assertEqual(conn.execute(
+                        "SELECT title FROM sessions WHERE session_id='old'").fetchone()[0], "보존할 수업")
+            finally:
+                classroom_module.DB_PATH = original
+
+    def test_shared_board_and_private_teacher_media(self):
+        created = self.client.post("/classroom/api/sessions", headers=self.owner_headers,
+            json={"title": "교사 시청각 수업"}).json()
+        sid, token = created["session_id"], created["teacher_token"]
+        root = f"/tutor/api/sessions/{sid}"
+        params = {"teacher_token": token}
+        stroke = {"stroke_id": "stroke-one", "points": [[0.1, 0.2], [0.8, 0.9]]}
+        self.assertEqual(self.client.post(root + "/board-strokes", params={"teacher_token": "wrong"},
+                         json=stroke).status_code, 403)
+        self.assertEqual(self.client.post(root + "/board-strokes", params=params,
+                         json=stroke).status_code, 200)
+        self.assertEqual(self.client.post(root + "/board-strokes", params=params,
+                         json=stroke).status_code, 200)
+        listed = self.client.get(root + "/board-strokes", params=params).json()
+        self.assertEqual(listed["strokes"], [stroke])
+        self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 423)
+        self.publish_lesson(created)
+        self.assertEqual(self.client.post(root + "/command", params=params,
+                         json={"action": "SET_BOARD_MODE", "board_mode": "WHITEBOARD"}).status_code, 200)
+        self.assertIn("setupSharedBoard", self.client.get(created["teacher_url"]).text)
+        self.assertIn("setupSharedBoard", self.client.get(created["board_url"]).text)
+
+        import struct
+        png = b"\x89PNG\r\n\x1a\n" + struct.pack(">II", 1, 1) + b"test"
+        asset = self.client.post(root + "/media", params=params,
+            json={"media_type": "image/png", "data_base64": base64.b64encode(png).decode()})
+        self.assertEqual(asset.status_code, 200, asset.text)
+        media_url = asset.json()["media_url"]
+        self.assertEqual(self.client.get(media_url).content, png)
+        self.assertEqual(self.client.get(media_url.split("?")[0], params={"asset_token": "wrong"}).status_code, 403)
+        bad = self.client.post(root + "/media", params=params,
+            json={"media_type": "video/mp4", "data_base64": base64.b64encode(png).decode()})
+        self.assertEqual(bad.status_code, 400)
+        draft = self.client.get(root, params=params).json()
+        lesson = draft["lesson"]
+        lesson.insert(-1, {"segment_id": "teacher-image", "kind": "DEMONSTRATE",
+                            "title": "교사 그림", "text": "설명 그림",
+                            "media_url": media_url, "media_type": "image/png"})
+        self.assertEqual(self.client.put(root + "/lesson", params=params,
+                         json={"lesson": lesson}).status_code, 200)
+        self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 423)
+        draft = self.client.get(root, params=params).json()
+        self.assertEqual(draft["lesson"][-2]["media_type"], "image/png")
+        self.client.post(root + "/publish-lesson", params=params,
+            json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
+        self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 200)
+        self.assertEqual(self.client.delete(root + "/board-strokes", params=params).status_code, 200)
+        self.assertEqual(self.client.get(root + "/board-strokes", params=params).json()["strokes"], [])
 
     def test_owner_can_create_and_run_token_scoped_lesson(self):
         lesson = [
@@ -107,16 +185,44 @@ class ClassroomTutorTests(unittest.TestCase):
         self.assertIn("영상 주소", page.text)
         self.assertIn("한국어 음성합성", page.text)
 
-    def test_teacher_product_is_separate_and_owner_gated(self):
+    def test_teacher_product_is_separate_and_login_gated(self):
         unauthenticated = self.client.get("/classroom", follow_redirects=False)
         self.assertEqual(unauthenticated.status_code, 303)
-        self.assertEqual(unauthenticated.headers["location"], "/owner/login")
+        self.assertEqual(unauthenticated.headers["location"], "/classroom/login")
 
         page = self.client.get("/classroom", headers=self.owner_headers)
         self.assertEqual(page.status_code, 200)
         self.assertIn("EduRecover Classroom Board 교사용", page.text)
         self.assertIn("전자칠판 수업 만들기", page.text)
         self.assertNotIn("강화학습 연결 상태", page.text)
+
+    def test_teacher_account_can_create_and_find_only_own_lessons(self):
+        teacher_name = "teacher_" + os.urandom(4).hex()
+        other_name = "teacher_" + os.urandom(4).hex()
+        with TestClient(self.client.app, base_url="https://testserver") as teacher_client:
+            for name in (teacher_name, other_name):
+                result = teacher_client.post("/classroom/api/teachers", headers=self.owner_headers,
+                    json={"username": name, "password": "classroom-long-secret-2026"})
+                self.assertEqual(result.status_code, 200, result.text)
+            login = teacher_client.post("/classroom/api/login",
+                json={"username": teacher_name, "password": "classroom-long-secret-2026"})
+            self.assertEqual(login.status_code, 200, login.text)
+            self.assertEqual(teacher_client.get("/classroom").status_code, 200)
+            created = teacher_client.post("/classroom/api/sessions",
+                headers={"Origin": "https://testserver"}, json={"title": "교사 전용 수업"})
+            self.assertEqual(created.status_code, 200, created.text)
+            own = teacher_client.get("/classroom/api/my-sessions").json()["sessions"]
+            self.assertTrue(any(x["teacher_url"] == created.json()["teacher_url"] for x in own))
+            blocked = teacher_client.post("/classroom/api/sessions", json={"title": "출처 없는 요청"})
+            self.assertEqual(blocked.status_code, 403)
+            self.assertEqual(teacher_client.post("/classroom/api/teachers",
+                headers={"Origin": "https://testserver"},
+                json={"username": "should_fail", "password": "classroom-long-secret-2026"}).status_code, 401)
+            teacher_client.post("/classroom/api/logout", headers={"Origin": "https://testserver"})
+            teacher_client.post("/classroom/api/login",
+                json={"username": other_name, "password": "classroom-long-secret-2026"})
+            other = teacher_client.get("/classroom/api/my-sessions").json()["sessions"]
+            self.assertFalse(any(x["teacher_url"] == created.json()["teacher_url"] for x in other))
 
     def test_teacher_product_creates_product_scoped_links(self):
         created = self.client.post(
