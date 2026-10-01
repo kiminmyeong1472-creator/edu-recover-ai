@@ -51,7 +51,7 @@ main{{max-width:760px;margin:auto;padding:20px}}header{{padding:20px 0}}h1{{marg
 <div class='card'><b>일상</b><p>일정·활동·문서·지원사업</p></div>
 <div class='card'><b>의료</b><p>약물패스포트·치료목적·안전확인</p></div>
 <div class='card'><b>법률</b><p>사건 타임라인·증거·기한관리</p></div>
-<div class='card'><b>개인정보</b><p>동의·공유범위·감사기록</p></div>
+<div class='card'><b>개인정보</b><p>동의·공유범위·내 정보 이용기록</p></div>
 </div></main></body></html>"""
     return HTMLResponse(
         html,
