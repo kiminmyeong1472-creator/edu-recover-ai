@@ -241,7 +241,18 @@ async def owner_platform(_: None = Depends(require_owner)) -> HTMLResponse:
     """Owner-only platform address."""
     return HTMLResponse(
         PILOT_HTML.replace("교사 출제 플랫폼", "소유자 운영 플랫폼", 1)
-        .replace("<body>", "<body>" + OWNER_LOGOUT_BAR + '<nav style="padding:12px"><a href="/owner/secrets">영업비밀 · 백업 관리</a></nav>', 1),
+        .replace(
+            "<body>",
+            "<body>" + OWNER_LOGOUT_BAR
+            + '<nav style="padding:12px;display:flex;gap:10px;flex-wrap:wrap">'
+              '<a href="/life" style="display:inline-block;padding:12px 16px;border-radius:10px;'
+              'background:#185bc4;color:#fff;text-decoration:none;font-weight:800">Life Recover로 이동</a>'
+              '<a href="/owner/life/account-setup" style="display:inline-block;padding:12px 16px;border-radius:10px;'
+              'border:1px solid #185bc4;color:#185bc4;text-decoration:none;font-weight:750">Life Recover 계정 만들기</a>'
+              '<a href="/owner/secrets" style="display:inline-block;padding:12px 16px">영업비밀 · 백업 관리</a>'
+              '</nav>',
+            1,
+        ),
         headers={"Cache-Control": "no-store", "Referrer-Policy": "same-origin"},
     )
 
