@@ -2,6 +2,7 @@
 import base64
 import os
 import tempfile
+import sqlite3
 import unittest
 
 os.environ.setdefault("EDURECOVER_OWNER_USER", "owner-test")
@@ -13,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.classroom_tutor import classroom_tutor_router, teacher_classroom_router
+import app.classroom_tutor as classroom_module
 
 
 class ClassroomTutorTests(unittest.TestCase):
@@ -32,6 +34,33 @@ class ClassroomTutorTests(unittest.TestCase):
         result = self.client.post(base + "/publish-lesson", params=params,
             json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
         self.assertEqual(result.status_code, 200, result.text)
+
+    def test_existing_classroom_database_is_backed_up_before_migration(self):
+        original = classroom_module.DB_PATH
+        with tempfile.TemporaryDirectory() as folder:
+            path = classroom_module.Path(folder) / "classroom_tutor.sqlite3"
+            with sqlite3.connect(path) as conn:
+                conn.execute("""CREATE TABLE sessions (
+                    session_id TEXT PRIMARY KEY,created_at TEXT,updated_at TEXT,title TEXT,
+                    room_alias TEXT,institution_type TEXT,launch_mode TEXT,connection_method TEXT,
+                    privacy_mode TEXT,teacher_token TEXT,join_token TEXT,state_json TEXT,
+                    lesson_json TEXT,status TEXT)""")
+                conn.execute("INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    ("old", "t", "t", "보존할 수업", "A", "SCHOOL", "DIRECT_BOARD_WEB",
+                     "BROWSER", "ALIAS_ONLY", "teacher", "join", "{}", "[]", "ACTIVE"))
+            classroom_module.DB_PATH = path
+            try:
+                with classroom_module.db() as conn:
+                    self.assertEqual(conn.execute(
+                        "SELECT title FROM sessions WHERE session_id='old'").fetchone()[0], "보존할 수업")
+                    self.assertIn("owner_teacher", [x[1] for x in conn.execute("PRAGMA table_info(sessions)")])
+                backup = path.with_name("classroom_tutor.pre_teacher_migration.sqlite3")
+                self.assertTrue(backup.is_file())
+                with sqlite3.connect(backup) as conn:
+                    self.assertEqual(conn.execute(
+                        "SELECT title FROM sessions WHERE session_id='old'").fetchone()[0], "보존할 수업")
+            finally:
+                classroom_module.DB_PATH = original
 
     def test_shared_board_and_private_teacher_media(self):
         created = self.client.post("/classroom/api/sessions", headers=self.owner_headers,
