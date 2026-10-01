@@ -117,12 +117,61 @@ def medical_page(request: Request):
     if isinstance(user, RedirectResponse):
         return user
     items = list_resources(domain="medical", subject_id=user)
-    return _section_page(
-        title="의료",
-        subtitle="약물패스포트 · 치료목적 · 안전확인",
-        items=items,
-        empty_text="아직 저장된 의료 자료가 없습니다.",
-    )
+    body = f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'><title>의료 · Life Recover</title>
+<style>
+body{{margin:0;font-family:system-ui,-apple-system,'Noto Sans KR',sans-serif;background:#f5f7fa;color:#172b45}}
+main{{max-width:760px;margin:auto;padding:20px}}a{{color:#1457b8;text-decoration:none;font-weight:700}}
+.hero{{display:block;background:#172b45;color:#fff;padding:20px;border-radius:16px;margin:18px 0;text-decoration:none}}
+.hero b{{font-size:20px}}.hero p{{margin:8px 0 0;line-height:1.6;font-weight:500;color:#dfe8f5}}
+.card{{background:#fff;padding:16px;border-radius:14px;margin:10px 0;box-shadow:0 4px 18px #0000000d}}
+.sub{{color:#53677e;margin-bottom:18px}}.count{{font-size:13px;color:#66788c}}
+</style></head><body><main><a href='/life'>← 홈</a><h1>의료</h1>
+<div class='sub'>약물패스포트 · 치료목적 · 안전확인</div>
+<a class='hero' href='/life/medical/hospital-os'><b>Medical Recover Hospital OS</b>
+<p>변경된 의료정보가 어떤 현재 업무에 영향을 주는지 확인하고, 필요한 업무만 재확인하도록 관리합니다.</p></a>
+<div class='count'>저장된 의료 자료 {len(items)}건</div>
+</main></body></html>"""
+    return HTMLResponse(body, headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer",
+        "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"})
+
+
+@router.get("/life/medical/hospital-os", response_class=HTMLResponse)
+def hospital_os_page(request: Request):
+    user = _page_user_or_login(request)
+    if isinstance(user, RedirectResponse):
+        return user
+    actions = list_resources(domain="medical", subject_id=user, kind="hospital_os_clinical_action")
+    sources = list_resources(domain="medical", subject_id=user, kind="hospital_os_source_revision")
+    receipts = list_resources(domain="medical", subject_id=user, kind="hospital_os_revalidation_receipt")
+    holds = sum(1 for item in actions if item["payload"].get("action_state") == "HOLD")
+    rechecks = sum(1 for item in actions if item["payload"].get("action_state") == "REVALIDATION_REQUIRED")
+    html = f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'><title>Medical Recover Hospital OS</title>
+<style>
+body{{margin:0;font-family:system-ui,-apple-system,'Noto Sans KR',sans-serif;background:#f5f7fa;color:#172b45}}
+main{{max-width:820px;margin:auto;padding:20px}}a{{color:#1457b8;text-decoration:none;font-weight:700}}
+.grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}}
+.box{{background:#fff;padding:18px;border-radius:15px;box-shadow:0 4px 18px #0000000d}}
+.num{{font-size:28px;font-weight:850;margin-top:5px}}.note{{background:#eef5ff;padding:16px;border-radius:14px;line-height:1.6}}
+@media(max-width:520px){{.grid{{grid-template-columns:1fr}}}}
+</style></head><body><main><a href='/life/medical'>← 의료</a>
+<h1>Medical Recover Hospital OS</h1>
+<p>현재 의료업무에 실제로 사용된 정보의 변경 영향을 추적하는 안전·업무 관리 계층입니다.</p>
+<div class='grid'>
+<div class='box'>의료정보 변경본<div class='num'>{len(sources)}</div></div>
+<div class='box'>현재 업무<div class='num'>{len(actions)}</div></div>
+<div class='box'>현재 HOLD<div class='num'>{holds}</div></div>
+<div class='box'>재확인 필요<div class='num'>{rechecks}</div></div>
+<div class='box'>재확인 기록<div class='num'>{len(receipts)}</div></div>
+</div>
+<div class='note'><b>안전 원칙</b><br>
+불확실한 정보를 자동으로 확인 완료 상태로 올리지 않습니다.<br>
+이미 종료된 과거 업무는 변경하지 않고, 실제로 해당 정보를 사용한 현재 업무만 다시 확인 대상으로 분류합니다.<br>
+처방 변경이나 수술 가능 여부를 시스템이 자동 결정하지 않습니다.</div>
+</main></body></html>"""
+    return HTMLResponse(html, headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer",
+        "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"})
 
 
 @router.get("/life/legal", response_class=HTMLResponse)
