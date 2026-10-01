@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS classroom_media (
   media_type TEXT NOT NULL,
   file_path TEXT NOT NULL,
   sha256 TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 );
@@ -598,6 +599,11 @@ def create_session_record(req: SessionCreate, *, product_prefix: str, owner_teac
                       "current_segment_id": lesson[0]["segment_id"]})
     t = now_iso()
     with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if owner_teacher and conn.execute(
+            "SELECT COUNT(*) FROM sessions WHERE owner_teacher=?", (owner_teacher,),
+        ).fetchone()[0] >= 100:
+            raise HTTPException(429, "교사 수업 저장 한도에 도달했습니다.")
         conn.execute(
             """INSERT INTO sessions
                (session_id,created_at,updated_at,title,room_alias,institution_type,
@@ -962,6 +968,16 @@ def upload_classroom_media(session_id: str, req: MediaUpload, teacher_token: str
         valid = valid and raw[8:12] == b"WAVE"
     if not valid:
         raise HTTPException(400, "선택한 자료 형식과 파일 내용이 다릅니다.")
+    with db() as conn:
+        session_usage = conn.execute(
+            "SELECT COALESCE(SUM(file_size),0),COUNT(*) FROM classroom_media WHERE session_id=?",
+            (session_id,),
+        ).fetchone()
+        total_usage = conn.execute("SELECT COALESCE(SUM(file_size),0) FROM classroom_media").fetchone()[0]
+    if session_usage[1] >= 12 or session_usage[0] + len(raw) > 50_000_000:
+        raise HTTPException(413, "수업당 자료 12개·50MB 한도를 넘었습니다.")
+    if total_usage + len(raw) > 350_000_000:
+        raise HTTPException(507, "자료 저장 공간 한도에 도달했습니다.")
     asset_id, asset_token = uuid.uuid4().hex, secrets.token_urlsafe(24)
     media_dir = STATE_DIR / "classroom_media"
     media_dir.mkdir(parents=True, exist_ok=True)
@@ -975,9 +991,9 @@ def upload_classroom_media(session_id: str, req: MediaUpload, teacher_token: str
             row = get_session_or_404(conn, session_id)
             require_teacher(row, teacher_token)
             conn.execute(
-                "INSERT INTO classroom_media VALUES(?,?,?,?,?,?,?)",
+                "INSERT INTO classroom_media VALUES(?,?,?,?,?,?,?,?)",
                 (asset_id, session_id, asset_token, req.media_type, str(path),
-                 hashlib.sha256(raw).hexdigest(), now_iso()),
+                 hashlib.sha256(raw).hexdigest(), len(raw), now_iso()),
             )
     except Exception:
         path.unlink(missing_ok=True)
@@ -1700,5 +1716,11 @@ def home(_: None = Depends(require_owner)):
 
 
 @teacher_classroom_router.get("", response_class=HTMLResponse, include_in_schema=False)
-def teacher_product_home(_: str = Depends(require_classroom_user)):
-    return HTMLResponse(TEACHER_PRODUCT_HOME_HTML, headers=PRODUCT_HTML_HEADERS)
+def teacher_product_home(teacher: str = Depends(require_classroom_user)):
+    account_link = ('<a class="btn" href="/classroom/accounts">교사 계정 발급</a>'
+                    if teacher == "__OWNER__" else "")
+    page = TEACHER_PRODUCT_HOME_HTML.replace(
+        "<main style='max-width:980px;margin:auto;padding:18px'>",
+        "<main style='max-width:980px;margin:auto;padding:18px'>" + account_link, 1,
+    )
+    return HTMLResponse(page, headers=PRODUCT_HTML_HEADERS)
