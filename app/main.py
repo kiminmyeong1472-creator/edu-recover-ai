@@ -54,7 +54,7 @@ from app.services.encrypted_backup import (
 )
 from app.services.agent_access_guard import agent_access_status, evaluate_agent_access
 from app.services.socratic_trap import detect_socratic_traps
-from app.platform_core.life_auth import router as life_auth_router
+from app.platform_core.life_auth import router as life_auth_router, owner_router as life_owner_router
 from app.liferecover_runtime import router as liferecover_router
 
 
@@ -83,6 +83,7 @@ app.include_router(owner_auth_router)
 app.include_router(classroom_tutor_router)
 app.include_router(teacher_classroom_router)
 app.include_router(life_auth_router)
+app.include_router(life_owner_router)
 app.include_router(liferecover_router)
 
 logger = logging.getLogger(__name__)
