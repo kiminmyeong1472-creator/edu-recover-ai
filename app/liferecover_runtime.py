@@ -144,8 +144,11 @@ def hospital_os_page(request: Request):
     actions = list_resources(domain="medical", subject_id=user, kind="hospital_os_clinical_action")
     sources = list_resources(domain="medical", subject_id=user, kind="hospital_os_source_revision")
     receipts = list_resources(domain="medical", subject_id=user, kind="hospital_os_revalidation_receipt")
+    identities = list_resources(domain="medical", subject_id=user, kind="hospital_os_identity_check")
+    medications = list_resources(domain="medical", subject_id=user, kind="hospital_os_medication_object")
     holds = sum(1 for item in actions if item["payload"].get("action_state") == "HOLD")
     rechecks = sum(1 for item in actions if item["payload"].get("action_state") == "REVALIDATION_REQUIRED")
+    medication_holds = sum(1 for item in medications if item["payload"].get("safety_state") == "HOLD")
     html = f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width,initial-scale=1'><title>Medical Recover Hospital OS</title>
 <style>
@@ -164,10 +167,14 @@ main{{max-width:820px;margin:auto;padding:20px}}a{{color:#1457b8;text-decoration
 <div class='box'>현재 HOLD<div class='num'>{holds}</div></div>
 <div class='box'>재확인 필요<div class='num'>{rechecks}</div></div>
 <div class='box'>재확인 기록<div class='num'>{len(receipts)}</div></div>
+<div class='box'>환자확인 기록<div class='num'>{len(identities)}</div></div>
+<div class='box'>투약 일시 보류<div class='num'>{medication_holds}</div></div>
 </div>
 <div class='note'><b>안전 원칙</b><br>
 불확실한 정보를 자동으로 확인 완료 상태로 올리지 않습니다.<br>
 이미 종료된 과거 업무는 변경하지 않고, 실제로 해당 정보를 사용한 현재 업무만 다시 확인 대상으로 분류합니다.<br>
+환자확인이 맞지 않거나 확인되지 않으면 완료 단계로 넘어가지 않습니다.<br>
+예전 처방으로 준비된 미투약 약 중 변경 영향을 받는 것만 일시 보류합니다.<br>
 처방 변경이나 수술 가능 여부를 시스템이 자동 결정하지 않습니다.</div>
 </main></body></html>"""
     return HTMLResponse(html, headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer",
