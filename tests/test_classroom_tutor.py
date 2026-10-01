@@ -144,16 +144,44 @@ class ClassroomTutorTests(unittest.TestCase):
         self.assertIn("영상 주소", page.text)
         self.assertIn("한국어 음성합성", page.text)
 
-    def test_teacher_product_is_separate_and_owner_gated(self):
+    def test_teacher_product_is_separate_and_login_gated(self):
         unauthenticated = self.client.get("/classroom", follow_redirects=False)
         self.assertEqual(unauthenticated.status_code, 303)
-        self.assertEqual(unauthenticated.headers["location"], "/owner/login")
+        self.assertEqual(unauthenticated.headers["location"], "/classroom/login")
 
         page = self.client.get("/classroom", headers=self.owner_headers)
         self.assertEqual(page.status_code, 200)
         self.assertIn("EduRecover Classroom Board 교사용", page.text)
         self.assertIn("전자칠판 수업 만들기", page.text)
         self.assertNotIn("강화학습 연결 상태", page.text)
+
+    def test_teacher_account_can_create_and_find_only_own_lessons(self):
+        teacher_name = "teacher_" + os.urandom(4).hex()
+        other_name = "teacher_" + os.urandom(4).hex()
+        with TestClient(self.client.app, base_url="https://testserver") as teacher_client:
+            for name in (teacher_name, other_name):
+                result = teacher_client.post("/classroom/api/teachers", headers=self.owner_headers,
+                    json={"username": name, "password": "classroom-long-secret-2026"})
+                self.assertEqual(result.status_code, 200, result.text)
+            login = teacher_client.post("/classroom/api/login",
+                json={"username": teacher_name, "password": "classroom-long-secret-2026"})
+            self.assertEqual(login.status_code, 200, login.text)
+            self.assertEqual(teacher_client.get("/classroom").status_code, 200)
+            created = teacher_client.post("/classroom/api/sessions",
+                headers={"Origin": "https://testserver"}, json={"title": "교사 전용 수업"})
+            self.assertEqual(created.status_code, 200, created.text)
+            own = teacher_client.get("/classroom/api/my-sessions").json()["sessions"]
+            self.assertTrue(any(x["teacher_url"] == created.json()["teacher_url"] for x in own))
+            blocked = teacher_client.post("/classroom/api/sessions", json={"title": "출처 없는 요청"})
+            self.assertEqual(blocked.status_code, 403)
+            self.assertEqual(teacher_client.post("/classroom/api/teachers",
+                headers={"Origin": "https://testserver"},
+                json={"username": "should_fail", "password": "classroom-long-secret-2026"}).status_code, 401)
+            teacher_client.post("/classroom/api/logout", headers={"Origin": "https://testserver"})
+            teacher_client.post("/classroom/api/login",
+                json={"username": other_name, "password": "classroom-long-secret-2026"})
+            other = teacher_client.get("/classroom/api/my-sessions").json()["sessions"]
+            self.assertFalse(any(x["teacher_url"] == created.json()["teacher_url"] for x in other))
 
     def test_teacher_product_creates_product_scoped_links(self):
         created = self.client.post(
