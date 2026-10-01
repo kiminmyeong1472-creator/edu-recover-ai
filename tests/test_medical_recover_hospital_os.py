@@ -1,9 +1,12 @@
 from app.domains.medical.hospital_os import (
     ClinicalAction,
+    evaluate_prescription_change,
     make_actual_use_evidence,
+    make_medication_execution_object,
     make_source_revision,
     selective_revalidation,
     utcnow,
+    verify_patient_identity,
 )
 
 
@@ -83,3 +86,74 @@ def test_uncertain_source_cannot_be_marked_verified():
         assert str(exc) == "uncertain_source_cannot_be_auto_verified"
     else:
         raise AssertionError("uncertain source was incorrectly verified")
+
+
+
+def test_patient_identity_blocks_completion_on_mismatch_or_missing_data():
+    mismatch = verify_patient_identity(
+        patient_id="patient-1",
+        expected={"name": "Kim", "second_identifier": "1234"},
+        observed={"name": "Lee", "second_identifier": "1234"},
+    )
+    assert mismatch.status == "MISMATCH"
+    assert mismatch.completion_allowed is False
+
+    unresolved = verify_patient_identity(
+        patient_id="patient-1",
+        expected={"name": "Kim", "second_identifier": "1234"},
+        observed={"name": "Kim", "second_identifier": ""},
+    )
+    assert unresolved.status == "UNRESOLVED"
+    assert unresolved.completion_allowed is False
+
+    verified = verify_patient_identity(
+        patient_id="patient-1",
+        expected={"name": "Kim", "second_identifier": "1234"},
+        observed={"name": "Kim", "second_identifier": "1234"},
+    )
+    assert verified.status == "VERIFIED"
+    assert verified.completion_allowed is True
+
+
+def test_prescription_change_holds_only_matching_unadministered_medication():
+    medication = make_medication_execution_object(
+        patient_id="patient-1",
+        clinical_action_id="act-1",
+        prescription_revision_id="rx-old",
+        custody_stage="AT_BEDSIDE",
+        prepared_fields={"drug": "A", "dose": "10mg"},
+    )
+    decision = evaluate_prescription_change(
+        medication=medication,
+        changed_from_revision_id="rx-old",
+        changed_fields=["dose"],
+        identity_status="VERIFIED",
+    )
+    assert decision.affected is True
+    assert decision.next_state == "HOLD"
+    assert decision.required_action == "BLOCK_ADMINISTRATION_AND_RECHECK"
+
+    unrelated = evaluate_prescription_change(
+        medication=medication,
+        changed_from_revision_id="different-rx",
+        changed_fields=["dose"],
+        identity_status="VERIFIED",
+    )
+    assert unrelated.affected is False
+    assert unrelated.next_state == "READY"
+
+    administered = make_medication_execution_object(
+        patient_id="patient-1",
+        clinical_action_id="act-2",
+        prescription_revision_id="rx-old",
+        custody_stage="ADMINISTERED",
+        prepared_fields={"drug": "A", "dose": "10mg"},
+    )
+    closed = evaluate_prescription_change(
+        medication=administered,
+        changed_from_revision_id="rx-old",
+        changed_fields=["dose"],
+        identity_status="VERIFIED",
+    )
+    assert closed.affected is False
+    assert closed.next_state == "CLOSED"
