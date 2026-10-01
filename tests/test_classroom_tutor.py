@@ -33,6 +33,43 @@ class ClassroomTutorTests(unittest.TestCase):
             json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
         self.assertEqual(result.status_code, 200, result.text)
 
+    def test_shared_board_and_private_teacher_media(self):
+        created = self.client.post("/classroom/api/sessions", headers=self.owner_headers,
+            json={"title": "교사 시청각 수업"}).json()
+        sid, token = created["session_id"], created["teacher_token"]
+        root = f"/tutor/api/sessions/{sid}"
+        params = {"teacher_token": token}
+        stroke = {"stroke_id": "stroke-one", "points": [[0.1, 0.2], [0.8, 0.9]]}
+        self.assertEqual(self.client.post(root + "/board-strokes", params={"teacher_token": "wrong"},
+                         json=stroke).status_code, 403)
+        self.assertEqual(self.client.post(root + "/board-strokes", params=params,
+                         json=stroke).status_code, 200)
+        self.assertEqual(self.client.post(root + "/board-strokes", params=params,
+                         json=stroke).status_code, 200)
+        listed = self.client.get(root + "/board-strokes", params=params).json()
+        self.assertEqual(listed["strokes"], [stroke])
+        self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 423)
+        self.publish_lesson(created)
+        self.assertEqual(self.client.post(root + "/command", params=params,
+                         json={"action": "SET_BOARD_MODE", "board_mode": "WHITEBOARD"}).status_code, 200)
+        self.assertIn("setupSharedBoard", self.client.get(created["teacher_url"]).text)
+        self.assertIn("setupSharedBoard", self.client.get(created["board_url"]).text)
+
+        import struct
+        png = b"\x89PNG\r\n\x1a\n" + struct.pack(">II", 1, 1) + b"test"
+        asset = self.client.post(root + "/media", params=params,
+            json={"media_type": "image/png", "data_base64": base64.b64encode(png).decode()})
+        self.assertEqual(asset.status_code, 200, asset.text)
+        media_url = asset.json()["media_url"]
+        self.assertEqual(self.client.get(media_url).content, png)
+        self.assertEqual(self.client.get(media_url.split("?")[0], params={"asset_token": "wrong"}).status_code, 403)
+        bad = self.client.post(root + "/media", params=params,
+            json={"media_type": "video/mp4", "data_base64": base64.b64encode(png).decode()})
+        self.assertEqual(bad.status_code, 400)
+        draft = self.client.get(root, params=params).json()
+        self.assertEqual(self.client.delete(root + "/board-strokes", params=params).status_code, 200)
+        self.assertEqual(self.client.get(root + "/board-strokes", params=params).json()["strokes"], [])
+
     def test_owner_can_create_and_run_token_scoped_lesson(self):
         lesson = [
             {
