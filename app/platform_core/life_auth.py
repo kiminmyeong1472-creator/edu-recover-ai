@@ -66,10 +66,11 @@ def _hash_password(password: str, salt: bytes) -> str:
     return hashlib.scrypt(
         password.encode("utf-8"),
         salt=salt,
-        n=2**15,
+        n=2**14,
         r=8,
         p=1,
         dklen=32,
+        maxmem=64 * 1024 * 1024,
     ).hex()
 
 
