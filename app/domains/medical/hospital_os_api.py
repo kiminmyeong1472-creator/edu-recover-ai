@@ -8,12 +8,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.domains.medical.hospital_os import (
     ActualUseEvidence,
     ClinicalAction,
+    MedicationExecutionObject,
     SourceRevision,
+    evaluate_prescription_change,
     make_actual_use_evidence,
+    make_medication_execution_object,
     make_source_revision,
     selective_revalidation,
     to_payload,
     utcnow,
+    verify_patient_identity,
 )
 from app.platform_core.life_auth import require_life_user
 from app.platform_core.persistent_domain_store import get_resource, list_resources, put_resource
@@ -25,6 +29,8 @@ _SOURCE_KIND = "hospital_os_source_revision"
 _ACTION_KIND = "hospital_os_clinical_action"
 _USE_KIND = "hospital_os_actual_use"
 _RECEIPT_KIND = "hospital_os_revalidation_receipt"
+_IDENTITY_KIND = "hospital_os_identity_check"
+_MEDICATION_KIND = "hospital_os_medication_object"
 
 
 class SourceRevisionCreate(BaseModel):
@@ -65,6 +71,33 @@ class ActualUseCreate(BaseModel):
     input_set: dict = Field(default_factory=dict)
     context: dict = Field(default_factory=dict)
     verification_state: Literal["VERIFIED", "UNVERIFIED", "UNRESOLVED"] = "UNVERIFIED"
+
+
+class IdentityCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+    expected: dict[str, str | None]
+    observed: dict[str, str | None]
+    required_fields: list[str] = Field(default_factory=lambda: ["name", "second_identifier"], min_length=1, max_length=10)
+
+
+class MedicationObjectCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+    clinical_action_id: str = Field(min_length=1, max_length=160)
+    prescription_revision_id: str = Field(min_length=1, max_length=160)
+    custody_stage: Literal[
+        "PREPARED", "STORED", "DISPENSED", "RECEIVED", "AT_BEDSIDE",
+        "ADMINISTERED", "RETURNED", "DISCARDED"
+    ]
+    prepared_fields: dict[str, str] = Field(default_factory=dict)
+
+
+class PrescriptionChangeEvaluate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    changed_from_revision_id: str = Field(min_length=1, max_length=160)
+    changed_fields: list[str] = Field(default_factory=list, max_length=100)
+    identity_status: Literal["VERIFIED", "MISMATCH", "UNRESOLVED"]
 
 
 class RevalidationRun(BaseModel):
@@ -120,6 +153,20 @@ def _use_from_payload(payload: dict) -> ActualUseEvidence:
     )
 
 
+def _medication_from_payload(payload: dict) -> MedicationExecutionObject:
+    return MedicationExecutionObject(
+        medication_object_id=payload["medication_object_id"],
+        patient_id=payload["patient_id"],
+        clinical_action_id=payload["clinical_action_id"],
+        prescription_revision_id=payload["prescription_revision_id"],
+        custody_stage=payload["custody_stage"],
+        safety_state=payload["safety_state"],
+        prepared_fields=dict(payload.get("prepared_fields", {})),
+        created_at=payload["created_at"],
+        updated_at=payload["updated_at"],
+    )
+
+
 def _owned_resource(account_id: str, resource_id: str, kind: str) -> dict:
     item = get_resource(
         domain="medical",
@@ -137,6 +184,8 @@ def hospital_os_status(request: Request) -> dict:
     sources = list_resources(domain="medical", subject_id=account_id, kind=_SOURCE_KIND)
     actions = list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
     receipts = list_resources(domain="medical", subject_id=account_id, kind=_RECEIPT_KIND)
+    identities = list_resources(domain="medical", subject_id=account_id, kind=_IDENTITY_KIND)
+    medications = list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
     return {
         "product": "Medical Recover Hospital OS",
         "sources": len(sources),
@@ -146,6 +195,9 @@ def hospital_os_status(request: Request) -> dict:
             1 for x in actions if x["payload"].get("action_state") == "REVALIDATION_REQUIRED"
         ),
         "receipts": len(receipts),
+        "identity_checks": len(identities),
+        "medication_objects": len(medications),
+        "medication_holds": sum(1 for x in medications if x["payload"].get("safety_state") == "HOLD"),
         "safety_rules": {
             "unknown_auto_verified": False,
             "historical_actions_preserved": True,
@@ -230,6 +282,108 @@ def create_actual_use(payload: ActualUseCreate, request: Request) -> dict:
         resource_id=evidence.evidence_id,
     )
     return {"evidence_id": evidence.evidence_id, "status": "recorded"}
+
+
+@router.post("/identity/verify")
+def verify_identity(payload: IdentityCheckRequest, request: Request) -> dict:
+    account_id = require_life_user(request)
+    result = verify_patient_identity(
+        patient_id=payload.patient_id,
+        expected=payload.expected,
+        observed=payload.observed,
+        required_fields=tuple(payload.required_fields),
+    )
+    resource_id = "idchk_" + __import__("uuid").uuid4().hex
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_IDENTITY_KIND,
+        payload=to_payload(result),
+        resource_id=resource_id,
+    )
+    return {
+        "identity_check_id": resource_id,
+        "status": result.status,
+        "completion_allowed": result.completion_allowed,
+        "mismatched_fields": list(result.mismatched_fields),
+        "unresolved_fields": list(result.unresolved_fields),
+    }
+
+
+@router.post("/medication-objects")
+def create_medication_object(payload: MedicationObjectCreate, request: Request) -> dict:
+    account_id = require_life_user(request)
+    action = _owned_resource(account_id, payload.clinical_action_id, _ACTION_KIND)
+    if action["payload"].get("patient_id") != payload.patient_id:
+        raise HTTPException(status_code=409, detail="patient_action_mismatch")
+    _owned_resource(account_id, payload.prescription_revision_id, _SOURCE_KIND)
+    medication = make_medication_execution_object(
+        patient_id=payload.patient_id,
+        clinical_action_id=payload.clinical_action_id,
+        prescription_revision_id=payload.prescription_revision_id,
+        custody_stage=payload.custody_stage,
+        prepared_fields=payload.prepared_fields,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_MEDICATION_KIND,
+        payload=to_payload(medication),
+        resource_id=medication.medication_object_id,
+    )
+    return {
+        "medication_object_id": medication.medication_object_id,
+        "safety_state": medication.safety_state,
+        "custody_stage": medication.custody_stage,
+    }
+
+
+@router.post("/medication-objects/{medication_object_id}/prescription-change")
+def evaluate_medication_change(
+    medication_object_id: str,
+    payload: PrescriptionChangeEvaluate,
+    request: Request,
+) -> dict:
+    account_id = require_life_user(request)
+    item = _owned_resource(account_id, medication_object_id, _MEDICATION_KIND)
+    medication = _medication_from_payload(item["payload"])
+    decision = evaluate_prescription_change(
+        medication=medication,
+        changed_from_revision_id=payload.changed_from_revision_id,
+        changed_fields=payload.changed_fields,
+        identity_status=payload.identity_status,
+    )
+    if decision.next_state != medication.safety_state:
+        updated = MedicationExecutionObject(
+            medication_object_id=medication.medication_object_id,
+            patient_id=medication.patient_id,
+            clinical_action_id=medication.clinical_action_id,
+            prescription_revision_id=medication.prescription_revision_id,
+            custody_stage=medication.custody_stage,
+            safety_state=decision.next_state,
+            prepared_fields=medication.prepared_fields,
+            created_at=medication.created_at,
+            updated_at=utcnow(),
+        )
+        put_resource(
+            domain="medical",
+            subject_id=account_id,
+            kind=_MEDICATION_KIND,
+            payload=to_payload(updated),
+            resource_id=updated.medication_object_id,
+        )
+    return to_payload(decision)
+
+
+@router.get("/medication-objects")
+def list_medication_objects(request: Request) -> dict:
+    account_id = require_life_user(request)
+    return {
+        "medication_objects": [
+            item["payload"]
+            for item in list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
+        ]
+    }
 
 
 @router.post("/revalidation")
