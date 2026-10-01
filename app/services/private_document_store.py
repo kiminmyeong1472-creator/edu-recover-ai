@@ -393,7 +393,8 @@ def _import_from_env_sync() -> dict[str, int]:
             )
         finally:
             temporary.unlink(missing_ok=True)
-    logger.info(
+    # Keep the integrity result visible in Railway's default production log level.
+    logger.warning(
         "private_document_import=COMPLETE requested=%s stored=%s idempotent=%s failed=%s",
         summary["requested"], summary["stored"], summary["idempotent"], summary["failed"],
     )
