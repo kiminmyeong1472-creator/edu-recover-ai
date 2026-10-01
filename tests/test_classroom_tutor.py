@@ -67,6 +67,18 @@ class ClassroomTutorTests(unittest.TestCase):
             json={"media_type": "video/mp4", "data_base64": base64.b64encode(png).decode()})
         self.assertEqual(bad.status_code, 400)
         draft = self.client.get(root, params=params).json()
+        lesson = draft["lesson"]
+        lesson.insert(-1, {"segment_id": "teacher-image", "kind": "DEMONSTRATE",
+                            "title": "교사 그림", "text": "설명 그림",
+                            "media_url": media_url, "media_type": "image/png"})
+        self.assertEqual(self.client.put(root + "/lesson", params=params,
+                         json={"lesson": lesson}).status_code, 200)
+        self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 423)
+        draft = self.client.get(root, params=params).json()
+        self.assertEqual(draft["lesson"][-2]["media_type"], "image/png")
+        self.client.post(root + "/publish-lesson", params=params,
+            json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
+        self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 200)
         self.assertEqual(self.client.delete(root + "/board-strokes", params=params).status_code, 200)
         self.assertEqual(self.client.get(root + "/board-strokes", params=params).json()["strokes"], [])
 
