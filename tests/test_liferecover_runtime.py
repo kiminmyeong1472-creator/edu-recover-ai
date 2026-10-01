@@ -1,5 +1,3 @@
-import os
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -15,7 +13,7 @@ def _client(monkeypatch, tmp_path):
     app = FastAPI()
     app.include_router(auth_router)
     app.include_router(runtime_router)
-    return TestClient(app)
+    return TestClient(app, base_url="https://testserver")
 
 
 def test_register_login_and_encrypted_domain_storage(monkeypatch, tmp_path):
