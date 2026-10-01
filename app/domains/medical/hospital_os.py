@@ -27,6 +27,12 @@ ActionState = Literal[
 VerificationState = Literal["VERIFIED", "UNVERIFIED", "UNRESOLVED"]
 RiskTier = Literal["LOW", "MEDIUM", "HIGH"]
 DependencyState = Literal["RESOLVED", "UNRESOLVED"]
+IdentityStatus = Literal["VERIFIED", "MISMATCH", "UNRESOLVED"]
+CustodyStage = Literal[
+    "PREPARED", "STORED", "DISPENSED", "RECEIVED", "AT_BEDSIDE",
+    "ADMINISTERED", "RETURNED", "DISCARDED"
+]
+MedicationSafetyState = Literal["READY", "HOLD", "REVALIDATION_REQUIRED", "CLOSED"]
 
 
 @dataclass(frozen=True)
@@ -90,6 +96,185 @@ class RevalidationReceipt:
 class RevalidationResult:
     actions: tuple[ClinicalAction, ...]
     receipt: RevalidationReceipt
+
+
+@dataclass(frozen=True)
+class IdentityCheck:
+    patient_id: str
+    status: IdentityStatus
+    matched_fields: tuple[str, ...]
+    mismatched_fields: tuple[str, ...]
+    unresolved_fields: tuple[str, ...]
+    completion_allowed: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class MedicationExecutionObject:
+    medication_object_id: str
+    patient_id: str
+    clinical_action_id: str
+    prescription_revision_id: str
+    custody_stage: CustodyStage
+    safety_state: MedicationSafetyState
+    prepared_fields: dict[str, str]
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class MedicationRevisionDecision:
+    medication_object_id: str
+    previous_state: MedicationSafetyState
+    next_state: MedicationSafetyState
+    affected: bool
+    reason: str
+    required_action: str
+
+
+def verify_patient_identity(
+    *,
+    patient_id: str,
+    expected: dict[str, str | None],
+    observed: dict[str, str | None],
+    required_fields: tuple[str, ...] = ("name", "second_identifier"),
+) -> IdentityCheck:
+    """Compare only explicit identifiers; never infer identity from partial context."""
+    matched: list[str] = []
+    mismatched: list[str] = []
+    unresolved: list[str] = []
+
+    for field in required_fields:
+        expected_value = (expected.get(field) or "").strip()
+        observed_value = (observed.get(field) or "").strip()
+        if not expected_value or not observed_value:
+            unresolved.append(field)
+        elif expected_value == observed_value:
+            matched.append(field)
+        else:
+            mismatched.append(field)
+
+    if mismatched:
+        status: IdentityStatus = "MISMATCH"
+        reason = "identity_mismatch"
+    elif unresolved:
+        status = "UNRESOLVED"
+        reason = "identity_information_incomplete"
+    else:
+        status = "VERIFIED"
+        reason = "required_identifiers_match"
+
+    return IdentityCheck(
+        patient_id=patient_id,
+        status=status,
+        matched_fields=tuple(matched),
+        mismatched_fields=tuple(mismatched),
+        unresolved_fields=tuple(unresolved),
+        completion_allowed=status == "VERIFIED",
+        reason=reason,
+    )
+
+
+def make_medication_execution_object(
+    *,
+    patient_id: str,
+    clinical_action_id: str,
+    prescription_revision_id: str,
+    custody_stage: CustodyStage,
+    prepared_fields: dict[str, str],
+) -> MedicationExecutionObject:
+    now = utcnow()
+    return MedicationExecutionObject(
+        medication_object_id=f"medobj_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        clinical_action_id=clinical_action_id,
+        prescription_revision_id=prescription_revision_id,
+        custody_stage=custody_stage,
+        safety_state="CLOSED" if custody_stage in {"ADMINISTERED", "RETURNED", "DISCARDED"} else "READY",
+        prepared_fields=dict(prepared_fields),
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def evaluate_prescription_change(
+    *,
+    medication: MedicationExecutionObject,
+    changed_from_revision_id: str,
+    changed_fields: list[str],
+    identity_status: IdentityStatus,
+) -> MedicationRevisionDecision:
+    """Apply selective medication hold without making a prescribing decision."""
+    if medication.prescription_revision_id != changed_from_revision_id:
+        return MedicationRevisionDecision(
+            medication_object_id=medication.medication_object_id,
+            previous_state=medication.safety_state,
+            next_state=medication.safety_state,
+            affected=False,
+            reason="different_prescription_revision",
+            required_action="NONE",
+        )
+
+    if medication.custody_stage in {"ADMINISTERED", "RETURNED", "DISCARDED"}:
+        return MedicationRevisionDecision(
+            medication_object_id=medication.medication_object_id,
+            previous_state=medication.safety_state,
+            next_state="CLOSED",
+            affected=False,
+            reason="medication_object_already_closed",
+            required_action="NONE",
+        )
+
+    safety_relevant_fields = {"drug", "dose", "concentration", "route", "time", "cancelled"}
+    normalized = {field.strip().lower() for field in changed_fields if field and field.strip()}
+    impact_unknown = not normalized
+    medication_impact = bool(normalized & safety_relevant_fields)
+
+    if identity_status != "VERIFIED":
+        return MedicationRevisionDecision(
+            medication_object_id=medication.medication_object_id,
+            previous_state=medication.safety_state,
+            next_state="HOLD",
+            affected=True,
+            reason="patient_identity_not_verified",
+            required_action="VERIFY_PATIENT_IDENTITY",
+        )
+
+    if impact_unknown:
+        return MedicationRevisionDecision(
+            medication_object_id=medication.medication_object_id,
+            previous_state=medication.safety_state,
+            next_state="HOLD",
+            affected=True,
+            reason="prescription_change_impact_unknown",
+            required_action="REVIEW_CHANGED_PRESCRIPTION",
+        )
+
+    if not medication_impact:
+        return MedicationRevisionDecision(
+            medication_object_id=medication.medication_object_id,
+            previous_state=medication.safety_state,
+            next_state=medication.safety_state,
+            affected=False,
+            reason="changed_fields_do_not_affect_prepared_medication",
+            required_action="NONE",
+        )
+
+    action_by_stage = {
+        "PREPARED": "STOP_DISPENSING_AND_REPREPARE",
+        "STORED": "STOP_DISPENSING_AND_REPREPARE",
+        "DISPENSED": "RECALL_OR_RECHECK",
+        "RECEIVED": "RECALL_OR_RECHECK",
+        "AT_BEDSIDE": "BLOCK_ADMINISTRATION_AND_RECHECK",
+    }
+    return MedicationRevisionDecision(
+        medication_object_id=medication.medication_object_id,
+        previous_state=medication.safety_state,
+        next_state="HOLD",
+        affected=True,
+        reason="safety_relevant_prescription_field_changed",
+        required_action=action_by_stage.get(medication.custody_stage, "RECHECK_BEFORE_ADMINISTRATION"),
+    )
 
 
 def utcnow() -> str:
