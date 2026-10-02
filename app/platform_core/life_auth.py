@@ -50,7 +50,7 @@ def _form_page(title: str, action: str, button: str, *, error: str = "") -> HTML
 <label>아이디</label><input name="username" autocomplete="username" minlength="3" maxlength="80" required>
 <label>비밀번호</label><input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="256" required>
 <button type="submit">{button}</button></form></main></body></html>"""
-    return HTMLResponse(html, headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer",
+    return HTMLResponse(html, headers={"Cache-Control":"no-store","Referrer-Policy":"same-origin",
         "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"})
 
 
