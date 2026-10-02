@@ -27,6 +27,10 @@ class OwnerLoginTests(unittest.TestCase):
         def private_status():
             return {"private": True}
 
+        @self.app.get("/owner/life/account-setup", dependencies=[Depends(auth.require_owner)])
+        def life_account_setup():
+            return {"life_account_setup": True}
+
         @self.app.post("/owner/test-write", dependencies=[Depends(auth.require_owner)])
         def private_write():
             return {"ok": True}
@@ -53,6 +57,11 @@ class OwnerLoginTests(unittest.TestCase):
         self.assertIn('name="password"', page.text)
         self.assertIn("no-store", page.headers["cache-control"])
         self.assertNotIn("test-only-password", page.text)
+
+        life_setup = self.client.get("/owner/life/account-setup")
+        self.assertEqual(life_setup.status_code, 303)
+        self.assertEqual(life_setup.headers["location"], "/owner/login")
+        self.assertNotIn("www-authenticate", life_setup.headers)
 
     def test_valid_login_and_private_requests(self):
         response = self.login()
