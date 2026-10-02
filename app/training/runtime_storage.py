@@ -55,3 +55,20 @@ def prepare_runtime_storage():
     if enabled:
         os.environ.setdefault("EDURECOVER_BACKUP_ENABLED", "true")
         os.environ.setdefault("EDURECOVER_BACKUP_SCHEDULER_ENABLED", "true")
+
+
+def log_backup_readiness():
+    """Report bounded configuration flags after storage preparation, never values."""
+    from app.training.backup_service import get_backup_service_status
+    try:
+        status = get_backup_service_status()
+        public = {name: status.get(name) is True for name in (
+            "enabled", "configuration_ready", "persistent_volume_verified",
+            "cloud_access_verified",
+        )}
+        public["blockers"] = [code for code in status.get("blockers", [])
+                              if isinstance(code, str) and len(code) <= 100
+                              and code.replace("_", "").isalnum() and code.isupper()][:32]
+        logger.info("backup_readiness=%s", json.dumps(public, sort_keys=True))
+    except Exception as exc:
+        logger.warning("backup_readiness=UNAVAILABLE error_type=%s", type(exc).__name__)

@@ -13,7 +13,11 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import tempfile
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -27,6 +31,10 @@ from app.training.backup_adapters import (
 )
 from app.training.trade_secret_backup_runner import BackupCycleError, execute_backup_cycle
 from app.training.trade_secret_engine import AssetKind, SecretAsset, classify_secret_asset
+from app.training.backup_inventory import (
+    MAX_RUNTIME_FILES, MAX_RUNTIME_FILE_BYTES, MAX_RUNTIME_TOTAL_BYTES,
+    checked_source_path, credential_source_reason, discover_runtime_assets, merge_runtime_assets,
+)
 
 ENV = {
     "manifest": "EDURECOVER_BACKUP_MANIFEST",
@@ -138,7 +146,7 @@ def get_backup_service_status() -> dict[str, Any]:
                 raise ValueError()
             record = json.loads(entry.read_text(encoding="utf-8"))
             latest = {key: record.get(key) for key in (
-                "status", "finished_at", "verified_assets", "skipped_assets", "failed_assets", "receipt_persisted")}
+                "status", "finished_at", "verified_assets", "skipped_assets", "failed_assets", "receipt_persisted", "coverage")}
         except (OSError, ValueError):
             pass
     return {
@@ -150,48 +158,142 @@ def get_backup_service_status() -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class _OpenedSource:
+    root: Path
+    relative: Path
+    parent_fd: int
+    file_fd: int
+    directory_ids: tuple[tuple[int, int], ...]
+
+
+@contextmanager
+def _open_source_without_links(root: Path, relative: Path):
+    """Hold the entire directory chain and open the leaf relative to its parent."""
+    if (relative.is_absolute() or ".." in relative.parts or not relative.parts
+            or "\\" in str(relative) or ".." in root.parts):
+        raise BackupStorageError("REGISTERED_SOURCE_MUST_BE_RELATIVE")
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise BackupStorageError("SAFE_SNAPSHOT_OPEN_UNSUPPORTED")
+    root = root.absolute()
+    descriptors = []
+    try:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent = os.open(root.anchor, flags)
+        descriptors.append(parent)
+        identities = [(os.fstat(parent).st_dev, os.fstat(parent).st_ino)]
+        for part in root.parts[1:] + relative.parts[:-1]:
+            parent = os.open(part, flags, dir_fd=parent)
+            descriptors.append(parent)
+            info = os.fstat(parent)
+            identities.append((info.st_dev, info.st_ino))
+        source = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         dir_fd=parent)
+        descriptors.append(source)
+        if not stat.S_ISREG(os.fstat(source).st_mode):
+            raise BackupStorageError("SOURCE_REGULAR_FILE_REQUIRED")
+        yield _OpenedSource(root, relative, parent, source, tuple(identities))
+    except OSError as exc:
+        raise BackupStorageError("SOURCE_UNAVAILABLE_OR_UNSAFE") from exc
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def _assert_source_still_bound(opened: _OpenedSource) -> None:
+    """Reject renamed/replaced parents or source paths before publishing bytes."""
+    with _open_source_without_links(opened.root, opened.relative) as current:
+        held, fresh = os.fstat(opened.file_fd), os.fstat(current.file_fd)
+        if (opened.directory_ids != current.directory_ids
+                or (held.st_dev, held.st_ino) != (fresh.st_dev, fresh.st_ino)):
+            raise BackupStorageError("SOURCE_CHANGED_DURING_SNAPSHOT")
+
+
+def _sqlite_sidecars(opened: _OpenedSource) -> tuple[int, dict[str, tuple[int, int]]]:
+    size, identities = 0, {}
+    for suffix in ("-wal", "-shm"):
+        try:
+            descriptor = os.open(opened.relative.name + suffix,
+                                 os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                                 dir_fd=opened.parent_fd)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise BackupStorageError("SQLITE_SIDECAR_UNSAFE") from exc
+        try:
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode):
+                raise BackupStorageError("SQLITE_SIDECAR_UNSAFE")
+            identities[suffix] = (info.st_dev, info.st_ino)
+            if suffix == "-wal":
+                size += info.st_size
+        finally:
+            os.close(descriptor)
+    return size, identities
+
+
 def _snapshot(item: RegisteredAsset, source_root: Path, destination: Path) -> str:
     relative = Path(item.source)
-    if relative.is_absolute() or ".." in relative.parts:
-        raise BackupStorageError("REGISTERED_SOURCE_MUST_BE_RELATIVE")
-    source = source_root / relative
-    if source.is_symlink():
-        raise BackupStorageError("SOURCE_SYMLINK_FORBIDDEN")
-    source = source.resolve(strict=True)
-    if not source.is_relative_to(source_root.resolve()) or not source.is_file():
-        raise BackupStorageError("SOURCE_OUTSIDE_APPROVED_ROOT")
-    # Known credential/config containers need explicit metadata-only classification.
-    if (source.name == ".env" or source.name.startswith(".env.")
-            or source.suffix.lower() in {".pem", ".key", ".p12", ".pfx"}
-            or "service_account" in source.name.lower() or "credentials" in source.name.lower()):
-        raise BackupStorageError("CREDENTIAL_SOURCE_REQUIRES_METADATA_ONLY")
-    estimate = source.stat().st_size
-    wal = Path(str(source) + "-wal")
-    if item.sqlite_snapshot and wal.is_file():
-        estimate += wal.stat().st_size
-    if shutil.disk_usage(destination.parent).free < 3 * estimate + 20 * 1024 * 1024:
-        raise BackupStorageError("SNAPSHOT_FREE_SPACE_REQUIRED")
-    if item.sqlite_snapshot:
-        source_db = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True, timeout=20)
-        dest_db = sqlite3.connect(destination)
-        try:
-            source_db.backup(dest_db)
-            if dest_db.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
-                raise BackupStorageError("SQLITE_SNAPSHOT_INTEGRITY_FAILED")
-        finally:
-            dest_db.close()
-            source_db.close()
-        destination.chmod(0o600)
-    else:
-        # An application updating flat files must replace atomically or provide
-        # an immutable export. A stat change during copying invalidates the snapshot.
-        before = source.stat()
-        with source.open("rb") as src, destination.open("xb") as dst:
+    reason = credential_source_reason(relative)
+    if reason:
+        raise BackupStorageError(reason)
+    source = checked_source_path(source_root, relative)
+    sqlite_snapshot = item.sqlite_snapshot or source.suffix.lower() in {".sqlite3", ".sqlite", ".db"}
+    with _open_source_without_links(source_root, relative) as opened:
+        before = os.fstat(opened.file_fd)
+        estimate = before.st_size
+        sidecar_ids = {}
+        if sqlite_snapshot:
+            sidecar_size, sidecar_ids = _sqlite_sidecars(opened)
+            estimate += sidecar_size
+        if estimate > MAX_RUNTIME_FILE_BYTES:
+            raise BackupStorageError("SNAPSHOT_FILE_TOO_LARGE")
+        if shutil.disk_usage(destination.parent).free < 3 * estimate + 20 * 1024 * 1024:
+            raise BackupStorageError("SNAPSHOT_FREE_SPACE_REQUIRED")
+        _assert_source_still_bound(opened)
+        if sqlite_snapshot:
+            # Linux /proc anchors the parent while allowing SQLite to locate WAL.
+            # SQLite opens its own descriptors, so pre/post inode checks supplement
+            # (not replace) the requirement that runtime directories are app-owned.
+            # This is not an adversarial filesystem or whole-service snapshot API.
+            anchored = Path(f"/proc/self/fd/{opened.parent_fd}") / relative.name
+            if not Path("/proc/self/fd").is_dir():
+                raise BackupStorageError("SAFE_SQLITE_SNAPSHOT_OPEN_UNSUPPORTED")
+            source_db = sqlite3.connect(anchored.as_uri() + "?mode=ro", uri=True, timeout=20)
+            dest_db = sqlite3.connect(destination)
+            try:
+                _assert_source_still_bound(opened)
+                page_size = source_db.execute("PRAGMA page_size").fetchone()[0]
+                deadline = time.monotonic() + 60
+                def progress(_status, _remaining, total):
+                    if total * page_size > MAX_RUNTIME_FILE_BYTES:
+                        raise BackupStorageError("SNAPSHOT_FILE_TOO_LARGE")
+                    if time.monotonic() > deadline:
+                        raise BackupStorageError("SQLITE_SNAPSHOT_TIMEOUT")
+                source_db.backup(dest_db, pages=256, progress=progress)
+                if dest_db.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+                    raise BackupStorageError("SQLITE_SNAPSHOT_INTEGRITY_FAILED")
+                _, final_sidecars = _sqlite_sidecars(opened)
+                if any(final_sidecars.get(suffix) != identity for suffix, identity in sidecar_ids.items()):
+                    raise BackupStorageError("SQLITE_SIDECAR_CHANGED_DURING_SNAPSHOT")
+            finally:
+                dest_db.close()
+                source_db.close()
             destination.chmod(0o600)
-            shutil.copyfileobj(src, dst, 8 * 1024 * 1024)
-        after = source.stat()
-        if (before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_ino, after.st_size, after.st_mtime_ns):
-            raise BackupStorageError("SOURCE_CHANGED_DURING_SNAPSHOT")
+        else:
+            # Copy the exact opened regular file; never reopen its path for data.
+            with os.fdopen(os.dup(opened.file_fd), "rb") as src, destination.open("xb") as dst:
+                destination.chmod(0o600)
+                copied = 0
+                while chunk := src.read(8 * 1024 * 1024):
+                    copied += len(chunk)
+                    if copied > MAX_RUNTIME_FILE_BYTES:
+                        raise BackupStorageError("SNAPSHOT_FILE_TOO_LARGE")
+                    dst.write(chunk)
+            after = os.fstat(opened.file_fd)
+            if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                raise BackupStorageError("SOURCE_CHANGED_DURING_SNAPSHOT")
+        _assert_source_still_bound(opened)
     digest = sha256_file(destination)
     if item.expected_sha256 and item.expected_sha256.lower() != digest:
         raise BackupStorageError("REGISTERED_SOURCE_HASH_MISMATCH")
@@ -223,7 +325,10 @@ def _retain_verified_local_copies(previous, receipt, server_root):
 def _run_assets(*, manifest: list[RegisteredAsset], source_root: Path, server_root: Path,
                 state_dir: Path, now: datetime, drive_factory=None) -> dict:
     records, verified, skipped, failed = [], 0, 0, 0
-    # Credentials are outside this directory, and no recursive scan is performed.
+    if len(manifest) > MAX_RUNTIME_FILES:
+        raise BackupStorageError("BACKUP_ASSET_COUNT_LIMIT_REACHED")
+    snapshot_bytes = 0
+    # The manifest includes only explicitly registered or allowlisted sources.
     with tempfile.TemporaryDirectory(prefix="backup-run-", dir=state_dir) as temporary:
         work = Path(temporary)
         payloads = EncryptedPayloads(source_root=work, staging_root=work)
@@ -242,6 +347,10 @@ def _run_assets(*, manifest: list[RegisteredAsset], source_root: Path, server_ro
                 try:
                     # A credential asset is NEVER opened, hashed or copied. Preserve only metadata.
                     digest = "credential-source-omitted" if item.contains_credentials else _snapshot(item, source_root, work / token)
+                    if not item.contains_credentials:
+                        snapshot_bytes += (work / token).stat().st_size
+                        if snapshot_bytes > MAX_RUNTIME_TOTAL_BYTES:
+                            raise BackupStorageError("BACKUP_TOTAL_BYTES_LIMIT_REACHED")
                     asset = _safe_asset(item, digest)
                     decision = classify_secret_asset(asset)
                     last = None
@@ -326,9 +435,21 @@ def run_configured_backup_once() -> dict[str, Any]:
             manifest = [RegisteredAsset.model_validate(item) for item in raw]
             if len({item.asset_id for item in manifest}) != len(manifest):
                 raise BackupStorageError("DUPLICATE_REGISTERED_ASSET")
+            source_root = Path(os.environ[ENV["source_root"]])
+            # Refresh after acquiring the cycle lock: new media/documents are
+            # included without restarting the service or rewriting owner entries.
+            inventory = discover_runtime_assets(source_root)
+            merged = merge_runtime_assets([item.model_dump(mode="json") for item in manifest], inventory)
+            manifest = [RegisteredAsset.model_validate(item) for item in merged]
             result = _run_assets(manifest=manifest, source_root=Path(os.environ[ENV["source_root"]]),
                                  server_root=Path(os.environ[ENV["server_root"]]),
                                  state_dir=state, now=now)
+            result["coverage"] = inventory.summary()
+            result["coverage"]["registered_assets"] = len(raw)
+            result["coverage"]["effective_assets"] = len(manifest)
+            if inventory.issues:
+                result["status"] = "failed"
+                result["failure_code"] = "RUNTIME_INVENTORY_INCOMPLETE"
             result["receipt_persisted"] = False
     except Exception as exc:
         result.update(status="failed", error_type=type(exc).__name__)

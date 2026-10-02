@@ -1,4 +1,4 @@
-"""Exact-byte private DOCX storage on the persistent classroom volume.
+"""Exact-byte private DOCX and photo storage on the persistent classroom volume.
 
 Documents are never converted, recompressed, or rewritten.  A file is accepted
 only after its caller-supplied digest (or import-manifest digest) matches the
@@ -14,9 +14,11 @@ import logging
 import os
 import re
 import secrets
+import struct
 import unicodedata
 import urllib.request
 import zipfile
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -41,6 +43,12 @@ _REQUIRED_DOCX_MEMBERS = {"[Content_Types].xml", "_rels/.rels", "word/document.x
 _IMPORT_ENV = "EDURECOVER_DOCUMENT_IMPORT_JSON"
 _DEFAULT_MAX_BYTES = 20 * 1024 * 1024
 _HARD_MAX_BYTES = 64 * 1024 * 1024
+_MEDIA_TYPES = {
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
 
 
 class PrivateDocumentError(ValueError):
@@ -77,7 +85,7 @@ def _metadata_dir() -> Path:
 
 
 def sanitize_filename(value: str) -> str:
-    """Return one safe NFC-normalized DOCX filename or raise."""
+    """Return one safe NFC-normalized DOCX/JPEG/PNG filename or raise."""
     name = unicodedata.normalize("NFC", value.strip())
     if not name or len(name) > 180:
         raise PrivateDocumentError("INVALID_FILENAME")
@@ -85,8 +93,8 @@ def sanitize_filename(value: str) -> str:
         raise PrivateDocumentError("INVALID_FILENAME")
     if any(ord(char) < 32 or char in {'/', '\\', '\x00'} for char in name):
         raise PrivateDocumentError("INVALID_FILENAME")
-    if not name.lower().endswith(".docx"):
-        raise PrivateDocumentError("DOCX_ONLY")
+    if Path(name).suffix.lower() not in _MEDIA_TYPES:
+        raise PrivateDocumentError("DOCUMENT_TYPE_NOT_ALLOWED")
     return name
 
 
@@ -114,6 +122,84 @@ def _validate_docx_container(path: Path) -> None:
         raise PrivateDocumentError("INVALID_DOCX_CONTAINER") from exc
     if not _REQUIRED_DOCX_MEMBERS.issubset(members):
         raise PrivateDocumentError("INVALID_DOCX_CONTAINER")
+
+
+def _validate_image_container(path: Path, suffix: str) -> None:
+    """Read-only structural sanity check, not an image decoder or malware scan."""
+    data = path.read_bytes()
+    if suffix == ".png":
+        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise PrivateDocumentError("INVALID_IMAGE_CONTAINER")
+        offset, saw_header, saw_data = 8, False, False
+        while offset + 12 <= len(data):
+            size = int.from_bytes(data[offset:offset + 4], "big")
+            end = offset + 12 + size
+            if end > len(data):
+                break
+            kind = data[offset + 4:offset + 8]
+            payload = data[offset + 8:end - 4]
+            crc = int.from_bytes(data[end - 4:end], "big")
+            if zlib.crc32(kind + payload) & 0xFFFFFFFF != crc:
+                break
+            if not saw_header:
+                if kind != b"IHDR" or size != 13:
+                    break
+                width, height, depth, color, compression, filtering, interlace = struct.unpack(
+                    ">IIBBBBB", payload
+                )
+                depths = {0: {1, 2, 4, 8, 16}, 2: {8, 16}, 3: {1, 2, 4, 8}, 4: {8, 16}, 6: {8, 16}}
+                if (not width or not height or depth not in depths.get(color, set())
+                        or compression or filtering or interlace not in {0, 1}):
+                    break
+                saw_header = True
+            elif kind == b"IHDR":
+                break
+            if kind == b"IDAT" and size:
+                saw_data = True
+            if kind == b"IEND":
+                if size == 0 and saw_data and end == len(data):
+                    return
+                break
+            offset = end
+    elif data.startswith(b"\xff\xd8") and data.endswith(b"\xff\xd9"):
+        offset, saw_frame = 2, False
+        frame_markers = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+        while offset + 4 <= len(data):
+            if data[offset] != 0xFF:
+                break
+            while offset < len(data) and data[offset] == 0xFF:
+                offset += 1
+            if offset + 3 > len(data):
+                break
+            marker = data[offset]
+            size = int.from_bytes(data[offset + 1:offset + 3], "big")
+            end = offset + 1 + size
+            if size < 2 or end > len(data) - 2:
+                break
+            payload = data[offset + 3:end]
+            if marker in frame_markers:
+                if (len(payload) < 6 or not int.from_bytes(payload[1:3], "big")
+                        or not int.from_bytes(payload[3:5], "big") or not payload[5]
+                        or len(payload) != 6 + 3 * payload[5]):
+                    break
+                saw_frame = True
+            if marker == 0xDA:  # Start of scan; entropy data is preserved without decoding.
+                if (saw_frame and payload and payload[0]
+                        and len(payload) == 4 + 2 * payload[0] and end < len(data) - 2):
+                    return
+                break
+            offset = end
+    raise PrivateDocumentError("INVALID_IMAGE_CONTAINER")
+
+
+def _validate_document_container(path: Path, name: str) -> None:
+    suffix = Path(name).suffix.lower()
+    if suffix == ".docx":
+        _validate_docx_container(path)
+    elif suffix in {".jpg", ".jpeg", ".png"}:
+        _validate_image_container(path, suffix)
+    else:
+        raise PrivateDocumentError("DOCUMENT_TYPE_NOT_ALLOWED")
 
 
 def _write_metadata(name: str, sha256: str, size: int, source: str) -> dict[str, Any]:
@@ -162,7 +248,7 @@ def _existing_exact(name: str, expected_sha256: str, expected_size: int) -> dict
     actual_sha256, actual_size = _sha256_file(target)
     if actual_sha256 != expected_sha256 or actual_size != expected_size:
         raise PrivateDocumentError("FILENAME_CONFLICT")
-    _validate_docx_container(target)
+    _validate_document_container(target, name)
     target.chmod(0o600)
     metadata = _read_metadata(name)
     metadata["idempotent"] = True
@@ -180,7 +266,7 @@ def _commit_temporary(
     actual_sha256, actual_size = _sha256_file(temporary)
     if actual_size != expected_size or actual_sha256 != expected_sha256:
         raise PrivateDocumentError("DOCUMENT_INTEGRITY_MISMATCH")
-    _validate_docx_container(temporary)
+    _validate_document_container(temporary, name)
     existing = _existing_exact(name, expected_sha256, expected_size)
     if existing is not None:
         return existing
@@ -211,7 +297,7 @@ def _validate_digest(value: str) -> str:
 async def list_private_documents() -> dict[str, Any]:
     documents: list[dict[str, Any]] = []
     for path in sorted(_document_dir().iterdir(), key=lambda item: item.name):
-        if path.is_file() and not path.is_symlink() and path.name.lower().endswith(".docx"):
+        if path.is_file() and not path.is_symlink() and path.suffix.lower() in _MEDIA_TYPES:
             documents.append(_read_metadata(path.name))
     return {"count": len(documents), "documents": documents}
 
@@ -229,11 +315,10 @@ async def upload_private_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if content_type not in {
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/octet-stream",
-    }:
-        raise HTTPException(status_code=415, detail="DOCX_CONTENT_TYPE_REQUIRED")
+    suffix = Path(name).suffix.lower()
+    if content_type not in {_MEDIA_TYPES[suffix], "application/octet-stream"}:
+        detail = "DOCX_CONTENT_TYPE_REQUIRED" if suffix == ".docx" else "IMAGE_CONTENT_TYPE_REQUIRED"
+        raise HTTPException(status_code=415, detail=detail)
 
     temporary = _document_dir() / f".upload.{secrets.token_hex(16)}.tmp"
     digest = hashlib.sha256()
@@ -280,7 +365,8 @@ async def download_private_document(filename: str):
     return FileResponse(
         path,
         filename=name,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        media_type=_MEDIA_TYPES[Path(name).suffix.lower()],
+        content_disposition_type="attachment",
         headers={
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
@@ -410,7 +496,7 @@ def private_document_integrity_snapshot() -> dict[str, Any]:
     """Server-side exact-byte inventory for diagnostics and test verification."""
     documents = []
     for path in sorted(_document_dir().iterdir(), key=lambda item: item.name):
-        if path.is_file() and not path.is_symlink() and path.name.lower().endswith(".docx"):
+        if path.is_file() and not path.is_symlink() and path.suffix.lower() in _MEDIA_TYPES:
             sha256, size = _sha256_file(path)
             documents.append({"filename": path.name, "sha256": sha256, "size": size})
     return {"count": len(documents), "documents": documents}
