@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 import time
@@ -24,6 +25,7 @@ _TTL = 3600
 _SESSION_KEY = secrets.token_bytes(32)
 # The production service runs one Uvicorn worker. Restarting it ends sessions.
 _revoked: dict[str, int] = {}
+logger = logging.getLogger(__name__)
 
 
 def _credentials() -> tuple[tuple[str, ...], str]:
@@ -80,23 +82,53 @@ def _valid_session(token: str | None, users: tuple[str, ...], password: str) -> 
 
 def _same_origin(request: Request) -> bool:
     origin = request.headers.get("origin", "")
+    referer = request.headers.get("referer", "")
+    forwarded_host = request.headers.get("x-forwarded-host", "").split(",", 1)[0].strip()
+    host = request.headers.get("host", "").strip()
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+    candidate_hosts = {value for value in (request.url.netloc, forwarded_host, host) if value}
+    expected_schemes = {"https"}
+    if forwarded_proto:
+        expected_schemes.add(forwarded_proto)
     try:
         parsed = urlsplit(origin)
-        forwarded_host = request.headers.get("x-forwarded-host", "").split(",", 1)[0].strip()
-        host = request.headers.get("host", "").strip()
-        candidate_hosts = {value for value in (request.url.netloc, forwarded_host, host) if value}
-        forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
-        expected_schemes = {"https"}
-        if forwarded_proto:
-            expected_schemes.add(forwarded_proto)
-        return (
+        allowed = (
             parsed.scheme in expected_schemes
             and parsed.netloc in candidate_hosts
             and not parsed.path and not parsed.query and not parsed.fragment
             and parsed.username is None and parsed.password is None
         )
     except ValueError:
-        return False
+        parsed = None
+        allowed = False
+
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and request.url.path.startswith("/owner/"):
+        try:
+            ref = urlsplit(referer)
+            referer_scheme = ref.scheme
+            referer_netloc = ref.netloc
+        except ValueError:
+            referer_scheme = ""
+            referer_netloc = ""
+        logger.info(
+            "owner_same_origin path=%s allowed=%s origin_present=%s origin_scheme=%s "
+            "origin_netloc=%s referer_present=%s referer_scheme=%s referer_netloc=%s "
+            "request_scheme=%s request_netloc=%s forwarded_host=%s host=%s forwarded_proto=%s",
+            request.url.path,
+            allowed,
+            bool(origin),
+            parsed.scheme if parsed else "",
+            parsed.netloc if parsed else "",
+            bool(referer),
+            referer_scheme,
+            referer_netloc,
+            request.url.scheme,
+            request.url.netloc,
+            forwarded_host,
+            host,
+            forwarded_proto,
+        )
+    return allowed
 
 
 def require_owner(
