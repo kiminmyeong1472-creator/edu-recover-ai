@@ -96,7 +96,9 @@ def test_owner_api_roundtrip_and_auth(tmp_path, monkeypatch):
     monkeypatch.setenv('EDURECOVER_OWNER_PASSWORD','test-password')
     app=FastAPI();app.include_router(vault_router)
     with TestClient(app) as client:
-        assert client.get('/owner/secrets/assets').status_code==401
+        response = client.get('/owner/secrets/assets', follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers['location'] == '/owner/login'
         assert client.post('/owner/secrets/assets',json=revision().model_dump()).status_code==401
         r=client.post('/owner/secrets/assets',json=revision().model_dump(),auth=('owner','test-password'))
         assert r.status_code==200

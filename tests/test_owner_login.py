@@ -85,13 +85,17 @@ class OwnerLoginTests(unittest.TestCase):
         self.assertEqual(self.client.get("/owner").status_code, 303)
 
     def test_private_api_requires_authentication(self):
-        self.assertEqual(self.client.get("/owner/ai-status").status_code, 401)
+        response = self.client.get("/owner/ai-status", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/owner/login")
 
     def test_basic_clients_still_work(self):
         self.assertEqual(self.client.get("/owner/ai-status",
                          auth=("test-user", "test-only-password")).status_code, 200)
-        self.assertEqual(self.client.get("/owner/ai-status",
-                         auth=("test-user", "wrong")).status_code, 401)
+        response = self.client.get("/owner/ai-status",
+                                   auth=("test-user", "wrong"), follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/owner/login")
 
     def test_unicode_credentials_work_in_form(self):
         os.environ["EDURECOVER_OWNER_USER"] = "테스트관리자"
