@@ -134,7 +134,9 @@ class ProviderExecutionTests(unittest.TestCase):
             gen.assert_not_awaited()
 
     def test_owner_diagnostics_stay_private_and_teacher_page_does_not_advertise_unrestricted_ai(self):
-        self.assertEqual(self.client.get('/owner/ai-status').status_code, 401)
+        response = self.client.get('/owner/ai-status', follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers['location'], '/owner/login')
         public = self.client.get('/teacher-free')
         self.assertEqual(public.status_code, 200)
         self.assertIn('관리자 로그인', public.text)
