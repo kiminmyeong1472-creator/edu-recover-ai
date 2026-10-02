@@ -81,8 +81,8 @@ def _valid_session(token: str | None, users: tuple[str, ...], password: str) -> 
 
 
 def _same_origin(request: Request) -> bool:
-    origin = request.headers.get("origin", "")
-    referer = request.headers.get("referer", "")
+    origin = request.headers.get("origin", "").strip()
+    referer = request.headers.get("referer", "").strip()
     forwarded_host = request.headers.get("x-forwarded-host", "").split(",", 1)[0].strip()
     host = request.headers.get("host", "").strip()
     forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
@@ -90,38 +90,47 @@ def _same_origin(request: Request) -> bool:
     expected_schemes = {"https"}
     if forwarded_proto:
         expected_schemes.add(forwarded_proto)
-    try:
-        parsed = urlsplit(origin)
-        allowed = (
-            parsed.scheme in expected_schemes
-            and parsed.netloc in candidate_hosts
-            and not parsed.path and not parsed.query and not parsed.fragment
-            and parsed.username is None and parsed.password is None
+
+    def _matches_public_origin(value: str, *, allow_path: bool) -> tuple[bool, object | None]:
+        if not value:
+            return False, None
+        try:
+            parsed_url = urlsplit(value)
+        except ValueError:
+            return False, None
+        allowed_url = (
+            parsed_url.scheme in expected_schemes
+            and parsed_url.netloc in candidate_hosts
+            and parsed_url.username is None
+            and parsed_url.password is None
+            and not parsed_url.fragment
         )
-    except ValueError:
-        parsed = None
-        allowed = False
+        if not allow_path:
+            allowed_url = allowed_url and not parsed_url.path and not parsed_url.query
+        return allowed_url, parsed_url
+
+    # Prefer Origin when the browser sends it. Only when Origin is genuinely
+    # absent do we fall back to a same-site Referer. An explicit cross-origin
+    # or "null" Origin remains blocked.
+    if origin:
+        allowed, parsed = _matches_public_origin(origin, allow_path=False)
+        source = "origin"
+    else:
+        allowed, parsed = _matches_public_origin(referer, allow_path=True)
+        source = "referer"
 
     if request.method not in {"GET", "HEAD", "OPTIONS"} and request.url.path.startswith("/owner/"):
-        try:
-            ref = urlsplit(referer)
-            referer_scheme = ref.scheme
-            referer_netloc = ref.netloc
-        except ValueError:
-            referer_scheme = ""
-            referer_netloc = ""
         logger.info(
-            "owner_same_origin path=%s allowed=%s origin_present=%s origin_scheme=%s "
-            "origin_netloc=%s referer_present=%s referer_scheme=%s referer_netloc=%s "
-            "request_scheme=%s request_netloc=%s forwarded_host=%s host=%s forwarded_proto=%s",
+            "owner_same_origin path=%s allowed=%s source=%s origin_present=%s "
+            "referer_present=%s source_scheme=%s source_netloc=%s request_scheme=%s "
+            "request_netloc=%s forwarded_host=%s host=%s forwarded_proto=%s",
             request.url.path,
             allowed,
+            source,
             bool(origin),
+            bool(referer),
             parsed.scheme if parsed else "",
             parsed.netloc if parsed else "",
-            bool(referer),
-            referer_scheme,
-            referer_netloc,
             request.url.scheme,
             request.url.netloc,
             forwarded_host,
