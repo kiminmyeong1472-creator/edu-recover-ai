@@ -36,13 +36,14 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 
 from app.services.owner_basic_auth import require_owner, _credentials, _matches, _valid_session, _COOKIE, _same_origin
 from app.services.structured_materials import (
     StructuredMaterialBundle, affected_assets, bundle_digest, bundle_lesson, publication_issues, example_bundle,
+    issue_teacher_review_receipts,
 )
 from app.training.tutor_learning import ContentTrustState
 from app.training.tutor_ledger import TutorLearningLedger
@@ -443,6 +444,10 @@ def ensure_material_release(session: dict[str, Any]) -> None:
             raise HTTPException(423, "수정한 교수자료는 교사 검증과 확정 후 제공됩니다.")
         if any(x.get("structured_bundle_revision") != active for x in session["lesson"]):
             raise HTTPException(423, "교수자료 버전이 일치하지 않습니다.")
+        released_digest = state.get("released_lesson_digest")
+        if not isinstance(released_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", released_digest) \
+                or not secrets.compare_digest(released_digest, lesson_digest(session["lesson"])):
+            raise HTTPException(423, "확정한 교수자료의 내용이 변경되었습니다.")
     elif state.get("released_lesson_digest") != lesson_digest(session["lesson"]):
         raise HTTPException(423, "교사가 수업자료를 검토하고 확정한 뒤 제공됩니다.")
 
@@ -561,6 +566,12 @@ def health():
 
 @classroom_tutor_router.get("/api/structured-materials/example")
 def material_example(_: None = Depends(require_owner)):
+    return example_bundle().model_dump()
+
+
+@teacher_classroom_router.get("/api/structured-materials/example")
+def teacher_material_example(_teacher: str = Depends(require_classroom_user)):
+    """Give a signed-in teacher the same editable example as the owner."""
     return example_bundle().model_dump()
 
 
@@ -760,7 +771,45 @@ def get_material_draft(session_id: str, teacher_token: str):
         return {"bundle": bundle.model_dump(), "digest": material["digest"],
                 "publication_issues": publication_issues(bundle),
                 "active_revision": state.get("active_material_revision"),
-                "preview_lesson": bundle_lesson(bundle) if not publication_issues(bundle) else []}
+                 "preview_lesson": bundle_lesson(bundle) if not publication_issues(bundle) else []}
+
+
+MEDIA_REPRESENTATION_KINDS = frozenset({"IMAGE", "VIDEO", "UPLOADED_AUDIO"})
+
+
+def _verified_material_media(
+    conn: sqlite3.Connection, session_id: str, asset_id: str, expected_sha256: str, expected_type: str,
+) -> tuple[str, bytes]:
+    """Bind a draft reference to this session's immutable uploaded file bytes."""
+    if not re.fullmatch(r"[0-9a-f]{32}", asset_id or "") or not re.fullmatch(
+        r"[0-9a-f]{64}", expected_sha256 or ""
+    ) or expected_type not in MEDIA_SIGNATURES:
+        raise HTTPException(423, "수업 매체의 식별값을 확인할 수 없습니다.")
+    item = conn.execute(
+        "SELECT asset_token,media_type,file_path,sha256,file_size FROM classroom_media "
+        "WHERE session_id=? AND asset_id=?", (session_id, asset_id),
+    ).fetchone()
+    if not item or item["media_type"] != expected_type or not secrets.compare_digest(
+        item["sha256"], expected_sha256
+    ):
+        raise HTTPException(423, "이 수업에 등록된 매체와 검토한 매체가 일치하지 않습니다.")
+    path = Path(item["file_path"])
+    expected_path = STATE_DIR / "classroom_media" / (asset_id + MEDIA_SIGNATURES[expected_type][1])
+    if path != expected_path or path.is_symlink() or path.parent.is_symlink() or STATE_DIR.is_symlink():
+        raise HTTPException(423, "매체 파일의 저장 경로가 안전하지 않습니다.")
+    if not isinstance(item["file_size"], int) or not 0 < item["file_size"] <= 8_000_000:
+        raise HTTPException(423, "매체 파일 크기를 확인할 수 없습니다.")
+    try:
+        with path.open("rb") as source:
+            data = source.read(8_000_001)
+    except OSError as exc:
+        raise HTTPException(423, "검토한 매체 파일을 읽을 수 없습니다.") from exc
+    if len(data) != item["file_size"] or not secrets.compare_digest(
+        hashlib.sha256(data).hexdigest(), expected_sha256
+    ):
+        raise HTTPException(423, "검토한 매체 파일이 변경되었습니다.")
+    url = f"/tutor/api/sessions/{session_id}/media/{asset_id}?asset_token={item['asset_token']}"
+    return url, data
 
 
 @classroom_tutor_router.post("/api/sessions/{session_id}/structured-materials/publish")
@@ -777,18 +826,33 @@ def publish_materials(session_id: str, req: MaterialPublication, teacher_token: 
         if not material or not secrets.compare_digest(material["digest"], req.expected_digest):
             raise HTTPException(409, "검토한 자료와 현재 자료가 다릅니다.")
         bundle = StructuredMaterialBundle.model_validate_json(material["bundle_json"])
-        issues = publication_issues(bundle)
-        if issues:
-            raise HTTPException(423, {"message": "자료 검증이 완료되지 않았습니다.", "issues": issues})
-        lesson = bundle_lesson(bundle)
+        media_urls = {}
+        for asset in bundle.representations:
+            if asset.kind in MEDIA_REPRESENTATION_KINDS:
+                media_urls[asset.asset_id] = _verified_material_media(
+                    conn, session_id, asset.media_asset_id or "", asset.media_sha256 or "",
+                    asset.media_type or "",
+                )[0]
+        try:
+            reviewed = issue_teacher_review_receipts(bundle)
+        except ValueError as exc:
+            raise HTTPException(423, {"message": "자료 검증이 완료되지 않았습니다.",
+                                      "issues": publication_issues(bundle)}) from exc
+        lesson = bundle_lesson(reviewed)
+        for step in lesson:
+            if step.get("media_asset_id"):
+                step["media_url"] = media_urls[step["segment_id"]]
+        reviewed_digest = bundle_digest(reviewed)
         state.update({"active_material_revision": req.revision_id, "playback": "PAUSED",
-                      "current_segment_id": lesson[0]["segment_id"], "last_command_at": now_iso()})
-        conn.execute("UPDATE material_revisions SET reviewed_at=? WHERE session_id=? AND revision_id=?",
-                     (now_iso(), session_id, req.revision_id))
+                      "current_segment_id": lesson[0]["segment_id"], "last_command_at": now_iso(),
+                      "released_lesson_digest": lesson_digest(lesson)})
+        conn.execute("UPDATE material_revisions SET bundle_json=?,digest=?,reviewed_at=? "
+                     "WHERE session_id=? AND revision_id=?",
+                     (reviewed.model_dump_json(), reviewed_digest, now_iso(), session_id, req.revision_id))
         conn.execute("UPDATE sessions SET state_json=?,lesson_json=?,updated_at=? WHERE session_id=?",
                      (json.dumps(state, ensure_ascii=False), json.dumps(lesson, ensure_ascii=False), now_iso(), session_id))
         emit(conn, session_id, "MATERIAL_PUBLISHED", {"revision_id": req.revision_id,
-             "digest": req.expected_digest, "review_basis": "TEACHER_ATTESTATION_AND_STRUCTURAL_CHECKS"})
+             "digest": reviewed_digest, "review_basis": "TEACHER_REVIEWED_MANIFEST_AND_FILES"})
     return {"ok": True, "active_revision": req.revision_id, "segment_count": len(lesson)}
 
 
@@ -866,6 +930,7 @@ def command(session_id: str, req: Command, teacher_token: str):
 
         if req.action == "PLAY":
             state["playback"] = "PLAYING"
+            state["play_command_revision"] = int(state.get("play_command_revision", 0)) + 1
         elif req.action == "PAUSE":
             state["playback"] = "PAUSED"
         elif req.action == "STOP":
@@ -1010,19 +1075,51 @@ def upload_classroom_media(session_id: str, req: MediaUpload, teacher_token: str
             "media_type": req.media_type, "sha256": hashlib.sha256(raw).hexdigest()}
 
 
+@classroom_tutor_router.get("/api/sessions/{session_id}/media-library")
+def classroom_media_library(session_id: str, teacher_token: str):
+    """Show a teacher the actual uploaded files for review before publication."""
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+        items = conn.execute(
+            "SELECT asset_id,sha256,media_type,file_size FROM classroom_media "
+            "WHERE session_id=? ORDER BY created_at,asset_id LIMIT 12", (session_id,),
+        ).fetchall()
+        assets = []
+        for item in items:
+            try:
+                url, _ = _verified_material_media(conn, session_id, item["asset_id"],
+                                                   item["sha256"], item["media_type"])
+            except HTTPException:
+                continue
+            assets.append({"asset_id": item["asset_id"], "sha256": item["sha256"],
+                           "media_type": item["media_type"], "file_size": item["file_size"],
+                           "media_url": url})
+    return {"assets": assets}
+
+
 @classroom_tutor_router.get("/api/sessions/{session_id}/media/{asset_id}")
-def read_classroom_media(session_id: str, asset_id: str, asset_token: str):
+def read_classroom_media(session_id: str, asset_id: str, asset_token: str,
+                         teacher_token: str | None = None):
     with db() as conn:
         item = conn.execute(
             "SELECT * FROM classroom_media WHERE session_id=? AND asset_id=?",
             (session_id, asset_id),
         ).fetchone()
-    if not item or not secrets.compare_digest(asset_token, item["asset_token"]):
-        raise HTTPException(403, "자료 접근 권한이 없습니다.")
-    path = Path(item["file_path"])
-    if not path.is_file():
-        raise HTTPException(404, "자료 파일을 찾을 수 없습니다.")
-    return FileResponse(path, media_type=item["media_type"], headers={
+        if not item or not secrets.compare_digest(asset_token, item["asset_token"]):
+            raise HTTPException(403, "자료 접근 권한이 없습니다.")
+        row = get_session_or_404(conn, session_id)
+        session = row_to_session(row)
+        if session["state"].get("structured_materials") and not (
+            teacher_token and secrets.compare_digest(teacher_token, row["teacher_token"])
+        ):
+            ensure_material_release(session)
+            if not any(step.get("media_asset_id") == asset_id for step in session["lesson"]):
+                raise HTTPException(423, "현재 공개된 교수자료에 포함되지 않은 매체입니다.")
+        _, data = _verified_material_media(
+            conn, session_id, asset_id, item["sha256"], item["media_type"],
+        )
+    return Response(content=data, media_type=item["media_type"], headers={
         "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
         "Content-Disposition": "inline",
     })
@@ -1386,18 +1483,61 @@ def board_html(
 ) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'><title>EduRecover Board</title><style>{COMMON_CSS}</style></head>
 <body><div class='top'><div><b>EduRecover 전자칠판</b> <span class='badge' id='conn'>연결중</span></div><div><span class='badge' id='mode'></span> <button class='btn' onclick='goFull()'>전체화면</button></div></div>
-<div class='grid'><main class='stage'><div class='card'><div class='muted' id='kind'></div><div class='big' id='title'>불러오는 중...</div><p id='text' style='font-size:clamp(18px,2.1vw,32px)'></p><div id='structure'></div><div id='media'></div><div id='choices'></div></div><div class='card' id='whiteWrap' style='display:none'><canvas id='whiteboard' class='board'></canvas></div></main>
+<div class='grid'><main class='stage'><div class='card'><div class='muted' id='kind'></div><div class='big' id='title'>불러오는 중...</div><p id='text' style='font-size:clamp(18px,2.1vw,32px)'></p><div id='structure'></div><div id='media'></div><p id='playbackHelp' class='muted' role='status'></p><button class='btn' id='boardPlayFallback' style='display:none' onclick='resumeBoardPlayback()'>이 화면에서 영상 재생</button><div id='choices'></div></div><div class='card' id='whiteWrap' style='display:none'><canvas id='whiteboard' class='board'></canvas></div></main>
 <aside class='side'><div class='card'><b>교사 제어</b><div class='controls'><button class='primary' onclick="cmd('PLAY')">재생/TTS</button><button onclick="cmd('PAUSE')">일시정지</button><button onclick="cmd('PREV')">이전</button><button onclick="cmd('NEXT')">다음</button><button onclick='toggleBoard()'>판서 전환</button><button class='danger' onclick="cmd('STOP')">전체중지</button><button onclick='clearSharedBoard()'>판서 지우기</button></div></div>
 <div class='card'><b>학생 참가</b><div id='qr' style='margin-top:10px'></div><div class='muted' id='joinText'></div></div>
 <div class='card'><b>응답 현황</b><div id='results'>아직 응답 없음</div></div>
 <div class='card'><b>장치 capability</b><pre id='caps' style='white-space:pre-wrap'></pre></div></aside></div>
 <script src='https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'></script><script>{COMMON_JS}{BOARD_SYNC_JS}
-const SID={json.dumps(session_id)}, TT={json.dumps(teacher_token)}, PFX={json.dumps(product_prefix)};let S=null,lastEvent=0,videoPausedOnce=false,lastRenderKey="",lastPlayback="";
-async function refresh(){{try{{S=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}&display_only=true`);q('#conn').textContent='연결됨';q('#mode').textContent=S.launch_mode+' / '+S.connection_method;let visible=S.state.board_mode==='WHITEBOARD';if(q('#whiteWrap').style.display!==(visible?'block':'none')){{q('#whiteWrap').style.display=visible?'block':'none';if(visible)sharedBoard.size();}}render();await loadResults();}}catch(e){{S=null;lastRenderKey='';lastPlayback='';if('speechSynthesis' in window)speechSynthesis.cancel();q('#vid')?.pause();q('#media').innerHTML='';q('#structure').innerHTML='';q('#choices').innerHTML='';q('#title').textContent='자료 제공 대기';q('#text').textContent='교사 검증 또는 연결 상태를 확인해 주세요.';q('#conn').textContent='대기';}}}}
+const SID={json.dumps(session_id)}, TT={json.dumps(teacher_token)}, PFX={json.dumps(product_prefix)};let S=null,lastEvent=0,videoPausedOnce=false,lastRenderKey="",lastPlayback="",lastPlayRevision=0;
+let youtubePlayer=null,youtubeReady=false,youtubeEpoch=0,youtubePauseTimer=null,youtubeApiPromise=null;
+function resetYouTube(){{youtubeEpoch++;if(youtubePauseTimer)clearInterval(youtubePauseTimer);youtubePauseTimer=null;
+ if(youtubePlayer){{try{{youtubePlayer.destroy();}}catch(e){{}}}}youtubePlayer=null;youtubeReady=false;}}
+function loadYouTubeApi(){{if(window.YT?.Player)return Promise.resolve(window.YT);
+ if(youtubeApiPromise)return youtubeApiPromise;
+ youtubeApiPromise=new Promise((resolve,reject)=>{{const previous=window.onYouTubeIframeAPIReady;
+   window.onYouTubeIframeAPIReady=()=>{{if(typeof previous==='function')previous();resolve(window.YT);}};
+   const script=document.createElement('script');script.src='https://www.youtube.com/iframe_api';
+   script.onerror=()=>{{youtubeApiPromise=null;reject(new Error('YouTube API unavailable'));}};
+   document.head.appendChild(script);}});return youtubeApiPromise;}}
+function playbackHelp(message,allowManual=false){{q('#playbackHelp').textContent=message;q('#boardPlayFallback').style.display=allowManual?'inline-block':'none';}}
+function resumeBoardPlayback(){{if(S?.state?.playback==='PLAYING'&&youtubeReady){{youtubePlayer.playVideo();playbackHelp('');}}}}
+function applyPlayback(){{let x=seg();if(!S||!x)return;let playing=S.state.playback==='PLAYING',v=q('#vid');
+ if(v){{if(playing)v.play().catch(()=>{{}});else v.pause();}}
+ else if(q('#youtubePlayer')){{if(!youtubeReady)return;
+   if(playing)youtubePlayer.playVideo();else if(S.state.playback==='STOPPED')youtubePlayer.stopVideo();else youtubePlayer.pauseVideo();
+   if(!playing)playbackHelp('');}}
+ else if(playing){{if(x.audio_text||x.text)speak(x.audio_text||x.text);}}
+ if(!playing&&'speechSynthesis' in window)speechSynthesis.cancel();}}
+function setupYouTubePlayer(embed,x){{let epoch=++youtubeEpoch,url=new URL(embed);
+ url.searchParams.set('enablejsapi','1');url.searchParams.set('origin',location.origin);
+ q('#media').innerHTML=`<iframe id='youtubePlayer' title='수업 영상' src="${{esc(url.toString())}}" style='width:100%;height:min(56vw,520px);border:0;border-radius:12px' allow='autoplay; encrypted-media; picture-in-picture' allowfullscreen></iframe>`;
+ loadYouTubeApi().then(YT=>{{if(epoch!==youtubeEpoch||!q('#youtubePlayer'))return;
+   youtubePlayer=new YT.Player(q('#youtubePlayer'),{{events:{{onReady:()=>{{if(epoch!==youtubeEpoch)return;youtubeReady=true;applyPlayback();
+     youtubePauseTimer=setInterval(()=>{{if(epoch!==youtubeEpoch||!youtubeReady||videoPausedOnce||
+       S?.state?.playback!=='PLAYING'||!x.pause_at_sec)return;
+       if(youtubePlayer.getCurrentTime()>=Number(x.pause_at_sec)){{videoPausedOnce=true;youtubePlayer.pauseVideo();
+         q('#choices').innerHTML=`<div class='card'><b>생각해 볼 질문</b><p>${{esc(x.text)}}</p></div>`;}}}},250);}},
+     onAutoplayBlocked:()=>{{if(epoch===youtubeEpoch&&S?.state?.playback==='PLAYING')
+       playbackHelp('브라우저가 자동 재생을 제한했습니다. 전자칠판에서 영상 재생을 눌러 주세요.',true);}}}}}});
+ }}).catch(()=>{{if(epoch!==youtubeEpoch)return;resetYouTube();q('#media').innerHTML='';
+   playbackHelp('YouTube 영상 제어를 불러오지 못했습니다. 연결을 확인해 주세요.');}});}}
+async function refresh(){{try{{S=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}&display_only=true`);q('#conn').textContent='연결됨';q('#mode').textContent=S.launch_mode+' / '+S.connection_method;let visible=S.state.board_mode==='WHITEBOARD';if(q('#whiteWrap').style.display!==(visible?'block':'none')){{q('#whiteWrap').style.display=visible?'block':'none';if(visible)sharedBoard.size();}}render();await loadResults();}}catch(e){{S=null;lastRenderKey='';lastPlayback='';lastPlayRevision=0;resetYouTube();playbackHelp('');if('speechSynthesis' in window)speechSynthesis.cancel();q('#vid')?.pause();q('#media').innerHTML='';q('#structure').innerHTML='';q('#choices').innerHTML='';q('#title').textContent='자료 제공 대기';q('#text').textContent='교사 검증 또는 연결 상태를 확인해 주세요.';q('#conn').textContent='대기';}}}}
 function seg(){{return (S?.lesson||[]).find(x=>x.segment_id===S?.state?.current_segment_id)||null}}
-function render(){{let x=seg();if(!x)return;let key=x.segment_id+':'+(x.structured_bundle_revision||'');let changed=key!==lastRenderKey;if(changed){{lastRenderKey=key;q('#structure').innerHTML=materialStructure(x);q('#kind').textContent=x.kind+(x.misconception_path?' · 오답원인: '+x.misconception_path:'');q('#title').textContent=x.title;q('#text').textContent=x.text||'';let m=q('#media');m.innerHTML='';videoPausedOnce=false;if(x.media_url){{let yt=youtubeEmbed(x.media_url);if(x.media_type?.startsWith('image/'))m.innerHTML=`<img alt='수업 자료' src="${{esc(x.media_url)}}" style='max-width:100%;max-height:55vh'>`;else if(x.media_type?.startsWith('audio/'))m.innerHTML=`<audio id='vid' controls src="${{esc(x.media_url)}}"></audio>`;else if(yt){{m.innerHTML=`<iframe title='수업 영상' src="${{esc(yt)}}" style='width:100%;height:min(56vw,520px);border:0;border-radius:12px' allow='autoplay; encrypted-media; picture-in-picture' allowfullscreen></iframe>`;}}else{{m.innerHTML=`<video id='vid' controls playsinline src="${{esc(x.media_url)}}"></video>`;}}let v=q('#vid');if(v&&x.pause_at_sec)v.addEventListener('timeupdate',()=>{{if(!videoPausedOnce&&v.currentTime>=x.pause_at_sec){{videoPausedOnce=true;v.pause();q('#choices').innerHTML=`<div class='card'><b>생각해 볼 질문</b><p>${{esc(x.text)}}</p></div>`;}}}});}}
+function render(){{let x=seg();if(!x)return;let key=x.segment_id+':'+(x.structured_bundle_revision||'');let changed=key!==lastRenderKey;
+ if(changed){{resetYouTube();playbackHelp('');lastRenderKey=key;q('#structure').innerHTML=materialStructure(x);
+ q('#kind').textContent=x.kind+(x.misconception_path?' · 오답원인: '+x.misconception_path:'');
+ q('#title').textContent=x.title;q('#text').textContent=x.text||'';let m=q('#media');m.innerHTML='';videoPausedOnce=false;
+ if(x.media_url){{let yt=youtubeEmbed(x.media_url);
+   if(x.media_type?.startsWith('image/'))m.innerHTML=`<img alt='수업 자료' src="${{esc(x.media_url)}}" style='max-width:100%;max-height:55vh'>`;
+   else if(x.media_type?.startsWith('audio/'))m.innerHTML=`<audio id='vid' controls src="${{esc(x.media_url)}}"></audio>`;
+   else if(yt)setupYouTubePlayer(yt,x);
+   else m.innerHTML=`<video id='vid' controls playsinline src="${{esc(x.media_url)}}"></video>`;
+   let v=q('#vid');if(v&&x.pause_at_sec)v.addEventListener('timeupdate',()=>{{if(!videoPausedOnce&&v.currentTime>=x.pause_at_sec){{videoPausedOnce=true;v.pause();q('#choices').innerHTML=`<div class='card'><b>생각해 볼 질문</b><p>${{esc(x.text)}}</p></div>`;}}}});}}
 let c=q('#choices');c.innerHTML='';if(['SOCRATIC','RETEST'].includes(x.kind)){{c.innerHTML=`<div class='muted'>학생은 자신의 기기에서 응답합니다.</div>`;}}
-}}if(changed||lastPlayback!==S.state.playback){{lastPlayback=S.state.playback;if(S.state.playback==='PLAYING'){{if(q('#vid'))q('#vid').play().catch(()=>{{}});else if(x.audio_text||x.text)speak(x.audio_text||x.text);}} else {{q('#vid')?.pause();if('speechSynthesis' in window)speechSynthesis.cancel();}}}}
+}}let playRevision=Number(S.state.play_command_revision||0);
+ if(changed||lastPlayback!==S.state.playback||playRevision!==lastPlayRevision){{
+   lastPlayback=S.state.playback;lastPlayRevision=playRevision;applyPlayback();}}
 }}
 async function cmd(a){{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action:a}})}});refresh();}}
 async function loadResults(){{let x=seg();if(!x)return;if(x.independent_followup){{q('#results').textContent='독립 응답 중에는 다른 학생의 답을 표시하지 않습니다.';return;}}let r=await api(`/tutor/api/sessions/${{SID}}/results?teacher_token=${{encodeURIComponent(TT)}}&segment_id=${{encodeURIComponent(x.segment_id)}}`);let total=(r.totals[0]?.n)||0;if(!total){{q('#results').textContent='아직 응답 없음';return;}}q('#results').innerHTML=r.counts.map(z=>`<div style='margin:8px 0'><div>${{esc(z.answer)}} · ${{z.n}}명</div><div class='bar'><i style='width:${{Math.round(z.n/total*100)}}%'></i></div></div>`).join('');}}
@@ -1440,6 +1580,7 @@ PRODUCT_HTML_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
 }
+BOARD_HTML_HEADERS = {**PRODUCT_HTML_HEADERS, "Referrer-Policy": "origin"}
 
 
 def teacher_product_html(session_id: str, teacher_token: str) -> str:
@@ -1483,7 +1624,7 @@ def board(session_id: str, teacher_token: str):
     with db() as conn:
         row = get_session_or_404(conn, session_id)
         require_teacher(row, teacher_token)
-    return HTMLResponse(board_html(session_id, teacher_token), headers=PRODUCT_HTML_HEADERS)
+    return HTMLResponse(board_html(session_id, teacher_token), headers=BOARD_HTML_HEADERS)
 
 
 @classroom_tutor_router.get("/teacher/{session_id}", response_class=HTMLResponse)
@@ -1510,7 +1651,7 @@ def teacher_product_board(session_id: str, teacher_token: str):
         require_teacher(row, teacher_token)
     return HTMLResponse(
         board_html(session_id, teacher_token, product_prefix="/classroom"),
-        headers=PRODUCT_HTML_HEADERS,
+        headers=BOARD_HTML_HEADERS,
     )
 
 
@@ -1521,7 +1662,7 @@ def teacher_product_console(session_id: str, teacher_token: str):
         require_teacher(row, teacher_token)
     return HTMLResponse(
         teacher_product_html(session_id, teacher_token),
-        headers=PRODUCT_HTML_HEADERS,
+        headers=BOARD_HTML_HEADERS,
     )
 
 
@@ -1598,6 +1739,10 @@ MATERIAL_EDITOR_HTML = """
 <p class='muted'>전체 학습지도, 성립조건, 그림·음성 설명, 연습문항을 함께 검토합니다. 초안은 학생에게 제공되지 않습니다.</p>
 <button class='btn' onclick='loadMaterialExample()'>절댓값·미분가능성 예시 불러오기</button>
 <div id='materialPreview'></div>
+<div class='card'><b>조건별 시청각 자료</b><p class='muted'>등록할 조건 장면을 고르고 이미지·음성·영상 파일을 넣습니다. 자료를 실제로 재생해 확인한 뒤 수업을 확정해 주세요.</p>
+<label>조건 장면<select id='materialScenario'></select></label>
+<label>파일(각 8MB 이하)<input id='materialFiles' type='file' multiple accept='image/png,image/jpeg,audio/mpeg,audio/wav,video/mp4,video/webm'></label>
+<button class='btn' onclick='attachMaterialMedia()'>파일을 선택한 장면에 등록</button><div id='materialMediaPreview'></div></div>
 <details><summary>자료와 조건 편집</summary><textarea id='materialJson' rows='18' aria-label='교수자료 편집'></textarea></details>
 <button class='btn' onclick='createMaterialDraft()'>초안 저장·검토</button>
 <button class='btn primary' id='publishMaterial' onclick='reviewAndPublishMaterial()' disabled>내용 검토 완료·수업 확정</button>
@@ -1605,17 +1750,62 @@ MATERIAL_EDITOR_HTML = """
 """
 
 MATERIAL_EDITOR_SCRIPT = r"""
-let materialSession=null;
+let materialSession=null,materialPreviewedSignature='';
 function materialPreview(b){
  q('#materialPreview').innerHTML=materialStructure({learning_map:b.concepts,logic_links:b.links})+
- b.scenarios.map(s=>{const assets=b.representations.filter(x=>x.scenario_id===s.scenario_id);return `<article class='card'><h3>${esc(s.label)}</h3>${materialStructure({kind:'DEMONSTRATE',conditions:s.conditions})}${assets.map(a=>`<p><b>${esc(({SCENE:'설명 장면',AUDIO:'음성 원고',QUESTION:'연습문항',ANSWER:'정답'})[a.kind])}</b> ${esc(a.content)}</p>`).join('')}</article>`;}).join('')+
+ b.scenarios.map(s=>{const assets=b.representations.filter(x=>x.scenario_id===s.scenario_id);return `<article class='card'><h3>${esc(s.label)}</h3>${materialStructure({kind:'DEMONSTRATE',conditions:s.conditions})}${assets.map(a=>`<p><b>${esc(({SCENE:'설명 장면',AUDIO:'음성 원고',QUESTION:'연습문항',ANSWER:'정답',IMAGE:'그림',VIDEO:'영상',UPLOADED_AUDIO:'음성 파일',CAPTION:'자막'})[a.kind]||a.kind)}</b> ${esc(a.content)}</p>`).join('')}</article>`;}).join('')+
  `<div class='card'><b>논리 연결 검증 기록</b>${b.validations.map(v=>`<p>${esc(v.scenario_id)} / ${esc(v.link_id)}: ${esc(v.evidence)} <span class='muted'>${esc(v.status)}</span></p>`).join('')}</div>`+
  (b.independent_assessment?`<p><b>별도 독립문항</b> ${esc(b.independent_assessment.question)} / 정답 ${esc(b.independent_assessment.correct_answer)}</p>`:'');
+ const scenarioSelect=q('#materialScenario'),current=scenarioSelect.value;
+ scenarioSelect.innerHTML=b.scenarios.map(s=>`<option value="${esc(s.scenario_id)}">${esc(s.label)}</option>`).join('');
+ if(b.scenarios.some(s=>s.scenario_id===current))scenarioSelect.value=current;
 }
 async function loadMaterialExample(){try{const b=await api('/tutor/api/structured-materials/example');q('#materialJson').value=JSON.stringify(b,null,2);materialPreview(b);q('#materialMessage').textContent='예시 초안입니다. 조건과 풀이 근거를 확인해 주세요.';}catch(e){q('#materialMessage').textContent=e.message;}}
+async function ensureMaterialSession(){
+ if(!materialSession)materialSession=await api('/tutor/api/sessions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:q('#title').value,room_alias:q('#room').value,launch_mode:q('#launch').value,connection_method:q('#conn').value})});
+ return materialSession;
+}
+async function showMaterialMediaPreviews(b){
+ const refs=b.representations.filter(a=>['IMAGE','VIDEO','UPLOADED_AUDIO'].includes(a.kind));
+ if(!refs.length){q('#materialMediaPreview').textContent='연결된 파일이 없습니다.';materialPreviewedSignature=JSON.stringify(b);return;}
+ if(!materialSession)throw new Error('수업을 먼저 만든 뒤 매체를 검토해 주세요.');
+ const library=await api(`/tutor/api/sessions/${materialSession.session_id}/media-library?teacher_token=${encodeURIComponent(materialSession.teacher_token)}`);
+ const byId=new Map(library.assets.map(a=>[a.asset_id,a]));
+ let html='';for(const ref of refs){const file=byId.get(ref.media_asset_id);
+  if(!file||file.sha256!==ref.media_sha256||file.media_type!==ref.media_type)throw new Error(ref.content+' 자료 원본이 없거나 변경되었습니다.');
+  const url=esc(file.media_url),label=esc(ref.content);
+  html+=`<div class='card'><b>${label}</b><p class='muted'>${esc(ref.media_type)} · ${file.file_size}바이트</p>`+
+    (ref.kind==='IMAGE'?`<img alt='${label}' src='${url}' style='max-width:100%;max-height:300px'>`:ref.kind==='VIDEO'?`<video controls playsinline preload='metadata' src='${url}' style='max-width:100%'></video>`:`<audio controls src='${url}'></audio>`)+`</div>`;
+ }
+ q('#materialMediaPreview').innerHTML=html;materialPreviewedSignature=JSON.stringify(b);
+}
+async function attachMaterialMedia(){try{
+ const b=JSON.parse(q('#materialJson').value),files=Array.from(q('#materialFiles').files||[]);
+ if(!files.length)throw new Error('자료 파일을 선택해 주세요.');
+ const scenario=b.scenarios.find(s=>s.scenario_id===q('#materialScenario').value);
+ if(!scenario||!b.links.length)throw new Error('조건 장면과 논리 연결을 먼저 확인해 주세요.');
+ await ensureMaterialSession();const generation='gen-'+crypto.randomUUID();scenario.generation_id=generation;
+ for(const a of b.representations)if(a.scenario_id===scenario.scenario_id)a.generation_id=generation;
+ for(const v of b.validations)if(v.scenario_id===scenario.scenario_id){v.status='PENDING';v.generation_id='';v.manifest_digest='';}
+ b.revision_id='revision-'+crypto.randomUUID();
+ for(const file of files){
+  if(file.size>8000000)throw new Error(file.name+' 파일이 8MB를 넘습니다.');
+  const kind=file.type.startsWith('image/')?'IMAGE':file.type.startsWith('video/')?'VIDEO':file.type.startsWith('audio/')?'UPLOADED_AUDIO':null;
+  if(!kind)throw new Error(file.name+' 파일 형식을 사용할 수 없습니다.');
+  const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+  const uploaded=await api(`/tutor/api/sessions/${materialSession.session_id}/media?teacher_token=${encodeURIComponent(materialSession.teacher_token)}`,
+    {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({media_type:file.type,data_base64:btoa(binary)})});
+  const id=new URL(uploaded.media_url,location.origin).pathname.split('/').pop();
+  b.representations.push({asset_id:'media-'+crypto.randomUUID(),kind,scenario_id:scenario.scenario_id,
+    condition_revision_id:scenario.condition_revision_id,generation_id:generation,depends_on:[b.links[0].link_id],
+    content:file.name.slice(0,100),choices:[],media_asset_id:id,media_sha256:uploaded.sha256,media_type:uploaded.media_type});
+ }
+ q('#materialJson').value=JSON.stringify(b,null,2);materialPreview(b);await showMaterialMediaPreviews(b);
+ q('#materialMessage').textContent='자료를 등록했습니다. 파일을 재생·확인한 뒤 초안을 저장해 주세요.';
+ }catch(e){q('#materialMessage').textContent=e.message;}}
 async function createMaterialDraft(){try{
  const b=JSON.parse(q('#materialJson').value);materialPreview(b);
- if(!materialSession)materialSession=await api('/tutor/api/sessions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:q('#title').value,room_alias:q('#room').value,launch_mode:q('#launch').value,connection_method:q('#conn').value})});
+ await ensureMaterialSession();
  const base=`/tutor/api/sessions/${materialSession.session_id}/structured-materials?teacher_token=${encodeURIComponent(materialSession.teacher_token)}`;
  const r=await api(base,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(b)});
  q('#publishMaterial').disabled=false;q('#materialMessage').textContent=`초안을 저장했습니다. 검토 항목 ${r.publication_issues.length}개. 학생 제공은 대기 상태입니다.`;
@@ -1623,12 +1813,17 @@ async function createMaterialDraft(){try{
 async function reviewAndPublishMaterial(){try{
  if(!materialSession)return;
  const b=JSON.parse(q('#materialJson').value);materialPreview(b);
- if(!confirm('모든 조건·추론·그림·음성 원고·문항·정답과 검증 근거를 직접 확인했습니까? 이 확인은 교사의 내용 검토 기록으로 남습니다.'))return;
- b.validations=b.validations.map(v=>({...v,status:'PASSED'}));b.revision_id=b.revision_id+'-review-'+Date.now();
+ if(b.representations.some(a=>['IMAGE','VIDEO','UPLOADED_AUDIO'].includes(a.kind))&&
+    materialPreviewedSignature!==JSON.stringify(b)){
+   await showMaterialMediaPreviews(b);
+   q('#materialMessage').textContent='아래 자료의 그림·영상·음성을 실제로 확인한 뒤 확정 버튼을 다시 눌러 주세요.';return;
+ }
+  if(!confirm('모든 조건·추론·그림·음성 원고·문항·정답과 검증 근거를 직접 확인했습니까? 확인 후 서버가 자료 세대와 내용 묶음에 결속한 교사 확인 기록을 생성합니다.'))return;
+  b.revision_id=b.revision_id+'-review-'+Date.now();
  const base=`/tutor/api/sessions/${materialSession.session_id}/structured-materials`,query=`?teacher_token=${encodeURIComponent(materialSession.teacher_token)}`;
  const draft=await api(base+query,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(b)});q('#materialJson').value=JSON.stringify(b,null,2);
  await api(base+'/publish'+query,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revision_id:b.revision_id,expected_digest:draft.digest,teacher_verified_content:true})});
- q('#materialMessage').innerHTML=`<p>검토한 자료 묶음이 확정되었습니다.</p><a class='btn primary' target='_blank' href='${esc(materialSession.board_url)}'>전자칠판 열기</a> <a class='btn' target='_blank' href='${esc(materialSession.teacher_url)}'>교사 콘솔</a> <a class='btn' target='_blank' href='${esc(materialSession.join_url)}'>학생 참가</a>`;
+  q('#materialMessage').innerHTML=`<p>교사가 확인한 자료 묶음의 구조와 세대가 검증되어 확정되었습니다. 내용의 정확성은 교사가 직접 확인한 범위입니다.</p><a class='btn primary' target='_blank' href='${esc(materialSession.board_url)}'>전자칠판 열기</a> <a class='btn' target='_blank' href='${esc(materialSession.teacher_url)}'>교사 콘솔</a> <a class='btn' target='_blank' href='${esc(materialSession.join_url)}'>학생 참가</a>`;
  }catch(e){q('#materialMessage').textContent=e.message;}}
 """
 
@@ -1646,6 +1841,8 @@ TEACHER_PRODUCT_HOME_HTML = (
     .replace("OWNER:CURRENT_LESSON", "TEACHER_PRODUCT:CURRENT_LESSON")
     .replace("owner-current", "teacher-product-current")
     .replace("api('/tutor/api/sessions'", "api('/classroom/api/sessions'")
+    .replace("api('/tutor/api/structured-materials/example')",
+             "api('/classroom/api/structured-materials/example')")
     .replace("운영 플랫폼으로</a>", "내 수업으로</a>")
     .replace("href='/owner'", "href='/classroom/sessions'")
 )

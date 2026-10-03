@@ -18,14 +18,12 @@ from app.classroom_tutor import (
 )
 from app.services.structured_materials import (
     example_bundle, publication_issues, affected_assets, bundle_lesson,
+    issue_teacher_review_receipts, scenario_manifest_digest, Representation,
 )
 
 
 def reviewed_example():
-    bundle = example_bundle()
-    for check in bundle.validations:
-        check.status = "PASSED"
-    return bundle
+    return issue_teacher_review_receipts(example_bundle())
 
 
 class StructuredMaterialTests(unittest.TestCase):
@@ -44,6 +42,93 @@ class StructuredMaterialTests(unittest.TestCase):
         issues = publication_issues(bundle)
         self.assertTrue(any(x.startswith("STALE_ASSET_CONDITION") for x in issues))
         self.assertTrue(any(x.startswith("LINK_NOT_VERIFIED") for x in issues))
+
+    def test_receipts_bind_current_generation_and_every_representation(self):
+        previous = reviewed_example()
+        self.assertEqual(publication_issues(previous), [])
+        scenario = previous.scenarios[0]
+        digest = scenario_manifest_digest(previous, scenario.scenario_id)
+        self.assertTrue(all(v.manifest_digest == digest for v in previous.validations
+                            if v.scenario_id == scenario.scenario_id))
+        stale = previous.model_copy(deep=True)
+        stale.representations[0].content = "검토 이후 바뀐 장면"
+        self.assertIn("STALE_VALIDATION_MANIFEST:linear:l0", publication_issues(stale))
+        with self.assertRaises(ValueError):
+            bundle_lesson(stale)
+        stale = previous.model_copy(deep=True)
+        stale.representations[1].generation_id = "old"
+        self.assertIn("STALE_ASSET_GENERATION:linear-audio", publication_issues(stale))
+        stale = previous.model_copy(deep=True)
+        stale.scenarios[0].generation_id = "linear-g2"
+        self.assertIn("STALE_VALIDATION_MANIFEST:linear:l0", publication_issues(stale))
+
+    def test_optional_media_is_in_reviewed_manifest(self):
+        draft = example_bundle()
+        draft.representations.append(Representation(
+            asset_id="linear-image", kind="IMAGE", scenario_id="linear",
+            condition_revision_id="linear-c1", generation_id="linear-g1",
+            depends_on=["l1"], content="검토된 함수 그림",
+            media_asset_id="a" * 32, media_sha256="b" * 64, media_type="image/png"))
+        reviewed = issue_teacher_review_receipts(draft)
+        self.assertEqual(publication_issues(reviewed), [])
+        lesson = bundle_lesson(reviewed)
+        scene = next(x for x in lesson if x["segment_id"] == "linear-scene")
+        image = next(x for x in lesson if x["segment_id"] == "linear-image")
+        self.assertEqual(scene["manifest_digest"], image["manifest_digest"])
+        self.assertEqual(image["media_asset_id"], "a" * 32)
+        self.assertNotIn("media_url", image)
+        reviewed.representations[-1].content = "substituted-image-ref"
+        self.assertIn("STALE_VALIDATION_MANIFEST:linear:l0", publication_issues(reviewed))
+
+    def test_media_reference_must_be_valid_and_has_no_untrusted_url(self):
+        draft = example_bundle()
+        asset = Representation(asset_id="linear-video", kind="VIDEO", scenario_id="linear",
+            condition_revision_id="linear-c1", generation_id="linear-g1",
+            depends_on=["l1"], content="검토 영상")
+        draft.representations.append(asset)
+        self.assertIn("MEDIA_REFERENCE_INCOMPLETE:linear-video", publication_issues(draft))
+        with self.assertRaises(ValueError):
+            issue_teacher_review_receipts(draft)
+        asset.media_asset_id, asset.media_sha256, asset.media_type = "a"*32, "b"*64, "image/png"
+        self.assertIn("MEDIA_REFERENCE_INCOMPLETE:linear-video", publication_issues(draft))
+
+    def test_stamping_requires_reviewable_evidence_and_generation(self):
+        draft = example_bundle()
+        draft.validations[0].evidence = ""
+        with self.assertRaisesRegex(ValueError, "LINK_NOT_VERIFIED"):
+            issue_teacher_review_receipts(draft)
+        draft = example_bundle()
+        draft.scenarios[0].generation_id = ""
+        with self.assertRaisesRegex(ValueError, "OUTPUT_GENERATION_INCOMPLETE"):
+            issue_teacher_review_receipts(draft)
+
+    def test_known_failed_or_undetermined_checks_cannot_be_attested_away(self):
+        failed = example_bundle()
+        failed.validations[0].status = "FAILED"
+        with self.assertRaisesRegex(ValueError, "Failed or undetermined"):
+            issue_teacher_review_receipts(failed)
+        undetermined = example_bundle()
+        undetermined.validations[0].proposition_result = "UNDETERMINED"
+        with self.assertRaisesRegex(ValueError, "Failed or undetermined"):
+            issue_teacher_review_receipts(undetermined)
+
+    def test_stale_passed_receipt_requires_explicit_new_review(self):
+        previous = reviewed_example()
+        changed = previous.model_copy(deep=True)
+        changed.representations[0].content = "정정한 설명"
+        changed.scenarios[0].generation_id = "linear-g2"
+        for asset in changed.representations:
+            if asset.scenario_id == "linear":
+                asset.generation_id = "linear-g2"
+        with self.assertRaisesRegex(ValueError, "Stale passed review"):
+            issue_teacher_review_receipts(changed)
+        for check in changed.validations:
+            check.status = "PENDING"
+        renewed = issue_teacher_review_receipts(changed)
+        self.assertEqual(publication_issues(renewed), [])
+        self.assertNotEqual(
+            scenario_manifest_digest(previous, "linear"),
+            scenario_manifest_digest(renewed, "linear"))
 
     def test_declared_changed_conditions_must_match_actual_pair(self):
         bundle = reviewed_example()
@@ -103,13 +188,16 @@ class MaterialPublicationApiTests(unittest.TestCase):
         return self.client.post(self.base + "/structured-materials/publish", params=self.teacher, json={
             "revision_id": bundle.revision_id, "expected_digest": saved["digest"], "teacher_verified_content": True})
 
-    def test_pending_material_blocks_student_display_commands_and_publish(self):
+    def test_pending_material_blocks_display_until_explicit_teacher_review(self):
         bundle = example_bundle()
         saved = self.save(bundle)
         self.assertEqual(self.client.get(self.base, params=self.student).status_code, 423)
         self.assertEqual(self.client.get(self.base, params={**self.teacher, "display_only": True}).status_code, 423)
         self.assertEqual(self.client.post(self.base + "/command", params=self.teacher, json={"action": "PLAY"}).status_code, 423)
-        self.assertEqual(self.publish(bundle, saved).status_code, 423)
+        # A teacher's authenticated, exact-digest acknowledgement creates the
+        # current manifest receipt; PENDING is not a permanent rejection.
+        self.assertEqual(self.publish(bundle, saved).status_code, 200)
+        self.assertEqual(self.client.get(self.base, params=self.student).status_code, 200)
         self.assertEqual(self.client.get(self.base, params=self.teacher).status_code, 200)
 
     def test_complete_release_hides_future_questions_and_edit_withdraws_it(self):
