@@ -53,6 +53,8 @@ class TeachingAsset(PathModel):
     content: str = Field(default="", max_length=12000)
     media_id: str | None = Field(default=None, max_length=100)
     question_role: Literal["PRACTICE", "TRANSFER"] | None = None
+    choices: list[str] = Field(default_factory=list, max_length=20)
+    correct_answer: str | None = Field(default=None, max_length=500)
 
 
 class LearningPath(PathModel):
@@ -176,7 +178,7 @@ def _structure_issues(path: LearningPath) -> list[str]:
             issues.append(f"STALE_TRANSITION_VALIDATION:{transition.transition_id}")
 
     for asset in path.assets:
-        if len(asset.depends_on) != len(set(asset.depends_on)) or not set(asset.depends_on) <= transitions.keys():
+        if not asset.depends_on or len(asset.depends_on) != len(set(asset.depends_on)) or not set(asset.depends_on) <= transitions.keys():
             issues.append(f"UNKNOWN_ASSET_DEPENDENCY:{asset.asset_id}")
             continue
         keys = set().union(*(transition_keys[tid] for tid in asset.depends_on))
@@ -190,6 +192,15 @@ def _structure_issues(path: LearningPath) -> list[str]:
             issues.append(f"QUESTION_ROLE_REQUIRED:{asset.asset_id}")
         elif asset.kind != "QUESTION" and asset.question_role is not None:
             issues.append(f"INVALID_QUESTION_ROLE:{asset.asset_id}")
+        if asset.kind == "QUESTION" and (len(asset.choices) < 2 or len(set(asset.choices)) != len(asset.choices)
+                                         or asset.correct_answer not in asset.choices):
+            issues.append(f"INVALID_QUESTION_OPTIONS:{asset.asset_id}")
+        elif asset.kind != "QUESTION" and (asset.choices or asset.correct_answer is not None):
+            issues.append(f"INVALID_NONQUESTION_OPTIONS:{asset.asset_id}")
+        if asset.media_id and asset.kind not in {"IMAGE", "VIDEO", "AUDIO"}:
+            issues.append(f"INVALID_MEDIA_KIND:{asset.asset_id}")
+        if asset.kind in {"IMAGE", "VIDEO"} and not asset.media_id:
+            issues.append(f"MEDIA_REQUIRED:{asset.asset_id}")
     if not any(a.kind in {"SCENE", "IMAGE", "VIDEO"} for a in path.assets):
         issues.append("NO_VISUAL_SCENE")
     if not any(a.kind == "QUESTION" and a.question_role == "TRANSFER" for a in path.assets):
@@ -227,6 +238,94 @@ def learning_map(path: LearningPath) -> dict:
         } for t in path.transitions],
         "issues": _structure_issues(path),
     }
+
+
+def example_learning_path() -> LearningPath:
+    """An editable example; teacher must check the mathematics and evidence."""
+    return LearningPath(
+        revision_id="path-example-1", goal_id="goal", current_node_id="basic",
+        conditions={"point": "x=0", "domain": "real"},
+        nodes=[
+            PathNode(node_id="basic", label="좌우 미분계수", stage="BASIC"),
+            PathNode(node_id="compare", label="좌우 극한 비교", stage="CONNECTION", prerequisite_ids=["basic"]),
+            PathNode(node_id="goal", label="절댓값 함수의 미분가능성 판단", stage="GOAL", prerequisite_ids=["compare"]),
+        ],
+        transitions=[
+            ReasoningTransition(transition_id="left-right", from_node="basic", to_node="compare",
+                premise="x=0에서 좌우 차분몫을 각각 계산한다", condition_keys=["point"],
+                rule="좌우 극한이 같을 때만 미분가능성을 인정한다", conclusion="|x|는 0에서 미분불가능하다",
+                evidence_ref="교사가 좌우 차분몫을 직접 확인", exception="함수식이 달라지면 재계산",
+                validation_snapshot={"point": "x=0"}, validation_status="PASSED", proposition_result="TRUE"),
+            ReasoningTransition(transition_id="counterexample", from_node="compare", to_node="goal",
+                premise="|x³|의 좌우 차분몫은 모두 0이다", condition_keys=["domain"],
+                rule="절댓값 기호만으로 미분불가능성을 단정할 수 없다", conclusion="함수마다 성립조건을 검사한다",
+                evidence_ref="교사가 |x³|의 0에서 차분몫을 직접 확인", exception="정의역이 달라지면 별도 판정",
+                validation_snapshot={"point": "x=0", "domain": "real"},
+                validation_status="PASSED", proposition_result="TRUE"),
+        ],
+        assets=[
+            TeachingAsset(asset_id="scene", kind="SCENE", depends_on=["left-right"],
+                condition_snapshot={"point": "x=0"}, content="좌우 차분몫을 각각 표시하고 비교합니다."),
+            TeachingAsset(asset_id="practice", kind="QUESTION", depends_on=["left-right"],
+                condition_snapshot={"point": "x=0"}, content="|x|는 x=0에서 미분가능한가요?",
+                question_role="PRACTICE", choices=["가능", "불가능"], correct_answer="불가능"),
+            TeachingAsset(asset_id="transfer", kind="QUESTION", depends_on=["counterexample"],
+                condition_snapshot={"point": "x=0", "domain": "real"}, content="|x³|는 x=0에서 미분가능한가요?",
+                question_role="TRANSFER", choices=["가능", "불가능"], correct_answer="가능"),
+            TeachingAsset(asset_id="answer", kind="ANSWER", depends_on=["counterexample"],
+                condition_snapshot={"point": "x=0", "domain": "real"},
+                content="|x³|의 차분몫은 좌우 모두 0으로 수렴합니다."),
+        ],
+    )
+
+
+def path_lesson(path: LearningPath, *, media_urls: dict[str, str] | None = None,
+                media_types: dict[str, str] | None = None,
+                media_hashes: dict[str, str] | None = None) -> list[dict]:
+    """Project a *published* path onto ordered whiteboard stages.
+
+    The caller must run publication_issues and check each media ID against its
+    own session, type and stored bytes before exposing these stages.
+    """
+    media_urls = media_urls or {}
+    media_types = media_types or {}
+    media_hashes = media_hashes or {}
+    node_names = {node.node_id: node.label for node in path.nodes}
+    dependency = {t.transition_id: t for t in path.transitions}
+    common = {"learning_path_revision": path.revision_id,
+              "concept_key": f"LEARNING_PATH:{path.revision_id}",
+              "source_integrity_verified": False}
+    lesson = [{**common, "segment_id": "path-map", "kind": "MAP", "title": "학습 전체 지도",
+               "text": "목표: " + node_names[path.goal_id] + "\n" + " → ".join(
+                   node_names[t.from_node] + " → " + node_names[t.to_node] for t in path.transitions)}]
+    for t in path.transitions:
+        lesson.append({**common, "segment_id": "path-link:" + t.transition_id, "kind": "COMPARE",
+                       "title": node_names[t.from_node] + " → " + node_names[t.to_node],
+                       "text": "전제: " + t.premise + "\n규칙: " + t.rule + "\n결론: " + t.conclusion +
+                               ("\n예외: " + t.exception if t.exception else ""),
+                       "content_revision_id": path.revision_id + ":" + t.transition_id,
+                       "condition_snapshot": t.validation_snapshot})
+        for asset in path.assets:
+            if t.transition_id != asset.depends_on[-1]:
+                continue
+            item = {**common, "segment_id": "path-asset:" + asset.asset_id,
+                    "title": asset.content[:100] or asset.kind,
+                    "text": asset.content, "condition_snapshot": asset.condition_snapshot,
+                    "content_revision_id": path.revision_id + ":" + asset.asset_id}
+            if asset.kind == "QUESTION":
+                item.update(kind="RETEST", choices=asset.choices, correct_answer=asset.correct_answer,
+                            independent_followup=asset.question_role == "TRANSFER",
+                            hint_level=0 if asset.question_role == "TRANSFER" else 1,
+                            feedback_phase="PRE_FEEDBACK" if asset.question_role == "TRANSFER" else "POST_FEEDBACK")
+            else:
+                item["kind"] = "VIDEO" if asset.kind in {"VIDEO", "AUDIO"} else "DEMONSTRATE"
+            if asset.media_id:
+                item["media_asset_id"] = asset.media_id
+                item["media_url"] = media_urls[asset.asset_id]
+                item["media_type"] = media_types[asset.asset_id]
+                item["media_sha256"] = media_hashes[asset.asset_id]
+            lesson.append(item)
+    return lesson
 
 
 def affected_assets(previous: LearningPath, updated: LearningPath) -> list[str]:
