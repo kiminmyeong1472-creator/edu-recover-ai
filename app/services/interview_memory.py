@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 import redis.asyncio as redis
+from redis.exceptions import LockError
 
 from app.core.config import settings
 
@@ -90,5 +91,5 @@ async def context_lock(
     finally:
         try:
             await lock.release()
-        except redis.exceptions.LockError:
+        except LockError:
             pass
