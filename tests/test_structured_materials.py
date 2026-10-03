@@ -188,13 +188,16 @@ class MaterialPublicationApiTests(unittest.TestCase):
         return self.client.post(self.base + "/structured-materials/publish", params=self.teacher, json={
             "revision_id": bundle.revision_id, "expected_digest": saved["digest"], "teacher_verified_content": True})
 
-    def test_pending_material_blocks_student_display_commands_and_publish(self):
+    def test_pending_material_blocks_display_until_explicit_teacher_review(self):
         bundle = example_bundle()
         saved = self.save(bundle)
         self.assertEqual(self.client.get(self.base, params=self.student).status_code, 423)
         self.assertEqual(self.client.get(self.base, params={**self.teacher, "display_only": True}).status_code, 423)
         self.assertEqual(self.client.post(self.base + "/command", params=self.teacher, json={"action": "PLAY"}).status_code, 423)
-        self.assertEqual(self.publish(bundle, saved).status_code, 423)
+        # A teacher's authenticated, exact-digest acknowledgement creates the
+        # current manifest receipt; PENDING is not a permanent rejection.
+        self.assertEqual(self.publish(bundle, saved).status_code, 200)
+        self.assertEqual(self.client.get(self.base, params=self.student).status_code, 200)
         self.assertEqual(self.client.get(self.base, params=self.teacher).status_code, 200)
 
     def test_complete_release_hides_future_questions_and_edit_withdraws_it(self):
