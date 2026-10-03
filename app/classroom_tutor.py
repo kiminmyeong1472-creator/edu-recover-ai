@@ -1662,7 +1662,7 @@ def teacher_product_console(session_id: str, teacher_token: str):
         require_teacher(row, teacher_token)
     return HTMLResponse(
         teacher_product_html(session_id, teacher_token),
-        headers=PRODUCT_HTML_HEADERS,
+        headers=BOARD_HTML_HEADERS,
     )
 
 
