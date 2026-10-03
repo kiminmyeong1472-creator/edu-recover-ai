@@ -42,6 +42,41 @@ class Settings(BaseSettings):
         validation_alias="GEMINI_THINKING_LEVEL",
     )
 
+    redis_url: SecretStr | None = Field(
+        default=None,
+        validation_alias="REDIS_URL",
+    )
+    interview_context_ttl_seconds: int = Field(
+        default=7200,
+        validation_alias="INTERVIEW_CONTEXT_TTL_SECONDS",
+        ge=300,
+        le=86400,
+    )
+    interview_context_max_messages: int = Field(
+        default=24,
+        validation_alias="INTERVIEW_CONTEXT_MAX_MESSAGES",
+        ge=4,
+        le=100,
+    )
+    interview_lock_seconds: int = Field(
+        default=45,
+        validation_alias="INTERVIEW_LOCK_SECONDS",
+        ge=10,
+        le=120,
+    )
+    interview_lock_wait_seconds: int = Field(
+        default=5,
+        validation_alias="INTERVIEW_LOCK_WAIT_SECONDS",
+        ge=1,
+        le=30,
+    )
+    interview_llm_concurrency: int = Field(
+        default=20,
+        validation_alias="INTERVIEW_LLM_CONCURRENCY",
+        ge=1,
+        le=200,
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
