@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,6 +40,8 @@ class Scenario(MaterialModel):
     label: str = Field(min_length=1, max_length=500)
     condition_revision_id: str = Field(min_length=1, max_length=100)
     conditions: dict[str, str] = Field(min_length=1, max_length=30)
+    # Optional while reading older drafts; publication requires a bound generation.
+    generation_id: str = Field(default="", max_length=100)
 
 
 class ComparisonPair(MaterialModel):
@@ -49,12 +52,18 @@ class ComparisonPair(MaterialModel):
 
 class Representation(MaterialModel):
     asset_id: str = Field(min_length=1, max_length=100)
-    kind: Literal["SCENE", "AUDIO", "QUESTION", "ANSWER"]
+    kind: Literal["SCENE", "AUDIO", "QUESTION", "ANSWER", "IMAGE", "VIDEO", "UPLOADED_AUDIO", "CAPTION"]
     scenario_id: str
     condition_revision_id: str
+    generation_id: str = Field(default="", max_length=100)
     depends_on: list[str] = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1, max_length=12000)
     choices: list[str] = Field(default_factory=list, max_length=20)
+    # References only: the authenticated publication route checks the uploaded
+    # file against this identity and supplies the access URL from its own DB.
+    media_asset_id: str | None = None
+    media_sha256: str | None = None
+    media_type: str | None = None
 
 
 class LinkValidation(MaterialModel):
@@ -64,6 +73,9 @@ class LinkValidation(MaterialModel):
     status: Literal["PENDING", "PASSED", "FAILED"] = "PENDING"
     proposition_result: Literal["TRUE", "FALSE", "UNDETERMINED"] = "UNDETERMINED"
     evidence: str = Field(default="", max_length=5000)
+    generation_id: str = Field(default="", max_length=100)
+    manifest_digest: str = Field(default="", max_length=64)
+    validation_basis: Literal["TEACHER_REVIEWED"] = "TEACHER_REVIEWED"
 
 
 class IndependentAssessment(MaterialModel):
@@ -91,6 +103,62 @@ def bundle_digest(bundle: StructuredMaterialBundle) -> str:
     return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
+def scenario_manifest_digest(bundle: StructuredMaterialBundle, scenario_id: str) -> str:
+    """Fingerprint the actual output context, including every optional representation.
+
+    This proves byte-level equality to the reviewed snapshot, not that a diagram,
+    explanation or mathematical proposition is true.
+    """
+    scenario = next((x for x in bundle.scenarios if x.scenario_id == scenario_id), None)
+    if scenario is None:
+        raise ValueError("Unknown scenario")
+    manifest = {
+        "target": bundle.target,
+        "concepts": [x.model_dump() for x in bundle.concepts],
+        "links": [x.model_dump() for x in bundle.links],
+        "scenario": scenario.model_dump(),
+        "representations": [x.model_dump() for x in sorted(
+            (a for a in bundle.representations if a.scenario_id == scenario_id),
+            key=lambda a: (a.kind, a.asset_id))],
+        "comparisons": [x.model_dump() for x in bundle.comparisons],
+        "independent_assessment": (bundle.independent_assessment.model_dump()
+                                   if bundle.independent_assessment else None),
+    }
+    payload = json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def issue_teacher_review_receipts(bundle: StructuredMaterialBundle) -> StructuredMaterialBundle:
+    """Record teacher attestation against the current manifest, without semantic claims.
+
+    Call only after authentication, an exact draft-digest match, verified files
+    for media references and the teacher's explicit review acknowledgement.
+    The caller must persist this returned bundle.
+    """
+    reviewed = bundle.model_copy(deep=True)
+    scenarios = {s.scenario_id: s for s in reviewed.scenarios}
+    for check in reviewed.validations:
+        scenario = scenarios.get(check.scenario_id)
+        if scenario is None:
+            continue
+        if check.status == "FAILED" or check.proposition_result == "UNDETERMINED":
+            raise ValueError(f"Failed or undetermined validation must be resolved: {check.scenario_id}:{check.link_id}")
+        current_digest = scenario_manifest_digest(reviewed, check.scenario_id)
+        if check.status == "PASSED" and (
+            (check.manifest_digest and check.manifest_digest != current_digest)
+            or (check.generation_id and check.generation_id != scenario.generation_id)
+        ):
+            raise ValueError(f"Stale passed review must be reset: {check.scenario_id}:{check.link_id}")
+        check.status = "PASSED"
+        check.generation_id = scenario.generation_id
+        check.manifest_digest = current_digest
+        check.validation_basis = "TEACHER_REVIEWED"
+    issues = publication_issues(reviewed)
+    if issues:
+        raise ValueError("Review incomplete: " + ", ".join(issues[:20]))
+    return reviewed
+
+
 def publication_issues(bundle: StructuredMaterialBundle) -> list[str]:
     """Check references, condition versions, completeness and recorded review evidence.
 
@@ -110,6 +178,12 @@ def publication_issues(bundle: StructuredMaterialBundle) -> list[str]:
     concepts = {x.concept_id: x for x in bundle.concepts}
     links = {x.link_id: x for x in bundle.links}
     scenarios = {x.scenario_id: x for x in bundle.scenarios}
+    manifest_digests = {scenario_id: scenario_manifest_digest(bundle, scenario_id)
+                        for scenario_id in scenarios}
+    reserved_ids = {f"{bundle.revision_id}:map", f"{bundle.revision_id}:independent"}
+    reserved_ids.update(f"{bundle.revision_id}:compare:{i}" for i in range(len(bundle.comparisons)))
+    if reserved_ids & {x.asset_id for x in bundle.representations}:
+        issues.append("RESERVED_SEGMENT_ID_COLLISION")
     if {x.stage for x in bundle.concepts} != {"BASIC", "CONDITION", "INFERENCE", "ADVANCED"}:
         issues.append("LEARNING_MAP_STAGES_INCOMPLETE")
     for link in bundle.links:
@@ -147,8 +221,12 @@ def publication_issues(bundle: StructuredMaterialBundle) -> list[str]:
             issues.append("STALE_VALIDATION_CONDITION")
     for scenario in bundle.scenarios:
         assets = [x for x in bundle.representations if x.scenario_id == scenario.scenario_id]
-        if sorted(x.kind for x in assets) != ["ANSWER", "AUDIO", "QUESTION", "SCENE"]:
+        required = {"ANSWER", "AUDIO", "QUESTION", "SCENE"}
+        kinds = [x.kind for x in assets]
+        if not required.issubset(kinds) or any(kinds.count(kind) != 1 for kind in required):
             issues.append(f"REPRESENTATIONS_INCOMPLETE_OR_DUPLICATE:{scenario.scenario_id}")
+        if len({x.asset_id for x in assets}) != len(assets) or not scenario.generation_id.strip():
+            issues.append(f"OUTPUT_GENERATION_INCOMPLETE:{scenario.scenario_id}")
         question = next((x for x in assets if x.kind == "QUESTION"), None)
         answer = next((x for x in assets if x.kind == "ANSWER"), None)
         if question and answer and (len(question.choices) < 2 or answer.content not in question.choices):
@@ -160,14 +238,32 @@ def publication_issues(bundle: StructuredMaterialBundle) -> list[str]:
             if (not check or check.status != "PASSED" or not check.evidence.strip()
                     or check.proposition_result == "UNDETERMINED"):
                 issues.append(f"LINK_NOT_VERIFIED:{scenario.scenario_id}:{link.link_id}")
+            if check and (check.generation_id != scenario.generation_id
+                          or check.manifest_digest != manifest_digests[scenario.scenario_id]):
+                issues.append(f"STALE_VALIDATION_MANIFEST:{scenario.scenario_id}:{link.link_id}")
     for asset in bundle.representations:
         scenario = scenarios.get(asset.scenario_id)
         if not scenario:
             issues.append(f"UNKNOWN_ASSET_SCENARIO:{asset.asset_id}")
         elif asset.condition_revision_id != scenario.condition_revision_id:
             issues.append(f"STALE_ASSET_CONDITION:{asset.asset_id}")
+        if scenario and (not asset.generation_id.strip() or
+                         asset.generation_id != scenario.generation_id):
+            issues.append(f"STALE_ASSET_GENERATION:{asset.asset_id}")
         if not set(asset.depends_on).issubset(links):
             issues.append(f"UNKNOWN_ASSET_DEPENDENCY:{asset.asset_id}")
+        media_kind_types = {
+            "IMAGE": {"image/png", "image/jpeg"},
+            "VIDEO": {"video/mp4", "video/webm"},
+            "UPLOADED_AUDIO": {"audio/mpeg", "audio/wav"},
+        }
+        if asset.kind in media_kind_types:
+            if (not asset.media_asset_id or not re.fullmatch(r"[0-9a-f]{32}", asset.media_asset_id)
+                    or not asset.media_sha256 or not re.fullmatch(r"[0-9a-f]{64}", asset.media_sha256)
+                    or asset.media_type not in media_kind_types[asset.kind]):
+                issues.append(f"MEDIA_REFERENCE_INCOMPLETE:{asset.asset_id}")
+        elif asset.media_asset_id or asset.media_sha256 or asset.media_type:
+            issues.append(f"MEDIA_REFERENCE_UNEXPECTED:{asset.asset_id}")
     assessment = bundle.independent_assessment
     if assessment:
         if assessment.correct_answer not in assessment.choices:
@@ -182,6 +278,10 @@ def publication_issues(bundle: StructuredMaterialBundle) -> list[str]:
 def affected_assets(previous: StructuredMaterialBundle | None, updated: StructuredMaterialBundle) -> list[str]:
     """Identify changed conditions/links and their transitive representation dependants."""
     if previous is None:
+        return sorted(x.asset_id for x in updated.representations)
+    if (previous.target != updated.target or previous.concepts != updated.concepts
+            or previous.comparisons != updated.comparisons
+            or previous.independent_assessment != updated.independent_assessment):
         return sorted(x.asset_id for x in updated.representations)
     old_links = {x.link_id: x.model_dump() for x in previous.links}
     changed_links = ({x.link_id for x in updated.links if old_links.get(x.link_id) != x.model_dump()}
@@ -204,8 +304,12 @@ def affected_assets(previous: StructuredMaterialBundle | None, updated: Structur
 
 def bundle_lesson(bundle: StructuredMaterialBundle) -> list[dict]:
     """Create coordinated board scenes and TTS from the reviewed revision."""
+    if publication_issues(bundle):
+        raise ValueError("Unreviewed or stale material cannot become a public lesson")
     common = {"structured_bundle_revision": bundle.revision_id,
+              "structured_bundle_digest": bundle_digest(bundle),
               "source_integrity_verified": True, "content_trust": "VERIFIED",
+              "material_validation_basis": "TEACHER_REVIEWED_STRUCTURAL",
               "concept_key": (bundle.independent_assessment.concept_key if bundle.independent_assessment
                               else f"STRUCTURED:{bundle.concepts[-1].concept_id}")}
     steps = [{**common, "segment_id": f"{bundle.revision_id}:map", "kind": "MAP",
@@ -217,11 +321,24 @@ def bundle_lesson(bundle: StructuredMaterialBundle) -> list[dict]:
         scene, audio, question, answer = (assets[k] for k in ("SCENE", "AUDIO", "QUESTION", "ANSWER"))
         contextual = {**common, "scenario_id": scenario.scenario_id,
                       "condition_revision_id": scenario.condition_revision_id,
+                      "generation_id": scenario.generation_id,
+                      "manifest_digest": scenario_manifest_digest(bundle, scenario.scenario_id),
                       "conditions": scenario.conditions}
         steps.append({**contextual, "segment_id": scene.asset_id, "kind": "DEMONSTRATE",
                       "title": scenario.label, "text": scene.content, "audio_text": audio.content,
                       "logic_links": [x.model_dump() for x in bundle.links], "choices": [],
                       "content_revision_id": f"{bundle.revision_id}:{scene.asset_id}", "hint_level": 1})
+        for asset in (x for x in bundle.representations if x.scenario_id == scenario.scenario_id
+                      and x.kind in {"IMAGE", "VIDEO", "UPLOADED_AUDIO", "CAPTION"}):
+            step = {**contextual, "segment_id": asset.asset_id, "kind": "DEMONSTRATE",
+                    "title": f"{scenario.label} · 시청각 자료", "text": asset.content,
+                    "choices": [], "hint_level": 1,
+                    "content_revision_id": f"{bundle.revision_id}:{asset.asset_id}"}
+            if asset.kind != "CAPTION":
+                step.update({"media_asset_id": asset.media_asset_id,
+                             "media_sha256": asset.media_sha256,
+                             "media_type": asset.media_type})
+            steps.append(step)
         steps.append({**contextual, "segment_id": question.asset_id, "kind": "PRACTICE",
                       "title": f"{scenario.label} · 연습", "text": question.content,
                       "choices": question.choices, "correct_answer": answer.content,
@@ -257,8 +374,10 @@ def example_bundle() -> StructuredMaterialBundle:
             ("조건별 f′(0)를 확인한다.", "좌우 미분계수의 일치 여부를 판정한다.", "이 조건에서 |f|는 0에서 미분가능하다."),
         ])]
     scenarios = [Scenario(scenario_id="linear", label="기준: f(x)=x", condition_revision_id="linear-c1",
+                          generation_id="linear-g1",
                           conditions={"함수": "x", "f(0)": "0", "f′(0)": "1"}),
                  Scenario(scenario_id="cubic", label="변경: f(x)=x³", condition_revision_id="cubic-c1",
+                          generation_id="cubic-g1",
                           conditions={"함수": "x³", "f(0)": "0", "f′(0)": "0"})]
     representations = []
     validations = []
@@ -270,6 +389,7 @@ def example_bundle() -> StructuredMaterialBundle:
                               ("ANSWER", "미분불가능" if linear else "미분가능")]:
             representations.append(Representation(asset_id=f"{scenario.scenario_id}-{kind.lower()}", kind=kind,
                 scenario_id=scenario.scenario_id, condition_revision_id=scenario.condition_revision_id,
+                generation_id=scenario.generation_id,
                 depends_on=["l0", "l1", "l2"], content=content,
                 choices=["미분가능", "미분불가능"] if kind == "QUESTION" else []))
         for link in links:
@@ -284,4 +404,4 @@ def example_bundle() -> StructuredMaterialBundle:
         representations=representations, validations=validations,
         independent_assessment=IndependentAssessment(question="h(x)=|x⁵+b x|가 0에서 미분가능하도록 하는 실수 b는?",
             choices=["b=0", "b=1", "모든 실수 b"], correct_answer="b=0", concept_key="ABS:DIFFERENTIABILITY",
-            content_revision_id="absolute-transfer-x5-v1"))
+                content_revision_id="absolute-transfer-x5-v1"))

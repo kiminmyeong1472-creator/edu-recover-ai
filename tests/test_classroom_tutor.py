@@ -3,7 +3,10 @@ import base64
 import os
 import tempfile
 import sqlite3
+import re
+import subprocess
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("EDURECOVER_OWNER_USER", "owner-test")
 os.environ.setdefault("EDURECOVER_OWNER_PASSWORD", "password-test")
@@ -34,6 +37,31 @@ class ClassroomTutorTests(unittest.TestCase):
         result = self.client.post(base + "/publish-lesson", params=params,
             json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
         self.assertEqual(result.status_code, 200, result.text)
+
+    def test_youtube_board_playback_is_teacher_controlled(self):
+        html = classroom_module.board_html("board-test", "teacher-token")
+        script = re.search(r"<script>(.*?)</script>", html, re.S)
+        self.assertIsNotNone(script)
+        self.assertEqual(classroom_module.BOARD_HTML_HEADERS["Referrer-Policy"], "origin")
+        self.assertEqual(classroom_module.PRODUCT_HTML_HEADERS["Referrer-Policy"], "no-referrer")
+        harness = Path(__file__).with_name("classroom_board_playback_harness.js")
+        result = subprocess.run(["node", str(harness)], input=script.group(1),
+                                text=True, capture_output=True, timeout=10, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_repeated_play_commands_advance_board_revision(self):
+        created = self.client.post("/classroom/api/sessions", headers=self.owner_headers,
+                                   json={"title": "재생 명령 반복 시험"}).json()
+        self.publish_lesson(created)
+        url = f"/tutor/api/sessions/{created['session_id']}/command"
+        params = {"teacher_token": created["teacher_token"]}
+        first = self.client.post(url, params=params, json={"action": "PLAY"})
+        second = self.client.post(url, params=params, json={"action": "PLAY"})
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["state"]["playback"], "PLAYING")
+        self.assertEqual(second.json()["state"]["play_command_revision"],
+                         first.json()["state"]["play_command_revision"] + 1)
 
     def test_existing_classroom_database_is_backed_up_before_migration(self):
         original = classroom_module.DB_PATH
@@ -238,7 +266,7 @@ class ClassroomTutorTests(unittest.TestCase):
 
         board = self.client.get(payload["board_url"])
         self.assertEqual(board.status_code, 200)
-        self.assertEqual(board.headers["referrer-policy"], "no-referrer")
+        self.assertEqual(board.headers["referrer-policy"], "origin")
         self.assertIn('PFX="/classroom"', board.text)
 
         teacher = self.client.get(payload["teacher_url"])
