@@ -109,6 +109,20 @@ class MaterialMediaReleaseTests(unittest.TestCase):
                 teacher_verified_content=True), other["teacher_token"])
         self.assertEqual(mismatch.exception.status_code, 423)
 
+    def test_saved_draft_previews_verify_bytes_with_teacher_token(self):
+        bundle, asset_id, asset_token = self.add_media_to_bundle()
+        classroom.save_material_draft(self.session_id, bundle, self.teacher_token)
+        library = classroom.classroom_media_library(self.session_id, self.teacher_token)
+        preview_url = next(a["media_url"] for a in library["assets"] if a["asset_id"] == asset_id)
+        query = parse_qs(urlsplit(preview_url).query)
+        self.assertEqual(query["asset_token"], [asset_token])
+        self.assertEqual(query["teacher_token"], [self.teacher_token])
+        with self.assertRaises(HTTPException) as not_released:
+            classroom.read_classroom_media(self.session_id, asset_id, asset_token)
+        self.assertEqual(not_released.exception.status_code, 423)
+        self.assertEqual(classroom.read_classroom_media(self.session_id, asset_id, asset_token,
+                          teacher_token=query["teacher_token"][0]).body, PNG)
+
 
 if __name__ == "__main__":
     unittest.main()

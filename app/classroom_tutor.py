@@ -45,6 +45,10 @@ from app.services.structured_materials import (
     StructuredMaterialBundle, affected_assets, bundle_digest, bundle_lesson, publication_issues, example_bundle,
     issue_teacher_review_receipts,
 )
+from app.services.learning_path import (
+    LearningPath, example_learning_path, learning_map, path_digest, path_lesson,
+    publication_issues as learning_path_issues,
+)
 from app.training.tutor_learning import ContentTrustState
 from app.training.tutor_ledger import TutorLearningLedger
 
@@ -106,6 +110,16 @@ CREATE TABLE IF NOT EXISTS material_revisions (
   revision_id TEXT NOT NULL,
   digest TEXT NOT NULL,
   bundle_json TEXT NOT NULL,
+  reviewed_at TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(session_id, revision_id),
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id)
+);
+CREATE TABLE IF NOT EXISTS learning_path_revisions (
+  session_id TEXT NOT NULL,
+  revision_id TEXT NOT NULL,
+  digest TEXT NOT NULL,
+  path_json TEXT NOT NULL,
   reviewed_at TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY(session_id, revision_id),
@@ -381,6 +395,7 @@ class StudentResponse(BaseModel):
     reason_text: Optional[str] = Field(default=None, max_length=1000)
     join_token: str
     material_revision_id: Optional[str] = None
+    learning_path_revision_id: Optional[str] = None
 
 
 class LessonReplace(BaseModel):
@@ -426,6 +441,12 @@ class MaterialPublication(BaseModel):
     teacher_verified_content: Literal[True]
 
 
+class LearningPathPublication(BaseModel):
+    revision_id: str
+    expected_digest: str
+    teacher_verified_content: Literal[True]
+
+
 class LessonPublication(BaseModel):
     expected_digest: str
     teacher_verified_content: Literal[True]
@@ -448,6 +469,16 @@ def ensure_material_release(session: dict[str, Any]) -> None:
         if not isinstance(released_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", released_digest) \
                 or not secrets.compare_digest(released_digest, lesson_digest(session["lesson"])):
             raise HTTPException(423, "확정한 교수자료의 내용이 변경되었습니다.")
+    elif state.get("learning_path_mode"):
+        active = state.get("active_learning_path_revision")
+        if not active or active != state.get("draft_learning_path_revision"):
+            raise HTTPException(423, "수정한 학습경로는 교사 검토 후 제공됩니다.")
+        if not session["lesson"] or any(x.get("learning_path_revision") != active for x in session["lesson"]):
+            raise HTTPException(423, "학습경로의 공개 버전이 일치하지 않습니다.")
+        digest = state.get("released_lesson_digest")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) \
+                or not secrets.compare_digest(digest, lesson_digest(session["lesson"])):
+            raise HTTPException(423, "학습경로에서 검토한 자료가 변경되었습니다.")
     elif state.get("released_lesson_digest") != lesson_digest(session["lesson"]):
         raise HTTPException(423, "교사가 수업자료를 검토하고 확정한 뒤 제공됩니다.")
 
@@ -575,6 +606,16 @@ def teacher_material_example(_teacher: str = Depends(require_classroom_user)):
     return example_bundle().model_dump()
 
 
+@classroom_tutor_router.get("/api/learning-path/example")
+def owner_learning_path_example(_: None = Depends(require_owner)):
+    return example_learning_path().model_dump()
+
+
+@teacher_classroom_router.get("/api/learning-path/example")
+def teacher_learning_path_example(_teacher: str = Depends(require_classroom_user)):
+    return example_learning_path().model_dump()
+
+
 def create_session_record(req: SessionCreate, *, product_prefix: str, owner_teacher: str | None = None) -> dict[str, str]:
     session_id = f"cls_{uuid.uuid4().hex[:10]}"
     teacher_token = uuid.uuid4().hex
@@ -695,8 +736,8 @@ def publish_legacy_lesson(session_id: str, req: LessonPublication, teacher_token
         require_teacher(row, teacher_token)
         session = row_to_session(row)
         state = session["state"]
-        if state.get("structured_materials"):
-            raise HTTPException(409, "구조화 교수자료의 검토·확정 기능을 사용해 주세요.")
+        if state.get("structured_materials") or state.get("learning_path_mode"):
+            raise HTTPException(409, "이 수업은 전용 교수자료 또는 학습경로 검토 화면에서 확정해 주세요.")
         digest = lesson_digest(session["lesson"])
         if not secrets.compare_digest(digest, req.expected_digest):
             raise HTTPException(409, "검토한 수업자료가 바뀌었습니다. 다시 확인해 주세요.")
@@ -721,6 +762,8 @@ def save_material_draft(session_id: str, req: StructuredMaterialBundle, teacher_
         row = get_session_or_404(conn, session_id)
         require_teacher(row, teacher_token)
         state = json_load(row["state_json"])
+        if state.get("learning_path_mode"):
+            raise HTTPException(409, "학습경로 수업은 학습경로 편집 화면에서 수정해 주세요.")
         existing = conn.execute(
             "SELECT digest FROM material_revisions WHERE session_id=? AND revision_id=?",
             (session_id, req.revision_id),
@@ -812,6 +855,131 @@ def _verified_material_media(
     return url, data
 
 
+def _require_learning_path_teacher(row: sqlite3.Row, teacher_token: str, teacher: str) -> None:
+    """A path is editable only by its active account, not a stale URL alone."""
+    require_teacher(row, teacher_token)
+    if teacher != "__OWNER__" and row["owner_teacher"] != teacher:
+        raise HTTPException(403, "이 교사의 수업이 아닙니다.")
+    if teacher == "__OWNER__" and row["owner_teacher"] is not None:
+        raise HTTPException(403, "해당 교사 계정에서 수업을 검토해 주세요.")
+
+
+@teacher_classroom_router.put("/api/sessions/{session_id}/learning-path")
+def save_learning_path(session_id: str, path: LearningPath, teacher_token: str,
+                       teacher: str = Depends(require_classroom_user)):
+    digest = path_digest(path)
+    path_json = path.model_dump_json()
+    if len(path_json.encode("utf-8")) > 750_000:
+        raise HTTPException(413, "학습경로 초안의 크기 한도를 넘었습니다.")
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = get_session_or_404(conn, session_id)
+        _require_learning_path_teacher(row, teacher_token, teacher)
+        state = json_load(row["state_json"])
+        if state.get("structured_materials"):
+            raise HTTPException(409, "구조화 교수자료 수업은 별도 새 수업에서 학습경로를 만드세요.")
+        existing = conn.execute(
+            "SELECT digest FROM learning_path_revisions WHERE session_id=? AND revision_id=?",
+            (session_id, path.revision_id),
+        ).fetchone()
+        if existing and not secrets.compare_digest(existing["digest"], digest):
+            raise HTTPException(409, "경로를 수정하면 새로운 revision_id를 지정해 주세요.")
+        if not existing and conn.execute("SELECT COUNT(*) FROM learning_path_revisions WHERE session_id=?",
+                                         (session_id,)).fetchone()[0] >= 100:
+            raise HTTPException(429, "이 수업의 학습경로 버전 저장 한도에 도달했습니다.")
+        conn.execute("INSERT OR IGNORE INTO learning_path_revisions VALUES(?,?,?,?,?,?)",
+                     (session_id, path.revision_id, digest, path_json, None, now_iso()))
+        state.update({"learning_path_mode": True, "draft_learning_path_revision": path.revision_id,
+                      "active_learning_path_revision": None, "playback": "STOPPED",
+                      "current_segment_id": None, "last_command_at": now_iso()})
+        conn.execute("UPDATE sessions SET state_json=?,updated_at=? WHERE session_id=?",
+                     (json.dumps(state, ensure_ascii=False), now_iso(), session_id))
+        emit(conn, session_id, "LEARNING_PATH_DRAFT_SAVED",
+             {"revision_id": path.revision_id, "previous_release_withdrawn": True})
+    return {"revision_id": path.revision_id, "digest": digest,
+            "learning_map": learning_map(path), "publication_issues": learning_path_issues(path),
+            "student_release": "BLOCKED"}
+
+
+@teacher_classroom_router.get("/api/sessions/{session_id}/learning-path")
+def get_learning_path(session_id: str, teacher_token: str,
+                      teacher: str = Depends(require_classroom_user)):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        _require_learning_path_teacher(row, teacher_token, teacher)
+        state = json_load(row["state_json"])
+        saved = conn.execute(
+            "SELECT * FROM learning_path_revisions WHERE session_id=? AND revision_id=?",
+            (session_id, state.get("draft_learning_path_revision")),
+        ).fetchone()
+        if not saved:
+            raise HTTPException(404, "저장된 학습경로가 없습니다.")
+        path = LearningPath.model_validate_json(saved["path_json"])
+    return {"path": path.model_dump(), "digest": saved["digest"],
+            "learning_map": learning_map(path),
+            "publication_issues": learning_path_issues(
+                path, teacher_reviewed_digest=saved["digest"] if saved["reviewed_at"] and
+                state.get("active_learning_path_revision") == path.revision_id else None),
+            "active_revision": state.get("active_learning_path_revision")}
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/learning-path/publish")
+def publish_learning_path(session_id: str, req: LearningPathPublication, teacher_token: str,
+                          teacher: str = Depends(require_classroom_user)):
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = get_session_or_404(conn, session_id)
+        _require_learning_path_teacher(row, teacher_token, teacher)
+        state = json_load(row["state_json"])
+        if not state.get("learning_path_mode") or state.get("draft_learning_path_revision") != req.revision_id:
+            raise HTTPException(409, "최신 학습경로 초안을 다시 불러와 주세요.")
+        saved = conn.execute(
+            "SELECT * FROM learning_path_revisions WHERE session_id=? AND revision_id=?",
+            (session_id, req.revision_id),
+        ).fetchone()
+        if not saved or not secrets.compare_digest(saved["digest"], req.expected_digest):
+            raise HTTPException(409, "검토한 학습경로와 저장된 초안이 다릅니다.")
+        path = LearningPath.model_validate_json(saved["path_json"])
+        issues = learning_path_issues(path, teacher_reviewed_digest=saved["digest"])
+        if issues:
+            raise HTTPException(423, {"message": "학습경로의 검토 조건이 충족되지 않았습니다.",
+                                      "issues": issues})
+        media_urls: dict[str, str] = {}
+        media_types: dict[str, str] = {}
+        media_hashes: dict[str, str] = {}
+        for asset in path.assets:
+            if not asset.media_id:
+                continue
+            item = conn.execute("SELECT media_type,sha256 FROM classroom_media WHERE session_id=? AND asset_id=?",
+                                (session_id, asset.media_id)).fetchone()
+            if not item or (asset.kind == "IMAGE" and not item["media_type"].startswith("image/")) or \
+                    (asset.kind == "VIDEO" and not item["media_type"].startswith("video/")) or \
+                    (asset.kind == "AUDIO" and not item["media_type"].startswith("audio/")):
+                raise HTTPException(423, "학습경로의 자료 유형 또는 수업별 소유권이 일치하지 않습니다.")
+            media_urls[asset.asset_id] = _verified_material_media(
+                conn, session_id, asset.media_id, item["sha256"], item["media_type"],
+            )[0]
+            media_types[asset.asset_id] = item["media_type"]
+            media_hashes[asset.asset_id] = item["sha256"]
+        lesson = path_lesson(path, media_urls=media_urls, media_types=media_types,
+                             media_hashes=media_hashes)
+        state.update({"active_learning_path_revision": path.revision_id, "playback": "PAUSED",
+                      "current_segment_id": lesson[0]["segment_id"], "last_command_at": now_iso(),
+                      "source_kind": "TEACHER_REVIEWED_LEARNING_PATH",
+                      "released_lesson_digest": lesson_digest(lesson)})
+        conn.execute("UPDATE learning_path_revisions SET reviewed_at=? WHERE session_id=? AND revision_id=?",
+                     (now_iso(), session_id, req.revision_id))
+        conn.execute("UPDATE sessions SET state_json=?,lesson_json=?,updated_at=? WHERE session_id=?",
+                     (json.dumps(state, ensure_ascii=False), json.dumps(lesson, ensure_ascii=False),
+                      now_iso(), session_id))
+        emit(conn, session_id, "LEARNING_PATH_PUBLISHED",
+             {"revision_id": path.revision_id, "digest": saved["digest"],
+              "lesson_digest": state["released_lesson_digest"],
+              "session_media_sha256": media_hashes,
+              "review_basis": "TEACHER_ATTESTED_PATH_AND_SESSION_MEDIA"})
+    return {"ok": True, "active_revision": path.revision_id, "segment_count": len(lesson)}
+
+
 @classroom_tutor_router.post("/api/sessions/{session_id}/structured-materials/publish")
 def publish_materials(session_id: str, req: MaterialPublication, teacher_token: str):
     with db() as conn:
@@ -859,6 +1027,8 @@ def publish_materials(session_id: str, req: MaterialPublication, teacher_token: 
 def require_legacy_lesson_edit(row: sqlite3.Row) -> None:
     if json_load(row["state_json"]).get("structured_materials"):
         raise HTTPException(409, "구조화 교수자료는 교수자료 초안에서 수정하고 다시 확정해 주세요.")
+    if json_load(row["state_json"]).get("learning_path_mode"):
+        raise HTTPException(409, "학습경로 수업은 학습경로 편집 화면에서 수정하고 다시 확정해 주세요.")
     if json_load(row["state_json"]).get("source_kind") == "AI_GENERATED":
         raise HTTPException(409, "AI 문항을 출제 작업실에서 수정·재검증한 뒤 새 수업으로 연결해 주세요.")
 
@@ -1094,7 +1264,7 @@ def classroom_media_library(session_id: str, teacher_token: str):
                 continue
             assets.append({"asset_id": item["asset_id"], "sha256": item["sha256"],
                            "media_type": item["media_type"], "file_size": item["file_size"],
-                           "media_url": url})
+                           "media_url": url + "&teacher_token=" + teacher_token})
     return {"assets": assets}
 
 
@@ -1110,7 +1280,7 @@ def read_classroom_media(session_id: str, asset_id: str, asset_token: str,
             raise HTTPException(403, "자료 접근 권한이 없습니다.")
         row = get_session_or_404(conn, session_id)
         session = row_to_session(row)
-        if session["state"].get("structured_materials") and not (
+        if (session["state"].get("structured_materials") or session["state"].get("learning_path_mode")) and not (
             teacher_token and secrets.compare_digest(teacher_token, row["teacher_token"])
         ):
             ensure_material_release(session)
@@ -1146,6 +1316,11 @@ def respond(session_id: str, req: StudentResponse):
         if session["state"].get("structured_materials"):
             if req.material_revision_id != session["state"].get("active_material_revision"):
                 raise HTTPException(409, "응답한 교수자료 버전이 바뀌었습니다. 새 문항을 확인해 주세요.")
+            if not segment.get("choices"):
+                raise HTTPException(400, "현재는 응답 단계가 아닙니다.")
+        if session["state"].get("learning_path_mode"):
+            if req.learning_path_revision_id != session["state"].get("active_learning_path_revision"):
+                raise HTTPException(409, "응답한 학습경로의 조건 버전이 바뀌었습니다.")
             if not segment.get("choices"):
                 raise HTTPException(400, "현재는 응답 단계가 아닙니다.")
         # Retrying after feedback is assisted evidence, never a new independent test.
@@ -1571,7 +1746,7 @@ def student_html(session_id: str, token: str) -> str:
 const SID={json.dumps(session_id)}, JT={json.dumps(token)};let S=null,lastSeg='';
 function seg(){{return (S?.lesson||[]).find(x=>x.segment_id===S?.state?.current_segment_id)||null}}
 async function load(){{try{{S=await api(`/tutor/api/sessions/${{SID}}?join_token=${{encodeURIComponent(JT)}}`);let x=seg();if(!x)return;q('#kind').textContent=x.kind;q('#title').textContent=x.title;q('#text').textContent=x.kind==='VIDEO'?'전자칠판 설명을 보고 질문이 나오면 답하세요.':x.text;if(lastSeg!==x.segment_id+':'+(x.structured_bundle_revision||'')){{lastSeg=x.segment_id+':'+(x.structured_bundle_revision||'');q('#msg').textContent='';q('#choices').innerHTML=(x.choices||[]).map(c=>`<button class='choice' data-choice='${{esc(c)}}' onclick='send(this.dataset.choice)'>${{esc(c)}}</button>`).join('')||`<div class='muted'>현재는 응답 단계가 아닙니다.</div>`;}}}}catch(e){{S=null;lastSeg='';q('#title').textContent='자료 제공 대기';q('#text').textContent='';q('#choices').innerHTML='';q('#msg').textContent='교사 검증 또는 연결 상태를 확인 중입니다.';}}}}
-async function send(ans){{let a=q('#alias').value.trim();if(!a){{q('#msg').textContent='가명/번호를 먼저 입력하세요.';return;}}let x=seg();let body={{student_alias:a,segment_id:x.segment_id,answer:ans,join_token:JT,material_revision_id:x.structured_bundle_revision||null,confidence:q('#conf').value?Number(q('#conf').value):null,reason_text:q('#reason').value||null}};try{{let r=await api(`/tutor/api/sessions/${{SID}}/respond`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify(body)}});q('#msg').textContent='응답을 보냈습니다.'+(r.correct===true?' ✓':r.correct===false?' — 다시 생각해 보세요.':'');}}catch(e){{q('#msg').textContent='응답 전송 실패';}}}}
+async function send(ans){{let a=q('#alias').value.trim();if(!a){{q('#msg').textContent='가명/번호를 먼저 입력하세요.';return;}}let x=seg();let body={{student_alias:a,segment_id:x.segment_id,answer:ans,join_token:JT,material_revision_id:x.structured_bundle_revision||null,learning_path_revision_id:x.learning_path_revision||null,confidence:q('#conf').value?Number(q('#conf').value):null,reason_text:q('#reason').value||null}};try{{let r=await api(`/tutor/api/sessions/${{SID}}/respond`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify(body)}});q('#msg').textContent='응답을 보냈습니다.'+(r.correct===true?' ✓':r.correct===false?' — 다시 생각해 보세요.':'');}}catch(e){{q('#msg').textContent='응답 전송 실패';}}}}
 load();setInterval(load,1500);</script></body></html>"""
 
 
@@ -1588,7 +1763,7 @@ def teacher_product_html(session_id: str, teacher_token: str) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>EduRecover Classroom Board 교사 콘솔</title><style>{COMMON_CSS}</style></head><body>
 <div class='top'><div><b>EduRecover Classroom Board</b> <span class='badge'>교사 콘솔</span></div><span class='badge'>{session_id}</span></div>
 <main style='max-width:980px;margin:auto;padding:18px'>
-<div class='card'><h2 style='margin-top:0'>전자칠판 수업 운영</h2><p class='muted'>전자칠판 자체 브라우저나 OPS에서는 전자칠판 화면을 직접 열고, HDMI·USB-C·무선 캐스트 환경에서는 해당 화면을 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/classroom/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a></div>
+<div class='card'><h2 style='margin-top:0'>전자칠판 수업 운영</h2><p class='muted'>전자칠판 자체 브라우저나 OPS에서는 전자칠판 화면을 직접 열고, HDMI·USB-C·무선 캐스트 환경에서는 해당 화면을 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/classroom/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a> <a class='btn' style='display:inline-block;text-decoration:none' href='/classroom/learning-path/{session_id}?teacher_token={teacher_token}'>거시·미시 학습경로 편집</a></div>
 <div class='grid' style='grid-template-columns:1fr 1fr;min-height:auto'>
 <div class='card'><b>수업자료 검토</b><p>문항·정답·설명을 확인한 뒤 학생에게 제공해 주세요.</p><button class='btn primary' onclick='publishLesson()'>검토한 수업자료 확정</button><div id='releaseStatus' role='status'></div></div><div class='card'><b>수업 단계</b><div id='segments' style='margin-top:10px'></div></div>
 <div class='card'><b>교사 전자칠판 제어</b><p>재생·단계 이동과 판서를 칠판 화면에 함께 반영합니다.</p><div class='controls'><button onclick="control('PLAY')">재생/TTS</button><button onclick="control('PAUSE')">일시정지</button><button onclick="control('PREV')">이전</button><button onclick="control('NEXT')">다음</button><button onclick="control('SET_BOARD_MODE','WHITEBOARD')">판서 표시</button><button onclick="control('SET_BOARD_MODE','LESSON')">수업 표시</button><button onclick="control('STOP')">중지</button><button onclick='clearTeacherBoard()'>판서 지우기</button></div><canvas id='whiteboard' class='board' aria-label='교사 판서 영역'></canvas></div>
@@ -1596,7 +1771,7 @@ def teacher_product_html(session_id: str, teacher_token: str) -> str:
 </div>
 <div class='card'><b>개인정보 원칙</b><p class='muted'>학생 실명 대신 가명 또는 번호만 사용합니다. 교사 화면에는 모델학습 관리나 내부 운영정보를 표시하지 않습니다.</p></div>
 </main><script>{COMMON_JS}{BOARD_SYNC_JS}
-const SID={json.dumps(session_id)},TT={json.dumps(teacher_token)};let S;
+const SID={json.dumps(session_id)},TT={json.dumps(teacher_token)};let S,lastPreviewDigest='';
 const teacherBoard=setupSharedBoard(q('#whiteboard'));
 async function control(action,board_mode){{try{{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action,board_mode}})}});await load();}}catch(e){{alert('수업 조작 실패: '+e.message);}}}}
 async function clearTeacherBoard(){{if(confirm('이 수업의 판서를 모두 지울까요?'))await teacherBoard.clear();}}
@@ -1609,7 +1784,10 @@ function previewMedia(x){{if(!x.media_url)return '';const url=esc(x.media_url),y
 async function load(){{
   try{{
     const s=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);S=s;
-    q('#segments').innerHTML=(s.lesson||[]).map(x=>`<div class='card'><button class='choice' data-segment='${{esc(x.segment_id)}}' onclick="go(this.dataset.segment)"><b>${{esc(x.title)}}</b><br><span class='muted'>${{esc(x.kind)}} · ${{esc(x.text)}}<br>선택지: ${{esc((x.choices||[]).join(' / '))}}<br>정답: ${{esc(x.correct_answer||'채점 없음')}}</span></button>${{previewMedia(x)}}</div>`).join('')||'<p class="muted">수업 단계가 없습니다.</p>';
+    if(s.lesson_digest!==lastPreviewDigest){{
+      q('#segments').innerHTML=(s.lesson||[]).map(x=>`<div class='card'><button class='choice' data-segment='${{esc(x.segment_id)}}' onclick="go(this.dataset.segment)"><b>${{esc(x.title)}}</b><br><span class='muted'>${{esc(x.kind)}} · ${{esc(x.text)}}<br>선택지: ${{esc((x.choices||[]).join(' / '))}}<br>정답: ${{esc(x.correct_answer||'채점 없음')}}</span></button>${{previewMedia(x)}}</div>`).join('')||'<p class="muted">수업 단계가 없습니다.</p>';
+      lastPreviewDigest=s.lesson_digest;
+    }}
     const r=await api(`/tutor/api/sessions/${{SID}}/results?teacher_token=${{encodeURIComponent(TT)}}`);
     q('#res').innerHTML=(r.counts||[]).length?r.counts.map(x=>`<div style='margin:8px 0'>${{esc(x.segment_id)}} / ${{esc(x.answer)}} · ${{x.n}}명</div>`).join(''):'아직 응답 없음';
   }}catch(e){{q('#res').textContent='연결을 확인해 주세요.';}}
@@ -1664,6 +1842,15 @@ def teacher_product_console(session_id: str, teacher_token: str):
         teacher_product_html(session_id, teacher_token),
         headers=BOARD_HTML_HEADERS,
     )
+
+
+@teacher_classroom_router.get("/learning-path/{session_id}", response_class=HTMLResponse)
+def learning_path_editor_page(session_id: str, teacher_token: str,
+                              account: str = Depends(require_classroom_user)):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        _require_learning_path_teacher(row, teacher_token, account)
+    return HTMLResponse(learning_path_editor_html(session_id, teacher_token), headers=BOARD_HTML_HEADERS)
 
 
 @teacher_classroom_router.get("/join/{session_id}", response_class=HTMLResponse)
@@ -1777,7 +1964,17 @@ async function showMaterialMediaPreviews(b){
   html+=`<div class='card'><b>${label}</b><p class='muted'>${esc(ref.media_type)} · ${file.file_size}바이트</p>`+
     (ref.kind==='IMAGE'?`<img alt='${label}' src='${url}' style='max-width:100%;max-height:300px'>`:ref.kind==='VIDEO'?`<video controls playsinline preload='metadata' src='${url}' style='max-width:100%'></video>`:`<audio controls src='${url}'></audio>`)+`</div>`;
  }
- q('#materialMediaPreview').innerHTML=html;materialPreviewedSignature=JSON.stringify(b);
+ materialPreviewedSignature='';q('#materialMediaPreview').innerHTML=html;
+ const media=q('#materialMediaPreview').querySelectorAll('img,video,audio');
+ await Promise.all(Array.from(media,element=>new Promise((resolve,reject)=>{
+   const isImage=element.tagName==='IMG',ok=()=>isImage?element.complete&&element.naturalWidth>0:element.readyState>=1;
+   if(ok()){resolve();return;}
+   const timer=setTimeout(()=>{cleanup();reject(new Error('교사 미리보기 자료 로드가 완료되지 않았습니다.'));},15000);
+   function cleanup(){clearTimeout(timer);element.removeEventListener(isImage?'load':'loadedmetadata',loaded);element.removeEventListener('error',failed);}
+   function loaded(){cleanup();resolve();}function failed(){cleanup();reject(new Error('교사 미리보기 자료를 읽을 수 없습니다.'));}
+   element.addEventListener(isImage?'load':'loadedmetadata',loaded,{once:true});element.addEventListener('error',failed,{once:true});
+ })));
+ materialPreviewedSignature=JSON.stringify(b);
 }
 async function attachMaterialMedia(){try{
  const b=JSON.parse(q('#materialJson').value),files=Array.from(q('#materialFiles').files||[]);
@@ -1825,6 +2022,25 @@ async function reviewAndPublishMaterial(){try{
  await api(base+'/publish'+query,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revision_id:b.revision_id,expected_digest:draft.digest,teacher_verified_content:true})});
   q('#materialMessage').innerHTML=`<p>교사가 확인한 자료 묶음의 구조와 세대가 검증되어 확정되었습니다. 내용의 정확성은 교사가 직접 확인한 범위입니다.</p><a class='btn primary' target='_blank' href='${esc(materialSession.board_url)}'>전자칠판 열기</a> <a class='btn' target='_blank' href='${esc(materialSession.teacher_url)}'>교사 콘솔</a> <a class='btn' target='_blank' href='${esc(materialSession.join_url)}'>학생 참가</a>`;
  }catch(e){q('#materialMessage').textContent=e.message;}}
+async function populateResumeSessions(){try{
+ const result=await api('/classroom/api/my-sessions');
+ q('#resumeSession').innerHTML=(result.sessions||[]).map(s=>`<option value="${esc(s.board_url)}">${esc(s.title)} · ${esc(s.created_at)}</option>`).join('');
+ if(!result.sessions.length)q('#resumeSession').innerHTML='<option value="">저장된 수업 없음</option>';
+}catch(e){q('#resumeSession').innerHTML='<option value="">로그인 상태를 확인해 주세요</option>';}}
+async function resumeMaterialSession(){try{
+ const boardUrl=q('#resumeSession').value;if(!boardUrl)throw new Error('다시 열 수업을 선택해 주세요.');
+ const parsed=new URL(boardUrl,location.origin),sessionId=parsed.pathname.split('/').pop(),teacherToken=parsed.searchParams.get('teacher_token');
+ if(!teacherToken)throw new Error('수업 권한 정보가 없습니다.');
+ const loaded=await api(`/tutor/api/sessions/${sessionId}/structured-materials?teacher_token=${encodeURIComponent(teacherToken)}`);
+ const session=await api(`/tutor/api/sessions/${sessionId}?teacher_token=${encodeURIComponent(teacherToken)}`);
+ materialSession={session_id:sessionId,teacher_token:teacherToken,board_url:boardUrl,
+    teacher_url:`/classroom/teacher/${encodeURIComponent(sessionId)}?teacher_token=${encodeURIComponent(teacherToken)}`,
+    join_url:`/classroom/join/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(session.join_token)}`};
+ q('#materialJson').value=JSON.stringify(loaded.bundle,null,2);materialPreview(loaded.bundle);
+ q('#publishMaterial').disabled=false;await showMaterialMediaPreviews(loaded.bundle);
+ q('#materialMessage').textContent='저장된 교수자료를 다시 열었습니다. 내용과 자료를 검토한 뒤 새 버전으로 확정해 주세요.';
+}catch(e){q('#materialMessage').textContent='재개 실패: '+e.message;}}
+if(q('#resumeSession'))populateResumeSessions();
 """
 
 HOME_HTML = HOME_HTML.replace("</main><script>", MATERIAL_EDITOR_HTML + "</main><script>", 1).replace(
@@ -1845,7 +2061,127 @@ TEACHER_PRODUCT_HOME_HTML = (
              "api('/classroom/api/structured-materials/example')")
     .replace("운영 플랫폼으로</a>", "내 수업으로</a>")
     .replace("href='/owner'", "href='/classroom/sessions'")
+    .replace("</main><script>", """<section class='card'><h2>목표 → 기초 → 추론 → 적용 학습경로</h2>
+<p class='muted'>교사가 조건과 근거를 검토해 거시·미시 학습경로를 만들고 전자칠판에서 진행합니다.</p>
+<button class='btn primary' onclick='createPathSession()'>새 학습경로 수업 만들기</button><div id='pathSessionResult' role='status'></div></section>
+<section class='card'><h2>저장된 구조화 교수자료 재개</h2><label>내 수업 <select id='resumeSession'></select></label>
+<button class='btn' onclick='resumeMaterialSession()'>저장된 초안 다시 열기</button></section></main><script>""")
+    .replace("</script></body></html>", """async function createPathSession(){try{
+ const result=await api('/classroom/api/sessions',{method:'POST',headers:{'content-type':'application/json'},
+ body:JSON.stringify({title:q('#title').value,room_alias:q('#room').value,launch_mode:q('#launch').value,
+ connection_method:q('#conn').value,privacy_mode:'ALIAS_ONLY'})});
+ location.href=`/classroom/learning-path/${encodeURIComponent(result.session_id)}?teacher_token=${encodeURIComponent(result.teacher_token)}`;
+}catch(e){q('#pathSessionResult').textContent=e.message;}}
+</script></body></html>""")
 )
+
+
+LEARNING_PATH_EDITOR_HTML = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>거시·미시 학습경로</title>
+<style>__COMMON_CSS__</style></head><body>
+<div class="top"><b>EduRecover 거시·미시 학습경로</b><a class="btn" href="/classroom/sessions">내 수업</a></div>
+<main style="max-width:1000px;margin:auto;padding:18px">
+<section class="card"><h1>목표에서 기초 개념까지, 근거를 따라 수업 만들기</h1>
+<p class="muted">목표·선행개념·추론의 전제/규칙/결론/예외·조건 버전을 검토하세요. 파일과 문항을 연결한 초안은 공개 전 보류됩니다. 교사가 근거와 내용을 직접 확인해야 확정할 수 있습니다.</p>
+<button class="btn" onclick="loadExample()">검토용 예시 불러오기</button>
+<button class="btn" onclick="loadSaved()">저장된 초안 다시 열기</button>
+<div id="map" role="status"></div></section>
+<section class="card"><h2>시청각 자료 연결</h2><p class="muted">해당 수업에 등록되는 이미지·영상·음성을 추론 단계에 결속합니다. 파일을 재생해 내용을 직접 확인하세요.</p>
+<label>연결할 추론 단계 <select id="transition"></select></label>
+<label>자료 파일 <input id="mediaFile" type="file" accept="image/png,image/jpeg,audio/mpeg,audio/wav,video/mp4,video/webm"></label>
+<button class="btn" onclick="attachFile()">파일 등록·경로에 연결</button><div id="mediaPreview"></div></section>
+<section class="card"><h2>학습경로 상세 편집</h2><p class="muted">조건을 변경하면 추론 및 자료의 검증 조건 스냅샷을 새로 검토해야 합니다. 독립 적용 질문에는 다른 문항과 정답 선택지를 입력하세요.</p>
+<textarea id="pathJson" rows="22" aria-label="학습경로 JSON" spellcheck="false"></textarea>
+<div><button class="btn" onclick="previewPath()">구조 미리보기</button>
+<button class="btn" onclick="savePath()">초안 저장·공개 보류</button>
+<button class="btn primary" onclick="publishPath()">교사 검토 완료·전자칠판 공개</button></div>
+<p id="message" role="status"></p><div id="links"></div></section></main>
+<script>__COMMON_JS__
+const SID=__SESSION_ID__,TT=__TEACHER_TOKEN__,base=`/classroom/api/sessions/${SID}/learning-path`,token=`?teacher_token=${encodeURIComponent(TT)}`;
+let savedDigest=null,savedSignature='',previewSignature='';
+function currentPath(){return JSON.parse(q('#pathJson').value);}
+function setPath(path){q('#pathJson').value=JSON.stringify(path,null,2);renderPath(path);}
+function renderPath(path){
+ const nodes=new Map((path.nodes||[]).map(n=>[n.node_id,n]));
+ q('#map').innerHTML=`<p><b>목표</b> ${esc(nodes.get(path.goal_id)?.label||'미설정')} · <b>현재 단계</b> ${esc(nodes.get(path.current_node_id)?.label||'미설정')}</p>`+
+ (path.nodes||[]).map(n=>`<div class="card"><b>${esc(n.stage)} · ${esc(n.label)}</b><p class="muted">선행 개념: ${esc((n.prerequisite_ids||[]).map(id=>nodes.get(id)?.label||id).join(' · ')||'없음')}</p></div>`).join('')+
+ (path.transitions||[]).map(t=>`<p><b>${esc(nodes.get(t.from_node)?.label||t.from_node)} → ${esc(nodes.get(t.to_node)?.label||t.to_node)}</b><br>전제 ${esc(t.premise)} / 규칙 ${esc(t.rule)} / 결론 ${esc(t.conclusion)} / 예외 ${esc(t.exception||'없음')}<br><span class="muted">조건 ${esc(JSON.stringify(t.validation_snapshot))} · 근거 ${esc(t.evidence_ref)} · 판정 ${esc(t.validation_status)}</span></p>`).join('');
+ q('#transition').innerHTML=(path.transitions||[]).map(t=>`<option value="${esc(t.transition_id)}">${esc(t.transition_id)} · ${esc(nodes.get(t.to_node)?.label||t.to_node)}</option>`).join('');
+}
+function previewPath(){try{renderPath(currentPath());q('#message').textContent='구조를 미리 봤습니다. 조건·근거와 정답은 교사가 확인해 주세요.';}catch(e){q('#message').textContent='학습경로 JSON 형식을 확인해 주세요.';}}
+async function loadExample(){try{const path=await api('/classroom/api/learning-path/example');setPath(path);savedDigest=null;savedSignature='';previewSignature='';q('#mediaPreview').textContent='연결된 파일이 없습니다.';q('#message').textContent='예시입니다. 수업 내용과 근거를 직접 검토해 주세요.';}catch(e){q('#message').textContent=e.message;}}
+async function loadSaved(){try{
+ const response=await fetch(base+token,{cache:'no-store'});
+ if(response.status===404){await loadExample();return;}
+ if(!response.ok)throw new Error('저장된 학습경로를 불러올 권한을 확인해 주세요.');
+ const result=await response.json();setPath(result.path);savedDigest=result.digest;savedSignature=JSON.stringify(result.path);
+ q('#message').textContent=result.active_revision===result.path.revision_id?'공개 중인 경로를 다시 열었습니다.':
+    `초안을 다시 열었습니다. 검토할 항목: ${(result.publication_issues||[]).join(', ')||'없음'}`;
+ await showPathMedia(result.path);
+}catch(e){q('#message').textContent=e.message;}}
+async function showPathMedia(path){
+ previewSignature='';const assets=(path.assets||[]).filter(a=>a.media_id);
+ if(!assets.length){q('#mediaPreview').textContent='연결된 파일이 없습니다.';previewSignature=JSON.stringify(path);return;}
+ const library=await api(`/tutor/api/sessions/${SID}/media-library?teacher_token=${encodeURIComponent(TT)}`);
+ const byId=new Map(library.assets.map(a=>[a.asset_id,a]));let html='';
+ for(const a of assets){const file=byId.get(a.media_id);if(!file)throw new Error(a.asset_id+' 자료가 없거나 변경되었습니다.');
+   const src=esc(file.media_url),label=esc(a.content||a.asset_id);
+   html+=`<div class="card"><b>${label}</b><p class="muted">${esc(file.media_type)} · ${file.file_size}바이트</p>`+
+     (file.media_type.startsWith('image/')?`<img alt="${label}" src="${src}" style="max-width:100%;max-height:320px">`:
+      file.media_type.startsWith('audio/')?`<audio controls preload="metadata" src="${src}"></audio>`:
+      `<video controls playsinline preload="metadata" src="${src}" style="max-width:100%;max-height:320px"></video>`)+`</div>`;
+ }
+ q('#mediaPreview').innerHTML=html;
+ await Promise.all(Array.from(q('#mediaPreview').querySelectorAll('img,audio,video'),element=>new Promise((resolve,reject)=>{
+   const image=element.tagName==='IMG',valid=()=>image?element.complete&&element.naturalWidth>0:element.readyState>=1;
+   if(valid()){resolve();return;}
+   const timer=setTimeout(()=>{done();reject(new Error('매체 미리보기 로드가 완료되지 않았습니다.'));},15000);
+   function done(){clearTimeout(timer);element.removeEventListener(image?'load':'loadedmetadata',loaded);element.removeEventListener('error',failed);}
+   function loaded(){done();resolve();}function failed(){done();reject(new Error('매체 미리보기를 읽을 수 없습니다.'));}
+   element.addEventListener(image?'load':'loadedmetadata',loaded,{once:true});element.addEventListener('error',failed,{once:true});
+ })));
+ previewSignature=JSON.stringify(path);
+}
+async function attachFile(){try{
+ const file=q('#mediaFile').files?.[0],path=currentPath();if(!file)throw new Error('파일을 선택해 주세요.');
+ if(file.size>8000000)throw new Error('파일은 8MB 이하로 준비해 주세요.');
+ const kind=file.type.startsWith('image/')?'IMAGE':file.type.startsWith('video/')?'VIDEO':file.type.startsWith('audio/')?'AUDIO':null;
+ if(!kind)throw new Error('지원되지 않는 파일 형식입니다.');
+ const t=path.transitions.find(x=>x.transition_id===q('#transition').value);if(!t)throw new Error('연결할 추론 단계를 선택해 주세요.');
+ const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+ const result=await api(`/tutor/api/sessions/${SID}/media?teacher_token=${encodeURIComponent(TT)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({media_type:file.type,data_base64:btoa(binary)})});
+ const id=new URL(result.media_url,location.origin).pathname.split('/').pop();
+ path.assets.push({asset_id:'file-'+crypto.randomUUID(),kind,depends_on:[t.transition_id],
+   condition_snapshot:t.validation_snapshot,content:file.name.slice(0,100),media_id:id});
+ path.revision_id='path-'+crypto.randomUUID();setPath(path);savedDigest=null;savedSignature='';
+ await showPathMedia(path);q('#message').textContent='경로에 파일을 연결했습니다. 자료 내용을 직접 재생·검토한 뒤 초안을 저장해 주세요.';
+}catch(e){q('#message').textContent=e.message;}}
+async function savePath(){try{
+ const path=currentPath();path.revision_id='path-'+crypto.randomUUID();
+ const result=await api(base+token,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(path)});
+ setPath(path);savedDigest=result.digest;savedSignature=JSON.stringify(path);previewSignature='';
+ q('#message').textContent='초안 저장 완료. 학생 제공 보류. 검토할 항목: '+(result.publication_issues||[]).join(', ');
+ await showPathMedia(path);
+}catch(e){q('#message').textContent=e.message;}}
+async function publishPath(){try{
+ const path=currentPath();if(!savedDigest||JSON.stringify(path)!==savedSignature)throw new Error('현재 편집 내용을 초안으로 먼저 저장해 주세요.');
+ if(path.assets.some(a=>a.media_id)&&previewSignature!==savedSignature){await showPathMedia(path);
+   q('#message').textContent='파일 로드를 확인했습니다. 자료 내용을 검토한 뒤 다시 확정해 주세요.';return;}
+ if(!confirm('목표·조건·추론 근거·문항·정답·시청각자료 내용과 사용권한을 교사가 직접 확인했습니까?'))return;
+ const result=await api(base+'/publish'+token,{method:'POST',headers:{'content-type':'application/json'},
+   body:JSON.stringify({revision_id:path.revision_id,expected_digest:savedDigest,teacher_verified_content:true})});
+ q('#message').textContent=`검토한 학습경로 ${result.segment_count}단계를 전자칠판에 공개했습니다. 정확성은 교사의 검토 범위입니다.`;
+ q('#links').innerHTML=`<a class="btn primary" target="_blank" href="/classroom/teacher/${encodeURIComponent(SID)}?teacher_token=${encodeURIComponent(TT)}">교사 콘솔</a> `+
+   `<a class="btn" target="_blank" href="/classroom/board/${encodeURIComponent(SID)}?teacher_token=${encodeURIComponent(TT)}">전자칠판</a>`;
+}catch(e){q('#message').textContent=e.message;}}
+loadSaved();</script></body></html>"""
+
+
+def learning_path_editor_html(session_id: str, teacher_token: str) -> str:
+    return (LEARNING_PATH_EDITOR_HTML.replace("__COMMON_CSS__", COMMON_CSS)
+            .replace("__COMMON_JS__", COMMON_JS)
+            .replace("__SESSION_ID__", json.dumps(session_id))
+            .replace("__TEACHER_TOKEN__", json.dumps(teacher_token)))
 
 TEACHER_LOGIN_HTML = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

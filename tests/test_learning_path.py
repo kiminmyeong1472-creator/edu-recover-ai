@@ -5,6 +5,7 @@ import unittest
 from app.services.learning_path import (
     AssessmentAttempt, LearningPath, PathNode, ReasoningTransition, TeachingAsset,
     affected_assets, assess_attempt, learning_map, path_digest, publication_issues,
+    example_learning_path, path_lesson,
 )
 
 
@@ -48,7 +49,8 @@ def reviewed_unit() -> LearningPath:
                           condition_snapshot={"slope": "nonzero", "domain": "real"}, media_id="approved-voice"),
             TeachingAsset(asset_id="transfer", kind="QUESTION", depends_on=["second"],
                           condition_snapshot={"slope": "nonzero", "domain": "real"},
-                          content="조건이 바뀐 문제", question_role="TRANSFER"),
+                          content="조건이 바뀐 문제", question_role="TRANSFER",
+                          choices=["가능", "불가능"], correct_answer="가능"),
             TeachingAsset(asset_id="answer", kind="ANSWER", depends_on=["second"],
                           condition_snapshot={"slope": "nonzero", "domain": "real"}, content="검토된 답"),
             TeachingAsset(asset_id="side-audio", kind="AUDIO", depends_on=["side-rule"],
@@ -116,6 +118,26 @@ class LearningPathTests(unittest.TestCase):
         issues = publication_issues(path, teacher_reviewed_digest=path_digest(path))
         self.assertIn("TRANSITION_UNVERIFIED:second", issues)
         self.assertIn("STALE_ASSET_CONDITION:transfer", issues)
+
+    def test_example_projects_answerable_transfer_and_verified_media_mime(self):
+        example = example_learning_path()
+        self.assertEqual(publication_issues(example, teacher_reviewed_digest=path_digest(example)), [])
+        transfer = next(s for s in path_lesson(example) if s["segment_id"] == "path-asset:transfer")
+        self.assertEqual(transfer["choices"], ["가능", "불가능"])
+        self.assertEqual(transfer["correct_answer"], "가능")
+        self.assertTrue(transfer["independent_followup"])
+        path = reviewed_unit()
+        media = path_lesson(path, media_urls={"video": "/video", "voice": "/voice"},
+                            media_types={"video": "video/mp4", "voice": "audio/mpeg"},
+                            media_hashes={"video": "0" * 64, "voice": "1" * 64})
+        self.assertEqual(next(s for s in media if s["segment_id"] == "path-asset:voice")["media_type"], "audio/mpeg")
+        self.assertEqual(next(s for s in media if s["segment_id"] == "path-asset:video")["media_type"], "video/mp4")
+        path.assets.append(TeachingAsset(asset_id="picture", kind="IMAGE", depends_on=["first"],
+            condition_snapshot={"slope": "nonzero"}, media_id="approved-image"))
+        media = path_lesson(path, media_urls={"video": "/video", "voice": "/voice", "picture": "/image"},
+                            media_types={"video": "video/mp4", "voice": "audio/mpeg", "picture": "image/png"},
+                            media_hashes={"video": "0" * 64, "voice": "1" * 64, "picture": "2" * 64})
+        self.assertEqual(next(s for s in media if s["segment_id"] == "path-asset:picture")["media_type"], "image/png")
 
 
 if __name__ == "__main__":
