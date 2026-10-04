@@ -1280,11 +1280,18 @@ def read_classroom_media(session_id: str, asset_id: str, asset_token: str,
             raise HTTPException(403, "자료 접근 권한이 없습니다.")
         row = get_session_or_404(conn, session_id)
         session = row_to_session(row)
-        if (session["state"].get("structured_materials") or session["state"].get("learning_path_mode")) and not (
-            teacher_token and secrets.compare_digest(teacher_token, row["teacher_token"])
-        ):
+        if not (teacher_token and secrets.compare_digest(teacher_token, row["teacher_token"])):
+            # An upload URL is a capability for this file, not a publication
+            # receipt. The same release gate applies to older teacher lessons.
             ensure_material_release(session)
-            if not any(step.get("media_asset_id") == asset_id for step in session["lesson"]):
+            published_url = (f"/tutor/api/sessions/{session_id}/media/{asset_id}"
+                             f"?asset_token={item['asset_token']}")
+            if not any(
+                step.get("media_asset_id") == asset_id or
+                (step.get("media_url") == published_url and
+                 step.get("media_type") == item["media_type"])
+                for step in session["lesson"]
+            ):
                 raise HTTPException(423, "현재 공개된 교수자료에 포함되지 않은 매체입니다.")
         _, data = _verified_material_media(
             conn, session_id, asset_id, item["sha256"], item["media_type"],
@@ -1775,7 +1782,17 @@ const SID={json.dumps(session_id)},TT={json.dumps(teacher_token)};let S,lastPrev
 const teacherBoard=setupSharedBoard(q('#whiteboard'));
 async function control(action,board_mode){{try{{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action,board_mode}})}});await load();}}catch(e){{alert('수업 조작 실패: '+e.message);}}}}
 async function clearTeacherBoard(){{if(confirm('이 수업의 판서를 모두 지울까요?'))await teacherBoard.clear();}}
-function previewMedia(x){{if(!x.media_url)return '';const url=esc(x.media_url),yt=youtubeEmbed(x.media_url);
+function teacherPreviewUrl(raw){{
+  try{{const media=new URL(raw,location.origin);
+    const prefix=`/tutor/api/sessions/${{SID}}/media/`;
+    if(media.origin===location.origin && media.pathname.startsWith(prefix) &&
+       /^[0-9a-f]{{32}}$/.test(media.pathname.slice(prefix.length))){{
+      media.searchParams.set('teacher_token',TT);return media.href;
+    }}
+  }}catch(e){{/* Keep external links unchanged. */}}
+  return raw;
+}}
+function previewMedia(x){{if(!x.media_url)return '';const url=esc(teacherPreviewUrl(x.media_url)),yt=youtubeEmbed(x.media_url);
   if(x.media_type?.startsWith('image/'))return `<img alt="검토할 수업 그림" src="${{url}}" style="max-width:100%;max-height:260px">`;
   if(x.media_type?.startsWith('audio/'))return `<audio controls src="${{url}}"></audio>`;
   if(yt)return `<iframe title="검토할 수업 영상" src="${{esc(yt)}}" style="width:100%;height:220px;border:0" allowfullscreen></iframe>`;
