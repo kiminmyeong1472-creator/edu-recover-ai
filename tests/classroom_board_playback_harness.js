@@ -94,10 +94,14 @@ async function run() {
   vm.runInContext("S.state.playback='STOPPED';render();", context);
   assert.equal(players[0].calls.at(-1), 'stop');
   vm.runInContext(`S.lesson.push({segment_id:'image',kind:'EXPLAIN',title:'그림',text:'새 단계',
-    media_type:'image/png',media_url:'https://board.example/image.png'});
+    media_type:'image/png',media_url:'/tutor/api/sessions/board-test/media/0123456789abcdef0123456789abcdef?asset_token=asset-secret'});
     S.state.current_segment_id='image';render();`, context);
   assert.ok(players[0].calls.includes('destroy'));
   assert.equal(intervals.size, 0, 'old video timer must be removed');
+  assert.match(node('#media').innerHTML, /asset_token=asset-secret&amp;teacher_token=teacher-token/,
+    'teacher board must retain an authorized static image after STOP');
+  assert.equal(vm.runInContext("teacherMediaUrl('https://other.example/video.mp4',SID,TT)", context),
+    'https://other.example/video.mp4', 'external video URL must not receive a teacher token');
   console.log('classroom YouTube playback, pause, stop, timed question, and cleanup passed');
 }
 run().catch(error => {console.error(error); process.exitCode = 1;});

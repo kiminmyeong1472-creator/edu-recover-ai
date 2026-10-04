@@ -15,6 +15,7 @@ from fastapi import HTTPException
 
 import app.classroom_tutor as classroom
 from app.services.structured_materials import Representation, example_bundle
+from app.services.learning_path import TeachingAsset, example_learning_path
 
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\0\0\0\x01\0\0\0\x01" + b"test"
@@ -73,6 +74,11 @@ class MaterialMediaReleaseTests(unittest.TestCase):
             path = Path(conn.execute("SELECT file_path FROM classroom_media WHERE asset_id=?",
                                      (asset_id,)).fetchone()["file_path"])
 
+        with self.assertRaises(HTTPException) as not_current:
+            classroom.read_classroom_media(self.session_id, asset_id, asset_token)
+        self.assertEqual(not_current.exception.status_code, 423)
+        classroom.command(self.session_id,
+            classroom.Command(action="GOTO", segment_id="linear-teacher-image"), self.teacher_token)
         response = classroom.read_classroom_media(self.session_id, asset_id, asset_token)
         self.assertEqual(response.body, PNG)
         self.assertEqual(response.media_type, "image/png")
@@ -167,6 +173,11 @@ class MaterialMediaReleaseTests(unittest.TestCase):
         self.assertEqual(classroom.read_classroom_media(
             self.session_id, asset_id, asset_token).body, PNG)
 
+        classroom.command(self.session_id, classroom.Command(action="STOP"), self.teacher_token)
+        expect_blocked()
+        self.assertEqual(classroom.read_classroom_media(
+            self.session_id, asset_id, asset_token, teacher_token=self.teacher_token).body, PNG)
+
         classroom.replace_lesson(self.session_id, classroom.LessonReplace(lesson=[
             classroom.Segment(segment_id="no-image", kind="EXPLAIN", title="새 설명")
         ]), self.teacher_token)
@@ -177,6 +188,45 @@ class MaterialMediaReleaseTests(unittest.TestCase):
             expected_digest=session["lesson_digest"], teacher_verified_content=True),
             self.teacher_token)
         expect_blocked()
+
+    def test_learning_path_media_is_limited_to_current_step(self):
+        uploaded = []
+        for content in (PNG, PNG + b"second"):
+            result = classroom.upload_classroom_media(self.session_id,
+                classroom.MediaUpload(media_type="image/png",
+                                      data_base64=base64.b64encode(content).decode()),
+                self.teacher_token)
+            parts = urlsplit(result["media_url"])
+            uploaded.append((parts.path.rsplit("/", 1)[-1], parse_qs(parts.query)["asset_token"][0]))
+        path = example_learning_path().model_copy(deep=True)
+        for name, (asset_id, _) in zip(("one", "two"), uploaded):
+            path.assets.append(TeachingAsset(asset_id=name, kind="IMAGE", media_id=asset_id,
+                depends_on=["left-right"], condition_snapshot={"point": "x=0"}, content=name))
+        draft = classroom.save_learning_path(self.session_id, path, self.teacher_token,
+                                             teacher="__OWNER__")
+        classroom.publish_learning_path(self.session_id,
+            classroom.LearningPathPublication(revision_id=path.revision_id,
+                expected_digest=draft["digest"], teacher_verified_content=True),
+            self.teacher_token, teacher="__OWNER__")
+
+        def status(index):
+            try:
+                classroom.read_classroom_media(self.session_id, *uploaded[index])
+            except HTTPException as exc:
+                return exc.status_code
+            return 200
+
+        self.assertEqual((status(0), status(1)), (423, 423))
+        classroom.command(self.session_id, classroom.Command(action="GOTO", segment_id="path-asset:one"),
+                          self.teacher_token)
+        self.assertEqual((status(0), status(1)), (200, 423))
+        classroom.command(self.session_id, classroom.Command(action="GOTO", segment_id="path-asset:two"),
+                          self.teacher_token)
+        self.assertEqual((status(0), status(1)), (423, 200))
+        classroom.command(self.session_id, classroom.Command(action="STOP"), self.teacher_token)
+        self.assertEqual((status(0), status(1)), (423, 423))
+        self.assertEqual(classroom.read_classroom_media(
+            self.session_id, *uploaded[0], teacher_token=self.teacher_token).body, PNG)
 
 
 if __name__ == "__main__":
