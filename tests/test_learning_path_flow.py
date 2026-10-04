@@ -134,9 +134,24 @@ class LearningPathFlowTests(unittest.TestCase):
         for asset_id, media_type in expected.items():
             item = next(step for step in lesson if step["segment_id"] == "path-asset:" + asset_id)
             self.assertEqual(item["media_type"], media_type)
+        # Every published file has a token, but only the currently displayed
+        # path stage may use it without teacher authorization.
         for asset_id, token in ((picture, picture_token), (sound, sound_token), (video, video_token)):
             self.assertEqual(self.client.get(f"/tutor/api/sessions/{self.sid}/media/{asset_id}",
-                params={"asset_token": token}).status_code, 200)
+                params={"asset_token": token}).status_code, 423)
+        for name, current, token in (("picture", picture, picture_token),
+                                     ("voice", sound, sound_token),
+                                     ("clip", video, video_token)):
+            goto = self.client.post(f"/tutor/api/sessions/{self.sid}/command", params=self.params,
+                                    json={"action": "GOTO", "segment_id": "path-asset:" + name})
+            self.assertEqual(goto.status_code, 200, goto.text)
+            for asset_id, candidate_token in ((picture, picture_token), (sound, sound_token),
+                                              (video, video_token)):
+                self.assertEqual(self.client.get(f"/tutor/api/sessions/{self.sid}/media/{asset_id}",
+                    params={"asset_token": candidate_token}).status_code,
+                    200 if asset_id == current else 423)
+            self.assertEqual(self.client.get(f"/tutor/api/sessions/{self.sid}/media/{picture}",
+                params={"asset_token": picture_token, "teacher_token": self.token}).status_code, 200)
         changed = path.model_copy(deep=True)
         changed.revision_id = "path-media-revision-2"
         changed.assets[0].content = "수정된 장면"
