@@ -76,6 +76,18 @@ class MaterialMediaReleaseTests(unittest.TestCase):
         response = classroom.read_classroom_media(self.session_id, asset_id, asset_token)
         self.assertEqual(response.body, PNG)
         self.assertEqual(response.media_type, "image/png")
+        unused = classroom.upload_classroom_media(
+            self.session_id, classroom.MediaUpload(
+                media_type="image/png", data_base64=base64.b64encode(PNG).decode()),
+            self.teacher_token,
+        )
+        unused_url = urlsplit(unused["media_url"])
+        with self.assertRaises(HTTPException) as unpublished:
+            classroom.read_classroom_media(
+                self.session_id, unused_url.path.rsplit("/", 1)[-1],
+                parse_qs(unused_url.query)["asset_token"][0],
+            )
+        self.assertEqual(unpublished.exception.status_code, 423)
         with classroom.db() as conn:
             published = classroom.row_to_session(classroom.get_session_or_404(conn, self.session_id))
         published["state"].pop("released_lesson_digest")
@@ -122,6 +134,49 @@ class MaterialMediaReleaseTests(unittest.TestCase):
         self.assertEqual(not_released.exception.status_code, 423)
         self.assertEqual(classroom.read_classroom_media(self.session_id, asset_id, asset_token,
                           teacher_token=query["teacher_token"][0]).body, PNG)
+
+    def test_legacy_upload_requires_publication_and_current_lesson_reference(self):
+        uploaded = classroom.upload_classroom_media(
+            self.session_id, classroom.MediaUpload(
+                media_type="image/png", data_base64=base64.b64encode(PNG).decode()),
+            self.teacher_token,
+        )
+        url = urlsplit(uploaded["media_url"])
+        asset_id = url.path.rsplit("/", 1)[-1]
+        asset_token = parse_qs(url.query)["asset_token"][0]
+
+        def expect_blocked():
+            with self.assertRaises(HTTPException) as blocked:
+                classroom.read_classroom_media(self.session_id, asset_id, asset_token)
+            self.assertEqual(blocked.exception.status_code, 423)
+
+        expect_blocked()
+        self.assertEqual(classroom.read_classroom_media(
+            self.session_id, asset_id, asset_token, teacher_token=self.teacher_token).body, PNG)
+        step = classroom.Segment(segment_id="lesson-image", kind="DEMONSTRATE",
+                                 title="설명 그림", media_url=uploaded["media_url"],
+                                 media_type="image/png")
+        classroom.replace_lesson(self.session_id, classroom.LessonReplace(lesson=[step]),
+                                 self.teacher_token)
+        expect_blocked()
+        with classroom.db() as conn:
+            session = classroom.row_to_session(classroom.get_session_or_404(conn, self.session_id))
+        classroom.publish_legacy_lesson(self.session_id, classroom.LessonPublication(
+            expected_digest=session["lesson_digest"], teacher_verified_content=True),
+            self.teacher_token)
+        self.assertEqual(classroom.read_classroom_media(
+            self.session_id, asset_id, asset_token).body, PNG)
+
+        classroom.replace_lesson(self.session_id, classroom.LessonReplace(lesson=[
+            classroom.Segment(segment_id="no-image", kind="EXPLAIN", title="새 설명")
+        ]), self.teacher_token)
+        expect_blocked()
+        with classroom.db() as conn:
+            session = classroom.row_to_session(classroom.get_session_or_404(conn, self.session_id))
+        classroom.publish_legacy_lesson(self.session_id, classroom.LessonPublication(
+            expected_digest=session["lesson_digest"], teacher_verified_content=True),
+            self.teacher_token)
+        expect_blocked()
 
 
 if __name__ == "__main__":

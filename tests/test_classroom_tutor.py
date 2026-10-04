@@ -118,7 +118,10 @@ class ClassroomTutorTests(unittest.TestCase):
             json={"media_type": "image/png", "data_base64": base64.b64encode(png).decode()})
         self.assertEqual(asset.status_code, 200, asset.text)
         media_url = asset.json()["media_url"]
-        self.assertEqual(self.client.get(media_url).content, png)
+        # The token identifies the file but must not publish an orphaned upload.
+        self.assertEqual(self.client.get(media_url).status_code, 423)
+        self.assertEqual(self.client.get(media_url + "&teacher_token=" + token).content, png)
+        self.assertIn("teacherPreviewUrl", self.client.get(created["teacher_url"]).text)
         self.assertEqual(self.client.get(media_url.split("?")[0], params={"asset_token": "wrong"}).status_code, 403)
         bad = self.client.post(root + "/media", params=params,
             json={"media_type": "video/mp4", "data_base64": base64.b64encode(png).decode()})
@@ -131,11 +134,23 @@ class ClassroomTutorTests(unittest.TestCase):
         self.assertEqual(self.client.put(root + "/lesson", params=params,
                          json={"lesson": lesson}).status_code, 200)
         self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 423)
+        self.assertEqual(self.client.get(media_url).status_code, 423)
         draft = self.client.get(root, params=params).json()
         self.assertEqual(draft["lesson"][-2]["media_type"], "image/png")
         self.client.post(root + "/publish-lesson", params=params,
             json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
         self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 200)
+        self.assertEqual(self.client.get(media_url).content, png)
+        # Removing the media from the lesson withdraws its public file access.
+        lesson = [step for step in draft["lesson"] if step["segment_id"] != "teacher-image"]
+        self.assertEqual(self.client.put(root + "/lesson", params=params,
+                         json={"lesson": lesson}).status_code, 200)
+        self.assertEqual(self.client.get(media_url).status_code, 423)
+        updated = self.client.get(root, params=params).json()
+        self.assertEqual(self.client.post(root + "/publish-lesson", params=params,
+                         json={"expected_digest": updated["lesson_digest"],
+                               "teacher_verified_content": True}).status_code, 200)
+        self.assertEqual(self.client.get(media_url).status_code, 423)
         self.assertEqual(self.client.delete(root + "/board-strokes", params=params).status_code, 200)
         self.assertEqual(self.client.get(root + "/board-strokes", params=params).json()["strokes"], [])
 
