@@ -312,7 +312,7 @@ def row_to_session(row: sqlite3.Row) -> dict[str, Any]:
     return result
 
 
-def student_session_view(row: sqlite3.Row) -> dict[str, Any]:
+def student_session_view(row: sqlite3.Row, *, teacher_display: bool = False) -> dict[str, Any]:
     """Return only the lesson fields a participating student may receive."""
     session = row_to_session(row)
     ensure_material_release(session)
@@ -333,6 +333,12 @@ def student_session_view(row: sqlite3.Row) -> dict[str, Any]:
         {key: value for key, value in segment.items() if key not in hidden_fields}
         for segment in session["lesson"]
     ]
+    # STOP keeps the board's static current step visible to its teacher, while
+    # students must not receive a media capability the file endpoint has revoked.
+    if session["state"].get("playback") == "STOPPED" and not teacher_display:
+        for segment in session["lesson"]:
+            for field in ("media_url", "media_asset_id", "media_sha256", "media_type"):
+                segment.pop(field, None)
     session.pop("join_token", None)
     return session
 
@@ -722,7 +728,7 @@ def get_session(
     with db() as conn:
         row = get_session_or_404(conn, session_id)
         if teacher_token and secrets.compare_digest(teacher_token, row["teacher_token"]):
-            return student_session_view(row) if display_only else row_to_session(row)
+            return student_session_view(row, teacher_display=True) if display_only else row_to_session(row)
         if join_token and secrets.compare_digest(join_token, row["join_token"]):
             return student_session_view(row)
         raise HTTPException(403, "session token required")
@@ -1282,17 +1288,24 @@ def read_classroom_media(session_id: str, asset_id: str, asset_token: str,
         session = row_to_session(row)
         if not (teacher_token and secrets.compare_digest(teacher_token, row["teacher_token"])):
             # An upload URL is a capability for this file, not a publication
-            # receipt. The same release gate applies to older teacher lessons.
+            # receipt. Only the current, still-active lesson step may consume it.
             ensure_material_release(session)
+            state = session["state"]
+            if state.get("playback") == "STOPPED":
+                raise HTTPException(423, "중지된 수업의 매체는 제공하지 않습니다.")
             published_url = (f"/tutor/api/sessions/{session_id}/media/{asset_id}"
                              f"?asset_token={item['asset_token']}")
+            current_segment_id = state.get("current_segment_id")
             if not any(
-                step.get("media_asset_id") == asset_id or
+                (step.get("media_asset_id") == asset_id and
+                 step.get("media_type") == item["media_type"] and
+                 step.get("media_sha256") == item["sha256"]) or
                 (step.get("media_url") == published_url and
                  step.get("media_type") == item["media_type"])
                 for step in session["lesson"]
+                if current_segment_id is not None and step.get("segment_id") == current_segment_id
             ):
-                raise HTTPException(423, "현재 공개된 교수자료에 포함되지 않은 매체입니다.")
+                raise HTTPException(423, "현재 수업 단계에 공개되지 않은 매체입니다.")
         _, data = _verified_material_media(
             conn, session_id, asset_id, item["sha256"], item["media_type"],
         )
@@ -1609,6 +1622,14 @@ function q(sel){return document.querySelector(sel)}
 function capabilities(){return {touch:navigator.maxTouchPoints>0,pointer:'PointerEvent' in window,fullscreen:!!document.documentElement.requestFullscreen,speech:'speechSynthesis' in window,screen:`${screen.width}x${screen.height}`,ua:navigator.userAgent};}
 function speak(text){if(!('speechSynthesis' in window))return; speechSynthesis.cancel(); let u=new SpeechSynthesisUtterance(text);u.lang='ko-KR';u.rate=.95;speechSynthesis.speak(u);}
 function youtubeEmbed(url){try{let u=new URL(url);if(u.hostname==='youtu.be')return 'https://www.youtube-nocookie.com/embed/'+encodeURIComponent(u.pathname.slice(1));if(u.hostname==='youtube.com'||u.hostname.endsWith('.youtube.com')){let id=u.searchParams.get('v');if(id)return 'https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id);}}catch(e){}return null;}
+function teacherMediaUrl(raw,sessionId,teacherToken){
+ try{const media=new URL(raw,location.origin),prefix=`/tutor/api/sessions/${sessionId}/media/`;
+   if(media.origin===location.origin&&media.pathname.startsWith(prefix)&&
+      /^[0-9a-f]{32}$/.test(media.pathname.slice(prefix.length))){
+     media.searchParams.set('teacher_token',teacherToken);return media.href;
+   }
+ }catch(e){}return raw;
+}
 function materialStructure(x){
  let out='';
  if(x.learning_map)out+=`<div style='display:flex;gap:12px;flex-wrap:wrap'>${x.learning_map.map(c=>`<div class='card'><small>${esc(({BASIC:'기초',CONDITION:'성립조건',INFERENCE:'추론',ADVANCED:'심화'})[c.stage]||c.stage)}</small><p>${esc(c.label)}</p></div>`).join('<span aria-hidden="true">→</span>')}</div>`;
@@ -1710,11 +1731,11 @@ function render(){{let x=seg();if(!x)return;let key=x.segment_id+':'+(x.structur
  if(changed){{resetYouTube();playbackHelp('');lastRenderKey=key;q('#structure').innerHTML=materialStructure(x);
  q('#kind').textContent=x.kind+(x.misconception_path?' · 오답원인: '+x.misconception_path:'');
  q('#title').textContent=x.title;q('#text').textContent=x.text||'';let m=q('#media');m.innerHTML='';videoPausedOnce=false;
- if(x.media_url){{let yt=youtubeEmbed(x.media_url);
-   if(x.media_type?.startsWith('image/'))m.innerHTML=`<img alt='수업 자료' src="${{esc(x.media_url)}}" style='max-width:100%;max-height:55vh'>`;
-   else if(x.media_type?.startsWith('audio/'))m.innerHTML=`<audio id='vid' controls src="${{esc(x.media_url)}}"></audio>`;
+ if(x.media_url){{let yt=youtubeEmbed(x.media_url),url=esc(teacherMediaUrl(x.media_url,SID,TT));
+   if(x.media_type?.startsWith('image/'))m.innerHTML=`<img alt='수업 자료' src="${{url}}" style='max-width:100%;max-height:55vh'>`;
+   else if(x.media_type?.startsWith('audio/'))m.innerHTML=`<audio id='vid' controls src="${{url}}"></audio>`;
    else if(yt)setupYouTubePlayer(yt,x);
-   else m.innerHTML=`<video id='vid' controls playsinline src="${{esc(x.media_url)}}"></video>`;
+   else m.innerHTML=`<video id='vid' controls playsinline src="${{url}}"></video>`;
    let v=q('#vid');if(v&&x.pause_at_sec)v.addEventListener('timeupdate',()=>{{if(!videoPausedOnce&&v.currentTime>=x.pause_at_sec){{videoPausedOnce=true;v.pause();q('#choices').innerHTML=`<div class='card'><b>생각해 볼 질문</b><p>${{esc(x.text)}}</p></div>`;}}}});}}
 let c=q('#choices');c.innerHTML='';if(['SOCRATIC','RETEST'].includes(x.kind)){{c.innerHTML=`<div class='muted'>학생은 자신의 기기에서 응답합니다.</div>`;}}
 }}let playRevision=Number(S.state.play_command_revision||0);
@@ -1752,7 +1773,9 @@ def student_html(session_id: str, token: str) -> str:
 <div class='top'><b>EduRecover 학생 응답</b><span class='badge'>{session_id}</span></div><main style='max-width:680px;margin:auto;padding:16px'><div class='card'><label>가명 또는 번호</label><input id='alias' placeholder='예: S12' maxlength='40'></div><div class='card'><div class='muted' id='kind'></div><h1 id='title'>수업 연결중...</h1><p id='text' style='font-size:20px'></p><div id='choices'></div><label>확신도(0~100, 선택)</label><input id='conf' type='number' min='0' max='100' placeholder='예: 70'><label>왜 그렇게 생각했는지(선택)</label><textarea id='reason' rows='3'></textarea><div id='msg' class='muted'></div></div></main><script>{COMMON_JS}
 const SID={json.dumps(session_id)}, JT={json.dumps(token)};let S=null,lastSeg='';
 function seg(){{return (S?.lesson||[]).find(x=>x.segment_id===S?.state?.current_segment_id)||null}}
-async function load(){{try{{S=await api(`/tutor/api/sessions/${{SID}}?join_token=${{encodeURIComponent(JT)}}`);let x=seg();if(!x)return;q('#kind').textContent=x.kind;q('#title').textContent=x.title;q('#text').textContent=x.kind==='VIDEO'?'전자칠판 설명을 보고 질문이 나오면 답하세요.':x.text;if(lastSeg!==x.segment_id+':'+(x.structured_bundle_revision||'')){{lastSeg=x.segment_id+':'+(x.structured_bundle_revision||'');q('#msg').textContent='';q('#choices').innerHTML=(x.choices||[]).map(c=>`<button class='choice' data-choice='${{esc(c)}}' onclick='send(this.dataset.choice)'>${{esc(c)}}</button>`).join('')||`<div class='muted'>현재는 응답 단계가 아닙니다.</div>`;}}}}catch(e){{S=null;lastSeg='';q('#title').textContent='자료 제공 대기';q('#text').textContent='';q('#choices').innerHTML='';q('#msg').textContent='교사 검증 또는 연결 상태를 확인 중입니다.';}}}}
+async function load(){{try{{S=await api(`/tutor/api/sessions/${{SID}}?join_token=${{encodeURIComponent(JT)}}`);let x=seg();
+ if(S.state.playback==='STOPPED'||!x){{lastSeg='';q('#kind').textContent='';q('#title').textContent='수업 중지';q('#text').textContent='';q('#choices').innerHTML='';q('#msg').textContent='교사가 수업을 다시 시작하면 응답할 수 있습니다.';return;}}
+ q('#kind').textContent=x.kind;q('#title').textContent=x.title;q('#text').textContent=x.kind==='VIDEO'?'전자칠판 설명을 보고 질문이 나오면 답하세요.':x.text;if(lastSeg!==x.segment_id+':'+(x.structured_bundle_revision||'')){{lastSeg=x.segment_id+':'+(x.structured_bundle_revision||'');q('#msg').textContent='';q('#choices').innerHTML=(x.choices||[]).map(c=>`<button class='choice' data-choice='${{esc(c)}}' onclick='send(this.dataset.choice)'>${{esc(c)}}</button>`).join('')||`<div class='muted'>현재는 응답 단계가 아닙니다.</div>`;}}}}catch(e){{S=null;lastSeg='';q('#title').textContent='자료 제공 대기';q('#text').textContent='';q('#choices').innerHTML='';q('#msg').textContent='교사 검증 또는 연결 상태를 확인 중입니다.';}}}}
 async function send(ans){{let a=q('#alias').value.trim();if(!a){{q('#msg').textContent='가명/번호를 먼저 입력하세요.';return;}}let x=seg();let body={{student_alias:a,segment_id:x.segment_id,answer:ans,join_token:JT,material_revision_id:x.structured_bundle_revision||null,learning_path_revision_id:x.learning_path_revision||null,confidence:q('#conf').value?Number(q('#conf').value):null,reason_text:q('#reason').value||null}};try{{let r=await api(`/tutor/api/sessions/${{SID}}/respond`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify(body)}});q('#msg').textContent='응답을 보냈습니다.'+(r.correct===true?' ✓':r.correct===false?' — 다시 생각해 보세요.':'');}}catch(e){{q('#msg').textContent='응답 전송 실패';}}}}
 load();setInterval(load,1500);</script></body></html>"""
 
@@ -1782,17 +1805,7 @@ const SID={json.dumps(session_id)},TT={json.dumps(teacher_token)};let S,lastPrev
 const teacherBoard=setupSharedBoard(q('#whiteboard'));
 async function control(action,board_mode){{try{{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action,board_mode}})}});await load();}}catch(e){{alert('수업 조작 실패: '+e.message);}}}}
 async function clearTeacherBoard(){{if(confirm('이 수업의 판서를 모두 지울까요?'))await teacherBoard.clear();}}
-function teacherPreviewUrl(raw){{
-  try{{const media=new URL(raw,location.origin);
-    const prefix=`/tutor/api/sessions/${{SID}}/media/`;
-    if(media.origin===location.origin && media.pathname.startsWith(prefix) &&
-       /^[0-9a-f]{{32}}$/.test(media.pathname.slice(prefix.length))){{
-      media.searchParams.set('teacher_token',TT);return media.href;
-    }}
-  }}catch(e){{/* Keep external links unchanged. */}}
-  return raw;
-}}
-function previewMedia(x){{if(!x.media_url)return '';const url=esc(teacherPreviewUrl(x.media_url)),yt=youtubeEmbed(x.media_url);
+function previewMedia(x){{if(!x.media_url)return '';const url=esc(teacherMediaUrl(x.media_url,SID,TT)),yt=youtubeEmbed(x.media_url);
   if(x.media_type?.startsWith('image/'))return `<img alt="검토할 수업 그림" src="${{url}}" style="max-width:100%;max-height:260px">`;
   if(x.media_type?.startsWith('audio/'))return `<audio controls src="${{url}}"></audio>`;
   if(yt)return `<iframe title="검토할 수업 영상" src="${{esc(yt)}}" style="width:100%;height:220px;border:0" allowfullscreen></iframe>`;
