@@ -49,6 +49,15 @@ class ClassroomTutorTests(unittest.TestCase):
                                 text=True, capture_output=True, timeout=10, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_student_stop_clears_previous_prompt_and_resume_restores_it(self):
+        html = classroom_module.student_html("student-test", "join-token")
+        script = re.search(r"<script>(.*?)</script>", html, re.S)
+        self.assertIsNotNone(script)
+        harness = Path(__file__).with_name("classroom_student_stop_harness.js")
+        result = subprocess.run(["node", str(harness)], input=script.group(1),
+                                text=True, capture_output=True, timeout=10, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_repeated_play_commands_advance_board_revision(self):
         created = self.client.post("/classroom/api/sessions", headers=self.owner_headers,
                                    json={"title": "재생 명령 반복 시험"}).json()
@@ -121,7 +130,8 @@ class ClassroomTutorTests(unittest.TestCase):
         # The token identifies the file but must not publish an orphaned upload.
         self.assertEqual(self.client.get(media_url).status_code, 423)
         self.assertEqual(self.client.get(media_url + "&teacher_token=" + token).content, png)
-        self.assertIn("teacherPreviewUrl", self.client.get(created["teacher_url"]).text)
+        self.assertIn("teacherMediaUrl", self.client.get(created["teacher_url"]).text)
+        self.assertIn("teacherMediaUrl(x.media_url,SID,TT)", self.client.get(created["board_url"]).text)
         self.assertEqual(self.client.get(media_url.split("?")[0], params={"asset_token": "wrong"}).status_code, 403)
         bad = self.client.post(root + "/media", params=params,
             json={"media_type": "video/mp4", "data_base64": base64.b64encode(png).decode()})
@@ -140,7 +150,19 @@ class ClassroomTutorTests(unittest.TestCase):
         self.client.post(root + "/publish-lesson", params=params,
             json={"expected_digest": draft["lesson_digest"], "teacher_verified_content": True})
         self.assertEqual(self.client.get(root, params={"join_token": created["join_token"]}).status_code, 200)
+        self.assertEqual(self.client.get(media_url).status_code, 423)
+        self.assertEqual(self.client.post(root + "/command", params=params,
+                         json={"action": "GOTO", "segment_id": "teacher-image"}).status_code, 200)
         self.assertEqual(self.client.get(media_url).content, png)
+        self.assertEqual(self.client.post(root + "/command", params=params,
+                         json={"action": "STOP"}).status_code, 200)
+        self.assertEqual(self.client.get(media_url).status_code, 423)
+        student = self.client.get(root, params={"join_token": created["join_token"]}).json()
+        self.assertNotIn("media_url", student["lesson"][0])
+        self.assertIn("S.state.playback==='STOPPED'", self.client.get(created["join_url"]).text)
+        board = self.client.get(root, params={"teacher_token": token, "display_only": "true"}).json()
+        self.assertEqual(board["lesson"][0]["media_url"], media_url)
+        self.assertEqual(self.client.get(media_url + "&teacher_token=" + token).content, png)
         # Removing the media from the lesson withdraws its public file access.
         lesson = [step for step in draft["lesson"] if step["segment_id"] != "teacher-image"]
         self.assertEqual(self.client.put(root + "/lesson", params=params,
