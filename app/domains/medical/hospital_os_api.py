@@ -10,8 +10,11 @@ from app.domains.medical.hospital_os import (
     ClinicalAction,
     MedicationExecutionObject,
     SourceRevision,
+    apply_action_completion,
     evaluate_prescription_change,
     make_actual_use_evidence,
+    make_handoff_snapshot,
+    make_hospital_audit_event,
     make_medication_execution_object,
     make_source_revision,
     selective_revalidation,
@@ -31,6 +34,8 @@ _USE_KIND = "hospital_os_actual_use"
 _RECEIPT_KIND = "hospital_os_revalidation_receipt"
 _IDENTITY_KIND = "hospital_os_identity_check"
 _MEDICATION_KIND = "hospital_os_medication_object"
+_AUDIT_KIND = "hospital_os_audit_event"
+_HANDOFF_KIND = "hospital_os_handoff_snapshot"
 
 
 class SourceRevisionCreate(BaseModel):
@@ -108,6 +113,31 @@ class RevalidationRun(BaseModel):
     reason_code: str = Field(default="SOURCE_REVISION_CHANGED", min_length=1, max_length=120)
 
 
+class ClinicalActionComplete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dependency_state: Literal["RESOLVED", "UNRESOLVED"] = "RESOLVED"
+
+
+class SourceChangeCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_before_revision_id: str = Field(min_length=1, max_length=160)
+    payload: dict
+    source_state: Literal[
+        "CURRENT", "CORRECTED", "SUPERSEDED", "WITHDRAWN",
+        "LATEST_UNCONFIRMED", "ACCESS_UNAVAILABLE"
+    ] = "CURRENT"
+    verification_state: Literal["VERIFIED", "UNVERIFIED", "UNRESOLVED"] = "UNVERIFIED"
+    valid_time: str | None = Field(default=None, max_length=80)
+    changed_fields: list[str] = Field(default_factory=list, max_length=100)
+    dependency_state: Literal["RESOLVED", "UNRESOLVED"] = "RESOLVED"
+    reason_code: str = Field(default="SOURCE_REVISION_CHANGED", min_length=1, max_length=120)
+
+
+class HandoffSnapshotCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+
+
 def _source_from_payload(payload: dict) -> SourceRevision:
     return SourceRevision(
         source_revision_id=payload["source_revision_id"],
@@ -176,6 +206,61 @@ def _owned_resource(account_id: str, resource_id: str, kind: str) -> dict:
     if not item or item["kind"] != kind:
         raise HTTPException(status_code=404, detail="resource_not_found")
     return item
+
+
+def _latest_identity_status(account_id: str, patient_id: str) -> str:
+    for item in list_resources(domain="medical", subject_id=account_id, kind=_IDENTITY_KIND):
+        payload = item["payload"]
+        if payload.get("patient_id") == patient_id:
+            return payload.get("status", "UNRESOLVED")
+    return "UNRESOLVED"
+
+
+def _action_source_context(account_id: str, action_id: str) -> tuple[list[SourceRevision], int, int]:
+    uses = [
+        _use_from_payload(item["payload"])
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
+        if item["payload"].get("clinical_action_id") == action_id
+    ]
+    source_ids = list(dict.fromkeys(use.source_revision_id for use in uses))
+    sources: list[SourceRevision] = []
+    missing = 0
+    for source_id in source_ids:
+        item = get_resource(domain="medical", subject_id=account_id, resource_id=source_id)
+        if not item or item["kind"] != _SOURCE_KIND:
+            missing += 1
+            continue
+        sources.append(_source_from_payload(item["payload"]))
+    return sources, len(uses), missing
+
+
+def _store_audit(
+    *,
+    account_id: str,
+    event_type: str,
+    patient_id: str,
+    clinical_action_id: str | None,
+    source_revision_ids: list[str],
+    result: str,
+    reason_codes: list[str],
+) -> str:
+    event = make_hospital_audit_event(
+        actor_id=account_id,
+        event_type=event_type,
+        patient_id=patient_id,
+        clinical_action_id=clinical_action_id,
+        source_revision_ids=source_revision_ids,
+        result=result,
+        reason_codes=reason_codes,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_AUDIT_KIND,
+        payload=to_payload(event),
+        resource_id=event.audit_event_id,
+    )
+    return event.audit_event_id
 
 
 @router.get("/status")
@@ -433,6 +518,229 @@ def run_revalidation(payload: RevalidationRun, request: Request) -> dict:
         "unaffected_action_ids": list(receipt.unaffected_action_ids),
         "unresolved_scope": list(receipt.unresolved_scope),
         "post_states": receipt.post_states,
+    }
+
+
+
+@router.post("/clinical-actions/{clinical_action_id}/complete")
+def complete_clinical_action(
+    clinical_action_id: str,
+    payload: ClinicalActionComplete,
+    request: Request,
+) -> dict:
+    account_id = require_life_user(request)
+    item = _owned_resource(account_id, clinical_action_id, _ACTION_KIND)
+    action = _action_from_payload(item["payload"])
+    identity_status = _latest_identity_status(account_id, action.patient_id)
+    sources, use_count, missing_source_count = _action_source_context(account_id, clinical_action_id)
+    updated, decision = apply_action_completion(
+        action=action,
+        identity_status=identity_status,
+        source_revisions=sources,
+        actual_use_count=use_count,
+        missing_source_count=missing_source_count,
+        dependency_state=payload.dependency_state,
+    )
+    audit_id = _store_audit(
+        account_id=account_id,
+        event_type="clinical_action.complete",
+        patient_id=action.patient_id,
+        clinical_action_id=action.clinical_action_id,
+        source_revision_ids=list(decision.checked_source_revision_ids),
+        result="COMPLETED" if decision.allowed else "BLOCKED",
+        reason_codes=list(decision.blocked_reasons),
+    )
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "clinical_action_completion_blocked",
+                "blocked_reasons": list(decision.blocked_reasons),
+                "audit_event_id": audit_id,
+            },
+        )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_ACTION_KIND,
+        payload=to_payload(updated),
+        resource_id=updated.clinical_action_id,
+    )
+    return {
+        "clinical_action_id": updated.clinical_action_id,
+        "action_state": updated.action_state,
+        "completed_at": updated.completed_at,
+        "audit_event_id": audit_id,
+    }
+
+
+@router.post("/source-changes")
+def process_source_change(payload: SourceChangeCreate, request: Request) -> dict:
+    account_id = require_life_user(request)
+    before_item = _owned_resource(account_id, payload.source_before_revision_id, _SOURCE_KIND)
+    before = _source_from_payload(before_item["payload"])
+    try:
+        after = make_source_revision(
+            source_id=before.source_id,
+            payload=payload.payload,
+            source_state=payload.source_state,
+            verification_state=payload.verification_state,
+            predecessor_revision_id=before.source_revision_id,
+            valid_time=payload.valid_time,
+            changed_fields=payload.changed_fields,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_SOURCE_KIND,
+        payload=to_payload(after),
+        resource_id=after.source_revision_id,
+    )
+    actions = [
+        _action_from_payload(item["payload"])
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+    ]
+    uses = [
+        _use_from_payload(item["payload"])
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
+    ]
+    result = selective_revalidation(
+        source_before=before,
+        source_after=after,
+        actions=actions,
+        actual_use_evidence=uses,
+        dependency_state=payload.dependency_state,
+        reason_code=payload.reason_code,
+    )
+    for action in result.actions:
+        put_resource(
+            domain="medical",
+            subject_id=account_id,
+            kind=_ACTION_KIND,
+            payload=to_payload(action),
+            resource_id=action.clinical_action_id,
+        )
+    receipt = result.receipt
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_RECEIPT_KIND,
+        payload=to_payload(receipt),
+        resource_id=receipt.receipt_id,
+    )
+    return {
+        "source_after_revision_id": after.source_revision_id,
+        "receipt_id": receipt.receipt_id,
+        "affected_action_ids": list(receipt.affected_action_ids),
+        "unaffected_action_ids": list(receipt.unaffected_action_ids),
+        "unresolved_scope": list(receipt.unresolved_scope),
+        "post_states": receipt.post_states,
+    }
+
+
+@router.post("/handoff/snapshot")
+def create_handoff_snapshot(payload: HandoffSnapshotCreate, request: Request) -> dict:
+    account_id = require_life_user(request)
+    actions = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+        if item["payload"].get("patient_id") == payload.patient_id
+    ]
+    action_ids = {item["clinical_action_id"] for item in actions}
+    uses = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
+        if item["payload"].get("clinical_action_id") in action_ids
+    ]
+    source_ids = list(dict.fromkeys(item["source_revision_id"] for item in uses))
+    medications = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
+        if item["payload"].get("patient_id") == payload.patient_id
+    ]
+    snapshot = make_handoff_snapshot(
+        patient_id=payload.patient_id,
+        source_revision_ids=source_ids,
+        action_states={item["clinical_action_id"]: item["action_state"] for item in actions},
+        medication_states={item["medication_object_id"]: item["safety_state"] for item in medications},
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_HANDOFF_KIND,
+        payload=to_payload(snapshot),
+        resource_id=snapshot.handoff_snapshot_id,
+    )
+    return {
+        "handoff_snapshot_id": snapshot.handoff_snapshot_id,
+        "patient_id": snapshot.patient_id,
+        "created_at": snapshot.created_at,
+    }
+
+
+@router.get("/handoff/{handoff_snapshot_id}/delta")
+def handoff_delta(handoff_snapshot_id: str, request: Request) -> dict:
+    account_id = require_life_user(request)
+    item = _owned_resource(account_id, handoff_snapshot_id, _HANDOFF_KIND)
+    snapshot = item["payload"]
+    patient_id = snapshot["patient_id"]
+    actions = [
+        x["payload"]
+        for x in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+        if x["payload"].get("patient_id") == patient_id
+    ]
+    action_ids = {x["clinical_action_id"] for x in actions}
+    uses = [
+        x["payload"]
+        for x in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
+        if x["payload"].get("clinical_action_id") in action_ids
+    ]
+    current_source_ids = list(dict.fromkeys(x["source_revision_id"] for x in uses))
+    baseline_sources = set(snapshot.get("source_revision_ids", []))
+    baseline_actions = snapshot.get("action_states", {})
+    medications = [
+        x["payload"]
+        for x in list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
+        if x["payload"].get("patient_id") == patient_id
+    ]
+    baseline_medications = snapshot.get("medication_states", {})
+    changed_actions = [
+        {
+            "clinical_action_id": x["clinical_action_id"],
+            "before": baseline_actions.get(x["clinical_action_id"]),
+            "after": x["action_state"],
+        }
+        for x in actions
+        if baseline_actions.get(x["clinical_action_id"]) != x["action_state"]
+    ]
+    changed_medications = [
+        {
+            "medication_object_id": x["medication_object_id"],
+            "before": baseline_medications.get(x["medication_object_id"]),
+            "after": x["safety_state"],
+        }
+        for x in medications
+        if baseline_medications.get(x["medication_object_id"]) != x["safety_state"]
+    ]
+    return {
+        "handoff_snapshot_id": handoff_snapshot_id,
+        "patient_id": patient_id,
+        "new_source_revision_ids": [x for x in current_source_ids if x not in baseline_sources],
+        "changed_actions": changed_actions,
+        "changed_medications": changed_medications,
+    }
+
+
+@router.get("/audit-events")
+def list_audit_events(request: Request) -> dict:
+    account_id = require_life_user(request)
+    return {
+        "audit_events": [
+            item["payload"]
+            for item in list_resources(domain="medical", subject_id=account_id, kind=_AUDIT_KIND)
+        ]
     }
 
 
