@@ -25,6 +25,18 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="GEMINI_API_KEY",
     )
+    google_credentials_json: SecretStr | None = Field(
+        default=None,
+        validation_alias="GOOGLE_CREDENTIALS_JSON",
+    )
+    google_cloud_project: str | None = Field(
+        default=None,
+        validation_alias="GOOGLE_CLOUD_PROJECT",
+    )
+    gemini_vertex_location: str = Field(
+        default="global",
+        validation_alias="GEMINI_VERTEX_LOCATION",
+    )
     openai_model: str = Field(
         default="gpt-5.6-sol",
         validation_alias="OPENAI_MODEL",
