@@ -19,6 +19,7 @@ from app.services.auto_generator import (
     GenerationProvider,
     provider_failure,
     _log_gemini_error,
+    _vertex_gemini_client,
     gemini_generation_config,
 )
 
@@ -135,11 +136,9 @@ async def _verify_payload(
 
     if normalized == GenerationProvider.GEMINI.value:
         assert_provider_zdr("gemini")
-        if settings.gemini_api_key is None:
-            raise GeneratorNotConfigured("GEMINI_API_KEY is not configured.")
         client = None
         try:
-            client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
+            client = _vertex_gemini_client()
             response = await client.aio.models.generate_content(
                 model=settings.gemini_model,
                 contents=payload,
