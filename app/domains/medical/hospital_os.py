@@ -409,5 +409,160 @@ def selective_revalidation(
     return RevalidationResult(actions=tuple(updated), receipt=receipt)
 
 
+
+@dataclass(frozen=True)
+class CompletionDecision:
+    clinical_action_id: str
+    allowed: bool
+    next_state: ActionState
+    blocked_reasons: tuple[str, ...]
+    checked_source_revision_ids: tuple[str, ...]
+    identity_status: IdentityStatus
+    dependency_state: DependencyState
+
+
+@dataclass(frozen=True)
+class HospitalAuditEvent:
+    audit_event_id: str
+    actor_id: str
+    event_type: str
+    patient_id: str
+    clinical_action_id: str | None
+    source_revision_ids: tuple[str, ...]
+    occurred_at: str
+    result: str
+    reason_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class HandoffSnapshot:
+    handoff_snapshot_id: str
+    patient_id: str
+    created_at: str
+    source_revision_ids: tuple[str, ...]
+    action_states: dict[str, str]
+    medication_states: dict[str, str]
+
+
+def evaluate_action_completion(
+    *,
+    action: ClinicalAction,
+    identity_status: IdentityStatus,
+    source_revisions: list[SourceRevision],
+    actual_use_count: int,
+    missing_source_count: int = 0,
+    dependency_state: DependencyState = "RESOLVED",
+) -> CompletionDecision:
+    """Fail closed when required identity or source evidence is unresolved.
+
+    This is a workflow safety gate. It does not decide diagnosis, treatment,
+    prescription, or clinical appropriateness.
+    """
+    reasons: list[str] = []
+
+    if action.action_state in {"HOLD", "STALE", "REVALIDATION_REQUIRED"}:
+        reasons.append("ACTION_NOT_COMPLETABLE_IN_CURRENT_STATE")
+    if identity_status != "VERIFIED":
+        reasons.append("PATIENT_IDENTITY_NOT_VERIFIED")
+    if dependency_state != "RESOLVED":
+        reasons.append("DEPENDENCY_UNRESOLVED")
+    if actual_use_count <= 0:
+        reasons.append("ACTUAL_USE_EVIDENCE_REQUIRED")
+    if missing_source_count > 0:
+        reasons.append("USED_SOURCE_REVISION_MISSING")
+
+    blocked_source_states = {
+        "SUPERSEDED", "WITHDRAWN", "LATEST_UNCONFIRMED", "ACCESS_UNAVAILABLE"
+    }
+    for source in source_revisions:
+        if source.verification_state != "VERIFIED":
+            reasons.append("USED_SOURCE_NOT_VERIFIED")
+        if source.source_state in blocked_source_states:
+            reasons.append("USED_SOURCE_NOT_CURRENTLY_USABLE")
+
+    unique_reasons = tuple(dict.fromkeys(reasons))
+    allowed = not unique_reasons
+    return CompletionDecision(
+        clinical_action_id=action.clinical_action_id,
+        allowed=allowed,
+        next_state="CLOSED_HISTORICAL" if allowed else action.action_state,
+        blocked_reasons=unique_reasons,
+        checked_source_revision_ids=tuple(
+            source.source_revision_id for source in source_revisions
+        ),
+        identity_status=identity_status,
+        dependency_state=dependency_state,
+    )
+
+
+def apply_action_completion(
+    *,
+    action: ClinicalAction,
+    identity_status: IdentityStatus,
+    source_revisions: list[SourceRevision],
+    actual_use_count: int,
+    missing_source_count: int = 0,
+    dependency_state: DependencyState = "RESOLVED",
+) -> tuple[ClinicalAction, CompletionDecision]:
+    decision = evaluate_action_completion(
+        action=action,
+        identity_status=identity_status,
+        source_revisions=source_revisions,
+        actual_use_count=actual_use_count,
+        missing_source_count=missing_source_count,
+        dependency_state=dependency_state,
+    )
+    if not decision.allowed:
+        return action, decision
+    return (
+        replace(
+            action,
+            action_state="CLOSED_HISTORICAL",
+            completed_at=utcnow(),
+            current_validity="COMPLETED",
+        ),
+        decision,
+    )
+
+
+def make_hospital_audit_event(
+    *,
+    actor_id: str,
+    event_type: str,
+    patient_id: str,
+    clinical_action_id: str | None = None,
+    source_revision_ids: list[str] | tuple[str, ...] = (),
+    result: str,
+    reason_codes: list[str] | tuple[str, ...] = (),
+) -> HospitalAuditEvent:
+    return HospitalAuditEvent(
+        audit_event_id=f"audit_{uuid.uuid4().hex}",
+        actor_id=actor_id,
+        event_type=event_type,
+        patient_id=patient_id,
+        clinical_action_id=clinical_action_id,
+        source_revision_ids=tuple(source_revision_ids),
+        occurred_at=utcnow(),
+        result=result,
+        reason_codes=tuple(reason_codes),
+    )
+
+
+def make_handoff_snapshot(
+    *,
+    patient_id: str,
+    source_revision_ids: list[str],
+    action_states: dict[str, str],
+    medication_states: dict[str, str],
+) -> HandoffSnapshot:
+    return HandoffSnapshot(
+        handoff_snapshot_id=f"handoff_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        created_at=utcnow(),
+        source_revision_ids=tuple(source_revision_ids),
+        action_states=dict(action_states),
+        medication_states=dict(medication_states),
+    )
+
 def to_payload(value: object) -> dict:
     return asdict(value)
