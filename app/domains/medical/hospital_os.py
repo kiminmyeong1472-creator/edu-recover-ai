@@ -564,5 +564,129 @@ def make_handoff_snapshot(
         medication_states=dict(medication_states),
     )
 
+
+ERWorkflowState = Literal[
+    "ARRIVED", "TRIAGED", "SEEN", "TESTING", "RESULTED",
+    "CONSULTING", "DECISION", "ADMISSION", "TRANSFER", "DISCHARGE"
+]
+
+
+@dataclass(frozen=True)
+class ReportSnapshot:
+    report_snapshot_id: str
+    patient_id: str
+    created_at: str
+    source_revision_ids: tuple[str, ...]
+    action_states: dict[str, str]
+    unresolved_action_ids: tuple[str, ...]
+    pending_action_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ERWorkflowItem:
+    er_workflow_id: str
+    patient_id: str
+    workflow_state: ERWorkflowState
+    pending_items: tuple[str, ...]
+    responsible_role: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class PreopExposure:
+    exposure_id: str
+    patient_id: str
+    drug_name: str
+    route: str | None
+    dose_intensity: str | None
+    start_at: str | None
+    end_at: str | None
+    last_exposure_at: str | None
+    source_revision_id: str | None
+    verification_state: VerificationState
+    review_categories: tuple[str, ...]
+    missing_fields: tuple[str, ...]
+    created_at: str
+
+
+def make_report_snapshot(
+    *,
+    patient_id: str,
+    source_revision_ids: list[str],
+    action_states: dict[str, str],
+) -> ReportSnapshot:
+    unresolved_states = {"HOLD", "STALE", "REVALIDATION_REQUIRED"}
+    pending_states = {"INCOMPLETE", "CURRENT"}
+    return ReportSnapshot(
+        report_snapshot_id=f"report_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        created_at=utcnow(),
+        source_revision_ids=tuple(source_revision_ids),
+        action_states=dict(action_states),
+        unresolved_action_ids=tuple(
+            action_id for action_id, state in action_states.items()
+            if state in unresolved_states
+        ),
+        pending_action_ids=tuple(
+            action_id for action_id, state in action_states.items()
+            if state in pending_states
+        ),
+    )
+
+
+def make_er_workflow_item(
+    *,
+    patient_id: str,
+    workflow_state: ERWorkflowState,
+    pending_items: list[str],
+    responsible_role: str,
+    er_workflow_id: str | None = None,
+) -> ERWorkflowItem:
+    return ERWorkflowItem(
+        er_workflow_id=er_workflow_id or f"er_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        workflow_state=workflow_state,
+        pending_items=tuple(item for item in pending_items if item),
+        responsible_role=responsible_role,
+        updated_at=utcnow(),
+    )
+
+
+def make_preop_exposure(
+    *,
+    patient_id: str,
+    drug_name: str,
+    route: str | None,
+    dose_intensity: str | None,
+    start_at: str | None,
+    end_at: str | None,
+    last_exposure_at: str | None,
+    source_revision_id: str | None,
+    verification_state: VerificationState,
+    review_categories: list[str],
+) -> PreopExposure:
+    values = {
+        "route": route,
+        "dose_intensity": dose_intensity,
+        "last_exposure_at": last_exposure_at,
+        "source_revision_id": source_revision_id,
+    }
+    missing_fields = tuple(name for name, value in values.items() if not value)
+    return PreopExposure(
+        exposure_id=f"preop_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        drug_name=drug_name,
+        route=route,
+        dose_intensity=dose_intensity,
+        start_at=start_at,
+        end_at=end_at,
+        last_exposure_at=last_exposure_at,
+        source_revision_id=source_revision_id,
+        verification_state=verification_state,
+        review_categories=tuple(dict.fromkeys(review_categories)),
+        missing_fields=missing_fields,
+        created_at=utcnow(),
+    )
+
 def to_payload(value: object) -> dict:
     return asdict(value)
