@@ -1,5 +1,6 @@
 from app.domains.medical.hospital_os import (
     ClinicalAction,
+    apply_action_completion,
     evaluate_prescription_change,
     make_actual_use_evidence,
     make_medication_execution_object,
@@ -157,3 +158,52 @@ def test_prescription_change_holds_only_matching_unadministered_medication():
     )
     assert closed.affected is False
     assert closed.next_state == "CLOSED"
+
+
+
+def test_completion_gate_fails_closed_and_allows_verified_context():
+    action = _action("act-complete", "INCOMPLETE", "HIGH")
+    source = make_source_revision(
+        source_id="rx-current",
+        payload={"dose": "10mg"},
+        verification_state="VERIFIED",
+    )
+
+    blocked_action, blocked = apply_action_completion(
+        action=action,
+        identity_status="UNRESOLVED",
+        source_revisions=[source],
+        actual_use_count=1,
+        dependency_state="RESOLVED",
+    )
+    assert blocked.allowed is False
+    assert "PATIENT_IDENTITY_NOT_VERIFIED" in blocked.blocked_reasons
+    assert blocked_action.action_state == "INCOMPLETE"
+
+    uncertain_source = make_source_revision(
+        source_id="rx-uncertain",
+        payload={"dose": "10mg"},
+        source_state="LATEST_UNCONFIRMED",
+        verification_state="UNVERIFIED",
+    )
+    _, uncertain = apply_action_completion(
+        action=action,
+        identity_status="VERIFIED",
+        source_revisions=[uncertain_source],
+        actual_use_count=1,
+        dependency_state="RESOLVED",
+    )
+    assert uncertain.allowed is False
+    assert "USED_SOURCE_NOT_VERIFIED" in uncertain.blocked_reasons
+    assert "USED_SOURCE_NOT_CURRENTLY_USABLE" in uncertain.blocked_reasons
+
+    completed_action, allowed = apply_action_completion(
+        action=action,
+        identity_status="VERIFIED",
+        source_revisions=[source],
+        actual_use_count=1,
+        dependency_state="RESOLVED",
+    )
+    assert allowed.allowed is True
+    assert completed_action.action_state == "CLOSED_HISTORICAL"
+    assert completed_action.completed_at is not None
