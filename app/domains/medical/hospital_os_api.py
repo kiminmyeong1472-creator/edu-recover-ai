@@ -13,9 +13,12 @@ from app.domains.medical.hospital_os import (
     apply_action_completion,
     evaluate_prescription_change,
     make_actual_use_evidence,
+    make_er_workflow_item,
     make_handoff_snapshot,
     make_hospital_audit_event,
     make_medication_execution_object,
+    make_preop_exposure,
+    make_report_snapshot,
     make_source_revision,
     selective_revalidation,
     to_payload,
@@ -36,6 +39,9 @@ _IDENTITY_KIND = "hospital_os_identity_check"
 _MEDICATION_KIND = "hospital_os_medication_object"
 _AUDIT_KIND = "hospital_os_audit_event"
 _HANDOFF_KIND = "hospital_os_handoff_snapshot"
+_REPORT_KIND = "hospital_os_report_snapshot"
+_ER_WORKFLOW_KIND = "hospital_os_er_workflow"
+_PREOP_KIND = "hospital_os_preop_exposure"
 
 
 class SourceRevisionCreate(BaseModel):
@@ -136,6 +142,37 @@ class SourceChangeCreate(BaseModel):
 class HandoffSnapshotCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
+
+
+class ReportSnapshotCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+
+
+class ERWorkflowCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+    workflow_state: Literal[
+        "ARRIVED", "TRIAGED", "SEEN", "TESTING", "RESULTED",
+        "CONSULTING", "DECISION", "ADMISSION", "TRANSFER", "DISCHARGE"
+    ]
+    pending_items: list[str] = Field(default_factory=list, max_length=100)
+    responsible_role: str = Field(min_length=1, max_length=80)
+    er_workflow_id: str | None = Field(default=None, max_length=160)
+
+
+class PreopExposureCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+    drug_name: str = Field(min_length=1, max_length=160)
+    route: str | None = Field(default=None, max_length=80)
+    dose_intensity: str | None = Field(default=None, max_length=120)
+    start_at: str | None = Field(default=None, max_length=80)
+    end_at: str | None = Field(default=None, max_length=80)
+    last_exposure_at: str | None = Field(default=None, max_length=80)
+    source_revision_id: str | None = Field(default=None, max_length=160)
+    verification_state: Literal["VERIFIED", "UNVERIFIED", "UNRESOLVED"] = "UNVERIFIED"
+    review_categories: list[str] = Field(default_factory=list, max_length=20)
 
 
 def _source_from_payload(payload: dict) -> SourceRevision:
@@ -741,6 +778,209 @@ def list_audit_events(request: Request) -> dict:
             item["payload"]
             for item in list_resources(domain="medical", subject_id=account_id, kind=_AUDIT_KIND)
         ]
+    }
+
+
+@router.post("/reports/snapshot")
+def create_report_snapshot(payload: ReportSnapshotCreate, request: Request) -> dict:
+    account_id = require_life_user(request)
+    actions = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+        if item["payload"].get("patient_id") == payload.patient_id
+    ]
+    action_ids = {item["clinical_action_id"] for item in actions}
+    uses = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
+        if item["payload"].get("clinical_action_id") in action_ids
+    ]
+    source_ids = list(dict.fromkeys(item["source_revision_id"] for item in uses))
+    snapshot = make_report_snapshot(
+        patient_id=payload.patient_id,
+        source_revision_ids=source_ids,
+        action_states={item["clinical_action_id"]: item["action_state"] for item in actions},
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_REPORT_KIND,
+        payload=to_payload(snapshot),
+        resource_id=snapshot.report_snapshot_id,
+    )
+    return {
+        "report_snapshot_id": snapshot.report_snapshot_id,
+        "patient_id": snapshot.patient_id,
+        "created_at": snapshot.created_at,
+        "unresolved_action_ids": list(snapshot.unresolved_action_ids),
+        "pending_action_ids": list(snapshot.pending_action_ids),
+        "source_revision_ids": list(snapshot.source_revision_ids),
+    }
+
+
+@router.get("/reports/{report_snapshot_id}/delta")
+def report_delta(report_snapshot_id: str, request: Request) -> dict:
+    account_id = require_life_user(request)
+    item = _owned_resource(account_id, report_snapshot_id, _REPORT_KIND)
+    snapshot = item["payload"]
+    patient_id = snapshot["patient_id"]
+    actions = [
+        x["payload"]
+        for x in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+        if x["payload"].get("patient_id") == patient_id
+    ]
+    baseline_actions = snapshot.get("action_states", {})
+    action_ids = {x["clinical_action_id"] for x in actions}
+    uses = [
+        x["payload"]
+        for x in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
+        if x["payload"].get("clinical_action_id") in action_ids
+    ]
+    current_source_ids = list(dict.fromkeys(x["source_revision_id"] for x in uses))
+    baseline_sources = set(snapshot.get("source_revision_ids", []))
+    return {
+        "report_snapshot_id": report_snapshot_id,
+        "patient_id": patient_id,
+        "new_source_revision_ids": [x for x in current_source_ids if x not in baseline_sources],
+        "changed_actions": [
+            {
+                "clinical_action_id": x["clinical_action_id"],
+                "before": baseline_actions.get(x["clinical_action_id"]),
+                "after": x["action_state"],
+            }
+            for x in actions
+            if baseline_actions.get(x["clinical_action_id"]) != x["action_state"]
+        ],
+    }
+
+
+@router.post("/er/workflows")
+def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
+    account_id = require_life_user(request)
+    item = make_er_workflow_item(
+        patient_id=payload.patient_id,
+        workflow_state=payload.workflow_state,
+        pending_items=payload.pending_items,
+        responsible_role=payload.responsible_role,
+        er_workflow_id=payload.er_workflow_id,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_ER_WORKFLOW_KIND,
+        payload=to_payload(item),
+        resource_id=item.er_workflow_id,
+    )
+    return to_payload(item)
+
+
+@router.get("/er/unfinished-loops")
+def er_unfinished_loops(request: Request) -> dict:
+    account_id = require_life_user(request)
+    finished = {"ADMISSION", "TRANSFER", "DISCHARGE"}
+    workflows = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ER_WORKFLOW_KIND)
+    ]
+    return {
+        "unfinished_loops": [
+            item for item in workflows
+            if item.get("workflow_state") not in finished or item.get("pending_items")
+        ]
+    }
+
+
+@router.post("/preop/exposures")
+def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dict:
+    account_id = require_life_user(request)
+    if payload.source_revision_id:
+        _owned_resource(account_id, payload.source_revision_id, _SOURCE_KIND)
+    exposure = make_preop_exposure(
+        patient_id=payload.patient_id,
+        drug_name=payload.drug_name,
+        route=payload.route,
+        dose_intensity=payload.dose_intensity,
+        start_at=payload.start_at,
+        end_at=payload.end_at,
+        last_exposure_at=payload.last_exposure_at,
+        source_revision_id=payload.source_revision_id,
+        verification_state=payload.verification_state,
+        review_categories=payload.review_categories,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_PREOP_KIND,
+        payload=to_payload(exposure),
+        resource_id=exposure.exposure_id,
+    )
+    return to_payload(exposure)
+
+
+@router.get("/patients/{patient_id}/preop-exposures")
+def list_preop_exposures(patient_id: str, request: Request) -> dict:
+    account_id = require_life_user(request)
+    return {
+        "preop_exposures": [
+            item["payload"]
+            for item in list_resources(domain="medical", subject_id=account_id, kind=_PREOP_KIND)
+            if item["payload"].get("patient_id") == patient_id
+        ]
+    }
+
+
+@router.get("/patients/{patient_id}/current-actions")
+def patient_current_actions(patient_id: str, request: Request) -> dict:
+    account_id = require_life_user(request)
+    live_states = {"INCOMPLETE", "CURRENT", "HOLD", "STALE", "REVALIDATION_REQUIRED"}
+    return {
+        "actions": [
+            item["payload"]
+            for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+            if item["payload"].get("patient_id") == patient_id
+            and item["payload"].get("action_state") in live_states
+        ]
+    }
+
+
+@router.get("/patients/{patient_id}/medications")
+def patient_medications(patient_id: str, request: Request) -> dict:
+    account_id = require_life_user(request)
+    return {
+        "medication_objects": [
+            item["payload"]
+            for item in list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
+            if item["payload"].get("patient_id") == patient_id
+        ]
+    }
+
+
+@router.get("/hospital/today")
+def hospital_today(request: Request) -> dict:
+    account_id = require_life_user(request)
+    actions = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+    ]
+    medications = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
+    ]
+    workflows = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ER_WORKFLOW_KIND)
+    ]
+    return {
+        "current_holds": sum(1 for x in actions if x.get("action_state") == "HOLD"),
+        "revalidation_required": sum(
+            1 for x in actions if x.get("action_state") == "REVALIDATION_REQUIRED"
+        ),
+        "medication_holds": sum(1 for x in medications if x.get("safety_state") == "HOLD"),
+        "er_unfinished_loops": sum(
+            1 for x in workflows
+            if x.get("workflow_state") not in {"ADMISSION", "TRANSFER", "DISCHARGE"}
+            or x.get("pending_items")
+        ),
     }
 
 
