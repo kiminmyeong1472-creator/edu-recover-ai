@@ -338,3 +338,111 @@ def test_source_change_single_entrypoint_revalidates_actual_users(monkeypatch, t
     assert changed.status_code == 200, changed.text
     assert changed.json()["post_states"][action_id] == "HOLD"
     assert action_id in changed.json()["affected_action_ids"]
+
+
+
+def test_report_er_preop_and_hospital_today_apis(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    _register(client, "hospital-user-6")
+
+    source = client.post(
+        "/life/api/medical/hospital-os/source-revisions",
+        json={
+            "source_id": "rx-report",
+            "payload": {"drug": "A", "dose": "5mg"},
+            "source_state": "CURRENT",
+            "verification_state": "VERIFIED",
+        },
+    )
+    assert source.status_code == 200, source.text
+    source_id = source.json()["source_revision_id"]
+
+    action = client.post(
+        "/life/api/medical/hospital-os/clinical-actions",
+        json={
+            "patient_id": "patient-6",
+            "action_type": "review",
+            "responsible_role": "DOCTOR",
+            "action_state": "CURRENT",
+            "risk_tier": "MEDIUM",
+        },
+    )
+    assert action.status_code == 200, action.text
+    action_id = action.json()["clinical_action_id"]
+
+    use = client.post(
+        "/life/api/medical/hospital-os/actual-use-evidence",
+        json={
+            "clinical_action_id": action_id,
+            "source_revision_id": source_id,
+            "manifest_type": "report_manifest",
+            "actor_or_system": "doctor-ui",
+            "input_set": {"source_revision_id": source_id},
+            "context": {"patient_id": "patient-6"},
+            "verification_state": "VERIFIED",
+        },
+    )
+    assert use.status_code == 200, use.text
+
+    report = client.post(
+        "/life/api/medical/hospital-os/reports/snapshot",
+        json={"patient_id": "patient-6"},
+    )
+    assert report.status_code == 200, report.text
+    report_id = report.json()["report_snapshot_id"]
+    assert action_id in report.json()["pending_action_ids"]
+    assert source_id in report.json()["source_revision_ids"]
+
+    er = client.post(
+        "/life/api/medical/hospital-os/er/workflows",
+        json={
+            "patient_id": "patient-6",
+            "workflow_state": "TESTING",
+            "pending_items": ["test_pending"],
+            "responsible_role": "ER_STAFF",
+        },
+    )
+    assert er.status_code == 200, er.text
+
+    unfinished = client.get("/life/api/medical/hospital-os/er/unfinished-loops")
+    assert unfinished.status_code == 200, unfinished.text
+    assert any(x["patient_id"] == "patient-6" for x in unfinished.json()["unfinished_loops"])
+
+    exposure = client.post(
+        "/life/api/medical/hospital-os/preop/exposures",
+        json={
+            "patient_id": "patient-6",
+            "drug_name": "sample-steroid",
+            "route": "oral",
+            "dose_intensity": None,
+            "last_exposure_at": None,
+            "source_revision_id": source_id,
+            "verification_state": "UNVERIFIED",
+            "review_categories": ["ADRENAL_REVIEW"],
+        },
+    )
+    assert exposure.status_code == 200, exposure.text
+    assert "dose_intensity" in exposure.json()["missing_fields"]
+    assert "last_exposure_at" in exposure.json()["missing_fields"]
+
+    preop = client.get(
+        "/life/api/medical/hospital-os/patients/patient-6/preop-exposures"
+    )
+    assert preop.status_code == 200, preop.text
+    assert len(preop.json()["preop_exposures"]) == 1
+
+    current = client.get(
+        "/life/api/medical/hospital-os/patients/patient-6/current-actions"
+    )
+    assert current.status_code == 200, current.text
+    assert any(x["clinical_action_id"] == action_id for x in current.json()["actions"])
+
+    report_delta = client.get(
+        f"/life/api/medical/hospital-os/reports/{report_id}/delta"
+    )
+    assert report_delta.status_code == 200, report_delta.text
+    assert report_delta.json()["patient_id"] == "patient-6"
+
+    today = client.get("/life/api/medical/hospital-os/hospital/today")
+    assert today.status_code == 200, today.text
+    assert today.json()["er_unfinished_loops"] == 1
