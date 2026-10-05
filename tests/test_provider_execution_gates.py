@@ -117,7 +117,7 @@ class ProviderExecutionTests(unittest.TestCase):
     def test_verify_only_provider_remains_a_verification_candidate(self):
         with patch.dict(os.environ, {'EDURECOVER_RESTRICTED_PROVIDERS': 'gemini',
                                      'EDURECOVER_REQUIRE_ZDR': 'false'}), \
-                patch.object(main.settings, 'gemini_api_key', SecretStr('test-not-real')):
+                patch.object(main.settings, 'google_credentials_json', SecretStr('{"project_id":"test-project"}')):
             row = self.client.get('/ai-status').json()['providers']['gemini']
             self.assertFalse(row['ready'])
             self.assertTrue(row['verify_ready'])
@@ -270,6 +270,35 @@ class OpenAIVerificationFailureTests(unittest.IsolatedAsyncioTestCase):
             self.assertIs(client.responses.create.await_args.kwargs['store'], False)
             client.close.assert_awaited_once()
 
+class GeminiVertexConfigurationTests(unittest.TestCase):
+    def test_vertex_client_uses_service_account_project_and_global_location(self):
+        fake_credentials = object()
+        client = object()
+        raw = json.dumps({
+            "type": "service_account",
+            "project_id": "vertex-project",
+            "private_key_id": "test",
+            "private_key": "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----\n",
+            "client_email": "test@example.iam.gserviceaccount.com",
+            "client_id": "1",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        })
+        with patch.object(generation.settings, 'google_credentials_json', SecretStr(raw)), \
+                patch.object(generation.settings, 'google_cloud_project', None), \
+                patch.object(generation.settings, 'gemini_vertex_location', 'global'), \
+                patch.object(generation.service_account.Credentials, 'from_service_account_info',
+                             return_value=fake_credentials) as credentials, \
+                patch.object(generation.genai, 'Client', return_value=client) as sdk:
+            self.assertIs(generation._vertex_gemini_client(), client)
+            credentials.assert_called_once()
+            sdk.assert_called_once_with(
+                vertexai=True,
+                project='vertex-project',
+                location='global',
+                credentials=fake_credentials,
+            )
+
+
 class GeminiClientLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_quota_error_is_classified_and_async_client_closed(self):
         error = RuntimeError('do-not-log-source')
@@ -279,8 +308,7 @@ class GeminiClientLifecycleTests(unittest.IsolatedAsyncioTestCase):
             aio=SimpleNamespace(models=SimpleNamespace(generate_content=AsyncMock(side_effect=error)),
                                 aclose=AsyncMock()), close=Mock())
         with patch.object(generation, 'assert_provider_zdr'), \
-                patch.object(generation.settings, 'gemini_api_key', SecretStr('test-only-key')), \
-                patch.object(generation.genai, 'Client', return_value=client):
+                patch.object(generation, '_vertex_gemini_client', return_value=client):
             with self.assertRaises(generation.GenerationFailed) as caught:
                 await generation._generate_with_gemini('test-source', 1)
             self.assertEqual(caught.exception.http_status, 429)
