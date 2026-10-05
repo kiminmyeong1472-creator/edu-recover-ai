@@ -289,7 +289,7 @@ async def health_check() -> dict[str, str]:
 def _provider_secret_configured(provider: str) -> bool:
     return {
         "openai": settings.openai_api_key is not None,
-        "gemini": settings.gemini_api_key is not None,
+        "gemini": settings.google_credentials_json is not None,
         "claude": settings.anthropic_api_key is not None,
     }[provider]
 
@@ -360,7 +360,8 @@ async def owner_ai_status(_: None = Depends(require_owner)) -> dict[str, Any]:
             "configured": _provider_secret_configured(provider),
             "model": _provider_model(provider),
             "thinking_level": settings.gemini_thinking_level if provider == "gemini" else None,
-            "product_profile": "CONFIGURED_API_THINKING_LEVEL" if provider == "gemini" else None,
+            "product_profile": "GOOGLE_CLOUD_VERTEX_AI" if provider == "gemini" else None,
+            "location": settings.gemini_vertex_location if provider == "gemini" else None,
             "control": control,
             "privacy": privacy.get("providers", {}).get(provider, {}),
         }

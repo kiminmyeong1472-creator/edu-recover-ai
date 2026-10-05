@@ -15,6 +15,7 @@ from typing import Any
 from anthropic import AsyncAnthropic
 from google import genai
 from google.genai import types
+from google.oauth2 import service_account
 from openai import AsyncOpenAI
 
 from app.core.config import settings
@@ -89,6 +90,37 @@ def provider_failure(provider: str, exc: Exception) -> GenerationFailed:
     if code in {408, 504} or error_type in {"APITimeoutError", "TimeoutError"}:
         return GenerationFailed(f"{label} API 응답 시간이 초과되었습니다. 잠시 후 같은 AI로 다시 시도해 주세요.", code="PROVIDER_TIMEOUT", http_status=504)
     return GenerationFailed(f"{label} API 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.", code="PROVIDER_REQUEST_FAILED")
+
+
+def _vertex_gemini_client():
+    """Create a Google Cloud Vertex AI Gemini client from server-side credentials."""
+    if settings.google_credentials_json is None:
+        raise GeneratorNotConfigured(
+            "GOOGLE_CREDENTIALS_JSON is not configured in the server secret store."
+        )
+    try:
+        info = json.loads(settings.google_credentials_json.get_secret_value())
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise GeneratorNotConfigured("GOOGLE_CREDENTIALS_JSON is invalid.") from exc
+    project = (settings.google_cloud_project or info.get("project_id") or "").strip()
+    location = (settings.gemini_vertex_location or "global").strip()
+    if not project:
+        raise GeneratorNotConfigured("Google Cloud project id is not configured.")
+    if not location:
+        raise GeneratorNotConfigured("Gemini Vertex AI location is not configured.")
+    try:
+        credentials = service_account.Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+    except Exception as exc:
+        raise GeneratorNotConfigured("Google Cloud service account credentials are invalid.") from exc
+    return genai.Client(
+        vertexai=True,
+        project=project,
+        location=location,
+        credentials=credentials,
+    )
 
 
 def gemini_generation_config(system_instruction: str) -> types.GenerateContentConfig:
@@ -295,14 +327,10 @@ async def _generate_with_openai(prompt: str, count: int) -> GenerationResult:
 
 async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
     assert_provider_zdr("gemini")
-    if settings.gemini_api_key is None:
-        raise GeneratorNotConfigured(
-            "GEMINI_API_KEY is not configured in the server secret store."
-        )
 
     client = None
     try:
-        client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
+        client = _vertex_gemini_client()
         response = await client.aio.models.generate_content(
             model=settings.gemini_model,
             contents=prompt,
