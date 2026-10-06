@@ -51,6 +51,17 @@ from app.services.learning_path import (
 )
 from app.training.tutor_learning import ContentTrustState
 from app.training.tutor_ledger import TutorLearningLedger
+from app.services import ranked_candidates as candidate_store
+from app.services.ranked_candidates import (
+    CandidateBatchCreate, CandidateReview, CandidatePublication, PolicyLearning,
+    CandidateGateError, CandidateInvalidation,
+    EvidenceRevocation,
+)
+from app.services.cause_selection import CauseMapRequest, CauseMapError, approved_cause_map
+from app.services.ranked_candidate_ui import candidate_workbench_html
+from app.services.ranked_candidate_generator import (
+    CandidateGenerationRequest, CandidateGenerationError, generate_candidates,
+)
 
 APP_VERSION = "0.2.0"
 STATE_DIR = Path(os.environ.get("EDURECOVER_CLASSROOM_STATE_DIR", ".edurecover_classroom_state"))
@@ -164,7 +175,7 @@ CREATE TABLE IF NOT EXISTS classroom_teacher_sessions (
   expires_at INTEGER NOT NULL,
   FOREIGN KEY(username) REFERENCES classroom_teachers(username) ON DELETE CASCADE
 );
-"""
+""" + candidate_store.SCHEMA
 
 
 def now_iso() -> str:
@@ -870,6 +881,373 @@ def _require_learning_path_teacher(row: sqlite3.Row, teacher_token: str, teacher
         raise HTTPException(403, "해당 교사 계정에서 수업을 검토해 주세요.")
 
 
+def _candidate_context(conn: sqlite3.Connection, session_id: str, context_ref: str | None) -> str:
+    if context_ref is not None:
+        if not context_ref.strip() or len(context_ref) > 500:
+            raise HTTPException(422, "학습할 과제 문맥을 지정해 주세요.")
+        return context_ref
+    latest = conn.execute("SELECT batch_json FROM candidate_batches WHERE session_id=? ORDER BY created_at DESC LIMIT 1",
+                          (session_id,)).fetchone()
+    return json_load(latest["batch_json"])["manifest"]["context_ref"] if latest else "NO_CANDIDATE_CONTEXT"
+
+
+def _candidate_source_binding(row: sqlite3.Row) -> dict:
+    state = json_load(row["state_json"])
+    lesson = [segment for segment in json_load(row["lesson_json"]) or []
+              if not segment.get("segment_id", "").startswith("candidate-")]
+    return {"lesson_source_digest": lesson_digest(lesson),
+            "learning_path_revision": state.get("active_learning_path_revision"),
+            "material_revision": state.get("active_material_revision")}
+
+
+def _approved_candidate_cause_context(conn: sqlite3.Connection, row: sqlite3.Row,
+                                     request: CauseMapRequest | None) -> dict | None:
+    if request is None:
+        return None
+    revision = json_load(row["state_json"]).get("active_learning_path_revision")
+    saved = conn.execute("SELECT * FROM learning_path_revisions WHERE session_id=? AND revision_id=?",
+                         (row["session_id"], revision)).fetchone() if revision else None
+    if not saved or not saved["reviewed_at"]:
+        raise HTTPException(423, "교사가 먼저 학습경로를 검토·공개해야 관계와 공동조건을 원인 탐색에 사용할 수 있습니다.")
+    try:
+        context = approved_cause_map(LearningPath.model_validate(json_load(saved["path_json"])), request,
+                                     reviewed_digest=saved["digest"])
+        candidate_store.assert_current_evidence(conn, row["session_id"], context["evidence_refs"])
+        return context
+    except (CauseMapError, CandidateGateError) as exc:
+        raise HTTPException(423, str(exc)) from exc
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/candidate-cause-map")
+def candidate_cause_map(session_id: str, req: CauseMapRequest, teacher_token: str,
+                        teacher: str = Depends(require_classroom_user)):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        _require_learning_path_teacher(row, teacher_token, teacher)
+        return _approved_candidate_cause_context(conn, row, req)
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/candidate-batches")
+def create_ranked_candidate_batch(session_id: str, req: CandidateBatchCreate, teacher_token: str,
+                                  teacher: str = Depends(require_classroom_user)):
+    if len(req.model_dump_json().encode()) > 500_000:
+        raise HTTPException(413, "후보 묶음의 저장 크기 한도를 넘었습니다.")
+    try:
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            cause_context = _approved_candidate_cause_context(conn, row, req.cause_map_request)
+            batch = candidate_store.create_batch(conn, session_id, req, _candidate_source_binding(row),
+                                                  approved_cause_context=cause_context)
+            emit(conn, session_id, "CANDIDATE_EXPLORATION_RECORDED",
+                 {"batch_id": batch["batch_id"], "digest": batch["digest"],
+                  "policy_revision": batch["policy_revision"], "student_release": "NOT_RELEASED"})
+        return batch
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@teacher_classroom_router.get("/api/sessions/{session_id}/candidate-batches")
+def get_ranked_candidate_batches(session_id: str, teacher_token: str,
+                                 teacher: str = Depends(require_classroom_user)):
+    try:
+        with db() as conn:
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            return {"batches": candidate_store.list_batches(conn, session_id)}
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/candidate-batches/generate")
+async def generate_ranked_candidate_batch(session_id: str, req: CandidateGenerationRequest, teacher_token: str,
+                                          teacher: str = Depends(require_classroom_user)):
+    observed_response_digest = None
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        _require_learning_path_teacher(row, teacher_token, teacher)
+        source_binding = _candidate_source_binding(row)
+        if req.response_id:
+            observed = conn.execute("SELECT response_id,segment_id,answer,reason_text FROM responses "
+                                     "WHERE session_id=? AND response_id=?", (session_id, req.response_id)).fetchone()
+            if not observed:
+                raise HTTPException(404, "이 수업의 학생 응답을 찾을 수 없습니다.")
+            if req.student_response and req.student_response != observed["answer"]:
+                raise HTTPException(409, "입력한 응답과 실제 학생 응답이 다릅니다.")
+            req = req.model_copy(update={"student_response": observed["answer"]})
+            observed_response_digest = candidate_store._digest({key: observed[key]
+                for key in ("response_id", "segment_id", "answer", "reason_text")})
+        current_policy = candidate_store.policy(conn, session_id, req.context_ref,
+                                                candidate_store._digest(source_binding))
+        try:
+            reason_memory = candidate_store.current_reason_memory(conn, session_id, current_policy,
+                candidate_store._digest(source_binding)) if req.use_verified_reason_context else []
+        except CandidateGateError as exc:
+            raise HTTPException(exc.status, str(exc)) from exc
+        cause_context = _approved_candidate_cause_context(conn, row, req.cause_map_request)
+    try:
+        candidates, generation_receipt = await generate_candidates(req, verified_reason_memory=reason_memory,
+                                                                    approved_cause_context=cause_context)
+        if req.response_id:
+            generation_receipt.update({"response_id": req.response_id, "response_digest": observed_response_digest})
+        batch_request = CandidateBatchCreate(context_ref=req.context_ref, candidates=candidates,
+            search=req.search, verification=req.verification, task_context=req.task_text,
+            source_revision_ref="provider-request:" + generation_receipt["request_digest"])
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            if any(source_binding.get(key) != value for key, value in _candidate_source_binding(row).items()):
+                raise HTTPException(409, "후보 생성 중 원자료가 바뀌었습니다. 최신 수업자료로 다시 생성해 주세요.")
+            if req.response_id:
+                actual = conn.execute("SELECT response_id,segment_id,answer,reason_text FROM responses "
+                                       "WHERE session_id=? AND response_id=?", (session_id, req.response_id)).fetchone()
+                if not actual or candidate_store._digest({key: actual[key] for key in
+                    ("response_id", "segment_id", "answer", "reason_text")}) != observed_response_digest:
+                    raise HTTPException(409, "후보 생성 중 학생 응답 근거가 바뀌었습니다. 다시 검토해 주세요.")
+            batch = candidate_store.create_batch(conn, session_id, batch_request, source_binding, generation_receipt,
+                                                   approved_cause_context=cause_context)
+            emit(conn, session_id, "PROVIDER_CANDIDATES_GENERATED",
+                 {"batch_id": batch["batch_id"], "digest": batch["digest"],
+                  "provider": req.provider, "invocation_id": generation_receipt["invocation_id"],
+                  "correctness_verified": False, "measured_probabilities_available": False})
+        return batch
+    except CandidateGenerationError as exc:
+        raise HTTPException(exc.status, {"code": exc.code, "message": str(exc),
+                                         "manual_input_available": True}) from exc
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/candidate-batches/{batch_id}/review")
+def review_ranked_candidate(session_id: str, batch_id: str, req: CandidateReview, teacher_token: str,
+                            teacher: str = Depends(require_classroom_user)):
+    try:
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            candidate_store.get_batch(conn, session_id, batch_id, req.expected_digest,
+                                      candidate_store._digest(_candidate_source_binding(row)))
+            receipt = candidate_store.review_candidate(conn, session_id, batch_id, req, teacher)
+            if not receipt["idempotent"]:
+                emit(conn, session_id, "CANDIDATE_EVIDENCE_REVIEWED",
+                     {"batch_id": batch_id, "receipt_id": receipt["receipt_id"],
+                      "status": receipt["status"], "reward_created": receipt["reward_created"]})
+        return receipt
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/candidate-batches/{batch_id}/publish")
+def publish_ranked_candidate(session_id: str, batch_id: str, req: CandidatePublication, teacher_token: str,
+                             teacher: str = Depends(require_classroom_user)):
+    try:
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            batch = candidate_store.get_batch(conn, session_id, batch_id, req.expected_digest,
+                                               candidate_store._digest(_candidate_source_binding(row)))
+            if candidate_store.invalidated(conn, batch_id, req.candidate_id):
+                raise HTTPException(423, "근거 정정으로 철회된 후보는 공개할 수 없습니다.")
+            receipt = candidate_store.latest_review(conn, batch_id, req.candidate_id)
+            if not receipt or receipt["status"] != "ACCEPTED" or receipt["ground_truth_status"] != "VERIFIED":
+                raise HTTPException(423, "정답 근거가 확인되고 채택된 후보만 수업에 공개할 수 있습니다.")
+            require_legacy_lesson_edit(row)
+            current = row_to_session(row)
+            if not secrets.compare_digest(current["lesson_digest"], req.expected_lesson_digest):
+                raise HTTPException(409, "검토 이후 수업자료가 바뀌었습니다. 다시 확인해 주세요.")
+            ensure_material_release(current)
+            already = conn.execute("SELECT * FROM candidate_publications WHERE batch_id=? AND candidate_id=?",
+                                   (batch_id, req.candidate_id)).fetchone()
+            if already:
+                return {"ok": True, "segment_id": already["segment_id"],
+                        "lesson_digest": current["lesson_digest"], "idempotent": True}
+            candidate = next((x for x in batch["manifest"]["candidates"]
+                              if x["candidate_id"] == req.candidate_id), None)
+            if not candidate:
+                raise HTTPException(423, "사전 탐색 기록에 해당 후보가 없습니다.")
+            lesson = current["lesson"]
+            if len(lesson) >= 100:
+                raise HTTPException(429, "수업 단계 한도에 도달했습니다. 새 수업을 만들어 주세요.")
+            segment_id = "candidate-" + batch_id + "-" + req.candidate_id
+            # The public lesson contains the approved explanation only, never
+            # private evidence identifiers, rejected alternatives, or rewards.
+            lesson.append({"segment_id": segment_id, "kind": "DEMONSTRATE",
+                           "title": "근거를 확인한 대안", "text": candidate["text"]})
+            state = current["state"]
+            digest = lesson_digest(lesson)
+            state.update({"released_lesson_digest": digest, "source_kind": "TEACHER_REVIEWED_CANDIDATE"})
+            conn.execute("UPDATE sessions SET lesson_json=?,state_json=?,updated_at=? WHERE session_id=?",
+                         (json.dumps(lesson, ensure_ascii=False), json.dumps(state, ensure_ascii=False), now_iso(), session_id))
+            conn.execute("INSERT INTO candidate_publications VALUES(?,?,?,?,?)",
+                         (batch_id, req.candidate_id, segment_id, digest, now_iso()))
+            emit(conn, session_id, "CANDIDATE_PUBLISHED", {"segment_id": segment_id, "lesson_digest": digest})
+        return {"ok": True, "segment_id": segment_id, "lesson_digest": digest, "idempotent": False}
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@teacher_classroom_router.get("/api/sessions/{session_id}/candidate-policy")
+def get_candidate_policy(session_id: str, teacher_token: str, context_ref: str | None = None,
+                         teacher: str = Depends(require_classroom_user)):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        _require_learning_path_teacher(row, teacher_token, teacher)
+        return candidate_store.policy(conn, session_id, _candidate_context(conn, session_id, context_ref),
+                                      candidate_store._digest(_candidate_source_binding(row)))
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/candidate-policy/learn")
+def learn_candidate_policy(session_id: str, req: PolicyLearning, teacher_token: str,
+                           teacher: str = Depends(require_classroom_user)):
+    try:
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            result = candidate_store.learn_policy(conn, session_id,
+                                                  _candidate_context(conn, session_id, req.context_ref),
+                                                  req.expected_revision,
+                                                  candidate_store._digest(_candidate_source_binding(row)))
+            if result["new_reward_count"] or result.get("invalidated_reward_count"):
+                emit(conn, session_id, "LOCAL_CANDIDATE_POLICY_REINFORCED",
+                     {"revision": result["revision"], "context_ref": result["context_ref"],
+                      "new_reward_count": result["new_reward_count"], "base_model_updated": False})
+        return result
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@teacher_classroom_router.get("/api/sessions/{session_id}/candidate-reward-dataset")
+def export_candidate_reward_dataset(session_id: str, teacher_token: str,
+                                     teacher: str = Depends(require_classroom_user)):
+    try:
+        with db() as conn:
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            return {"examples": candidate_store.reward_dataset(conn, session_id,
+                        candidate_store._digest(_candidate_source_binding(row))),
+                    "reward_purpose": "VERIFIED_REQUIRED_DIMENSIONS_NOT_STUDENT_LEARNING_GAIN", "base_model_trained": False,
+                    "unresolved_examples_excluded": True, "propensity_correction": "NOT_APPLIED_DETERMINISTIC_ENUMERATION"}
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/candidate-evidence/revoke")
+def revoke_candidate_evidence(session_id: str, req: EvidenceRevocation, teacher_token: str,
+                               teacher: str = Depends(require_classroom_user)):
+    """Withdraw only recorded uses of a corrected evidence revision.
+
+    Rebuild the affected context's receipt cases. This does not undo external
+    model weights or retrospectively certify the teacher's factual judgment.
+    """
+    try:
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            revocation = candidate_store.revoke_evidence(conn, session_id, req, teacher)
+            uses = revocation["affected_candidate_uses"]
+            withdrawn = set()
+            for use in uses:
+                publication = conn.execute("SELECT segment_id FROM candidate_publications WHERE batch_id=? AND candidate_id=?",
+                                            (use["batch_id"], use["candidate_id"])).fetchone()
+                if publication:
+                    withdrawn.add(publication["segment_id"])
+            original_lesson = json_load(row["lesson_json"]) or []
+            present_ids = {segment["segment_id"] for segment in original_lesson}
+            withdrawn &= present_ids
+            state = json_load(row["state_json"])
+            if withdrawn:
+                lesson = [segment for segment in original_lesson if segment["segment_id"] not in withdrawn]
+                # Unrelated reviewed displays stay available. Withdrawal is a
+                # smaller, server-controlled subset of the reviewed lesson.
+                if state.get("released_lesson_digest") == lesson_digest(original_lesson):
+                    state["released_lesson_digest"] = lesson_digest(lesson)
+                if state.get("current_segment_id") in withdrawn:
+                    state.update({"playback": "STOPPED",
+                                  "current_segment_id": lesson[0]["segment_id"] if lesson else None})
+                conn.execute("UPDATE sessions SET lesson_json=?,state_json=?,updated_at=? WHERE session_id=?",
+                             (json.dumps(lesson, ensure_ascii=False), json.dumps(state, ensure_ascii=False), now_iso(), session_id))
+                row = get_session_or_404(conn, session_id)
+            source_digest = candidate_store._digest(_candidate_source_binding(row))
+            rebuilt = {}
+            for context in sorted({use["context_ref"] for use in uses}):
+                current = candidate_store.policy(conn, session_id, context, source_digest)
+                rebuilt[context] = candidate_store.learn_policy(conn, session_id, context, current["revision"], source_digest)
+            emit(conn, session_id, "CANDIDATE_EVIDENCE_REVOKED",
+                 {"revocation_id": revocation["revocation_id"], "withdrawn_segment_ids": sorted(withdrawn),
+                  "affected_candidate_count": len(uses), "affected_contexts": sorted(rebuilt),
+                  "unaffected_display_uses": "PRESERVED", "base_model_updated": False})
+        return {"ok": True, "revocation": revocation, "withdrawn_segment_count": len(withdrawn),
+                "rebuilt_policies": rebuilt, "unaffected_display_uses": "PRESERVED",
+                "external_model_weights_unlearned": False}
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+def _withdraw_candidate_uses(conn: sqlite3.Connection, row: sqlite3.Row, uses: list[dict]) -> tuple[set[str], dict]:
+    session_id = row["session_id"]
+    withdrawn = set()
+    for use in uses:
+        publication = conn.execute("SELECT segment_id FROM candidate_publications WHERE batch_id=? AND candidate_id=?",
+                                    (use["batch_id"], use["candidate_id"])).fetchone()
+        if publication:
+            withdrawn.add(publication["segment_id"])
+    original = json_load(row["lesson_json"]) or []
+    withdrawn &= {segment["segment_id"] for segment in original}
+    if withdrawn:
+        lesson = [segment for segment in original if segment["segment_id"] not in withdrawn]
+        state = json_load(row["state_json"])
+        if state.get("released_lesson_digest") == lesson_digest(original):
+            state["released_lesson_digest"] = lesson_digest(lesson)
+        if state.get("current_segment_id") in withdrawn:
+            state.update({"playback": "STOPPED", "current_segment_id": lesson[0]["segment_id"] if lesson else None})
+        conn.execute("UPDATE sessions SET lesson_json=?,state_json=?,updated_at=? WHERE session_id=?",
+                     (json.dumps(lesson, ensure_ascii=False), json.dumps(state, ensure_ascii=False), now_iso(), session_id))
+        row = get_session_or_404(conn, session_id)
+    source_digest = candidate_store._digest(_candidate_source_binding(row))
+    rebuilt = {}
+    for context in sorted({use["context_ref"] for use in uses}):
+        current = candidate_store.policy(conn, session_id, context, source_digest)
+        rebuilt[context] = candidate_store.learn_policy(conn, session_id, context, current["revision"], source_digest)
+    return withdrawn, rebuilt
+
+
+@teacher_classroom_router.post("/api/sessions/{session_id}/candidate-batches/{batch_id}/invalidate")
+def invalidate_ranked_candidate(session_id: str, batch_id: str, req: CandidateInvalidation, teacher_token: str,
+                                 teacher: str = Depends(require_classroom_user)):
+    try:
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = get_session_or_404(conn, session_id)
+            _require_learning_path_teacher(row, teacher_token, teacher)
+            root = candidate_store.get_batch(conn, session_id, batch_id, req.expected_digest,
+                                             allow_invalidated_dependencies=True)
+            uses = candidate_store.candidate_dependency_closure(conn, session_id, batch_id, req.candidate_id)
+            invalidation = candidate_store.invalidate_candidate(conn, session_id, batch_id, req, teacher)
+            for use in uses:
+                if use["batch_id"] != batch_id:
+                    candidate_store.invalidate_candidate(conn, session_id, use["batch_id"], CandidateInvalidation(
+                        expected_digest=use["batch_digest"], candidate_id=use["candidate_id"],
+                        reason="부모 검증 사례 철회: " + req.reason,
+                        evidence_refs=req.evidence_refs, teacher_verified=True), teacher)
+            withdrawn, rebuilt = _withdraw_candidate_uses(conn, row, uses)
+            context = root["manifest"]["context_ref"]
+            emit(conn, session_id, "CANDIDATE_INVALIDATED",
+                 {"invalidation_id": invalidation["invalidation_id"], "withdrawn_segment_ids": sorted(withdrawn),
+                  "affected_candidate_count": len(uses), "affected_contexts": sorted(rebuilt),
+                  "student_release": "UNAFFECTED_USES_PRESERVED"})
+        return {"ok": True, "invalidation": invalidation, "withdrawn_segment_count": len(withdrawn),
+                "affected_candidate_count": len(uses), "policy": rebuilt[context], "rebuilt_policies": rebuilt,
+                "student_release": "UNAFFECTED_USES_PRESERVED"}
+    except CandidateGateError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
 @teacher_classroom_router.put("/api/sessions/{session_id}/learning-path")
 def save_learning_path(session_id: str, path: LearningPath, teacher_token: str,
                        teacher: str = Depends(require_classroom_user)):
@@ -1125,7 +1503,27 @@ def command(session_id: str, req: Command, teacher_token: str):
         elif req.action == "SET_BOARD_MODE":
             state["board_mode"] = req.board_mode or "LESSON"
         elif req.action == "RESET_RESPONSES":
+            uses_by_key = {}
+            for saved in conn.execute("SELECT batch_id FROM candidate_batches WHERE session_id=?", (session_id,)).fetchall():
+                batch = candidate_store.get_batch(conn, session_id, saved["batch_id"], allow_invalidated_dependencies=True)
+                if (batch["manifest"].get("generation_receipt") or {}).get("response_id"):
+                    for use in candidate_store.candidate_dependency_closure(conn, session_id, batch["batch_id"], None):
+                        uses_by_key[(use["batch_id"], use["candidate_id"])] = use
+            uses = list(uses_by_key.values())
+            for use in uses:
+                candidate_store.invalidate_candidate(conn, session_id, use["batch_id"], CandidateInvalidation(
+                    expected_digest=use["batch_digest"], candidate_id=use["candidate_id"],
+                    reason="교사가 후보 생성에 사용한 학생 응답 근거를 초기화했습니다.",
+                    evidence_refs=["teacher-response-reset:" + session_id + ":" + now_iso()], teacher_verified=True),
+                    row["owner_teacher"] or "OWNER_SESSION_RESET")
             conn.execute("DELETE FROM responses WHERE session_id=?", (session_id,))
+            if uses:
+                withdrawn, rebuilt = _withdraw_candidate_uses(conn, row, uses)
+                row = get_session_or_404(conn, session_id)
+                state = json_load(row["state_json"])
+                emit(conn, session_id, "CANDIDATE_RESPONSE_EVIDENCE_RESET", {
+                    "affected_candidate_count": len(uses), "withdrawn_segment_ids": sorted(withdrawn),
+                    "affected_contexts": sorted(rebuilt)})
 
         state["teacher_override"] = True
         state["last_command_at"] = now_iso()
@@ -1800,7 +2198,7 @@ def teacher_product_html(session_id: str, teacher_token: str) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>EduRecover Classroom Board 교사 콘솔</title><style>{COMMON_CSS}</style></head><body>
 <div class='top'><div><b>EduRecover Classroom Board</b> <span class='badge'>교사 콘솔</span></div><span class='badge'>{session_id}</span></div>
 <main style='max-width:980px;margin:auto;padding:18px'>
-<div class='card'><h2 style='margin-top:0'>전자칠판 수업 운영</h2><p class='muted'>전자칠판 자체 브라우저나 OPS에서는 전자칠판 화면을 직접 열고, HDMI·USB-C·무선 캐스트 환경에서는 해당 화면을 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/classroom/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a> <a class='btn' style='display:inline-block;text-decoration:none' href='/classroom/learning-path/{session_id}?teacher_token={teacher_token}'>거시·미시 학습경로 편집</a></div>
+<div class='card'><h2 style='margin-top:0'>전자칠판 수업 운영</h2><p class='muted'>전자칠판 자체 브라우저나 OPS에서는 전자칠판 화면을 직접 열고, HDMI·USB-C·무선 캐스트 환경에서는 해당 화면을 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/classroom/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a> <a class='btn' style='display:inline-block;text-decoration:none' href='/classroom/learning-path/{session_id}?teacher_token={teacher_token}'>거시·미시 학습경로 편집</a> <a class='btn' style='display:inline-block;text-decoration:none' href='/classroom/candidates/{session_id}?teacher_token={teacher_token}'>대안 탐색·근거 검증</a></div>
 <div class='grid' style='grid-template-columns:1fr 1fr;min-height:auto'>
 <div class='card'><b>수업자료 검토</b><p>문항·정답·설명을 확인한 뒤 학생에게 제공해 주세요.</p><button class='btn primary' onclick='publishLesson()'>검토한 수업자료 확정</button><div id='releaseStatus' role='status'></div></div><div class='card'><b>수업 단계</b><div id='segments' style='margin-top:10px'></div></div>
 <div class='card'><b>교사 전자칠판 제어</b><p>재생·단계 이동과 판서를 칠판 화면에 함께 반영합니다.</p><div class='controls'><button onclick="control('PLAY')">재생/TTS</button><button onclick="control('PAUSE')">일시정지</button><button onclick="control('PREV')">이전</button><button onclick="control('NEXT')">다음</button><button onclick="control('SET_BOARD_MODE','WHITEBOARD')">판서 표시</button><button onclick="control('SET_BOARD_MODE','LESSON')">수업 표시</button><button onclick="control('STOP')">중지</button><button onclick='clearTeacherBoard()'>판서 지우기</button></div><canvas id='whiteboard' class='board' aria-label='교사 판서 영역'></canvas></div>
@@ -1888,6 +2286,16 @@ def learning_path_editor_page(session_id: str, teacher_token: str,
         row = get_session_or_404(conn, session_id)
         _require_learning_path_teacher(row, teacher_token, account)
     return HTMLResponse(learning_path_editor_html(session_id, teacher_token), headers=BOARD_HTML_HEADERS)
+
+
+@teacher_classroom_router.get("/candidates/{session_id}", response_class=HTMLResponse)
+def candidate_workbench_page(session_id: str, teacher_token: str,
+                              account: str = Depends(require_classroom_user)):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        _require_learning_path_teacher(row, teacher_token, account)
+    return HTMLResponse(candidate_workbench_html(session_id, teacher_token, COMMON_CSS, COMMON_JS),
+                        headers=PRODUCT_HTML_HEADERS)
 
 
 @teacher_classroom_router.get("/join/{session_id}", response_class=HTMLResponse)
@@ -2120,6 +2528,7 @@ LEARNING_PATH_EDITOR_HTML = """<!doctype html><html lang="ko"><head><meta charse
 <main style="max-width:1000px;margin:auto;padding:18px">
 <section class="card"><h1>목표에서 기초 개념까지, 근거를 따라 수업 만들기</h1>
 <p class="muted">목표·선행개념·추론의 전제/규칙/결론/예외·조건 버전을 검토하세요. 파일과 문항을 연결한 초안은 공개 전 보류됩니다. 교사가 근거와 내용을 직접 확인해야 확정할 수 있습니다.</p>
+<p class="muted">선수 관계(→)는 먼저 필요한 개념입니다. 유사·관련 관계(↔)는 선후 조건을 만들지 않습니다. 여러 관계를 동시에 계산하는 병렬 계산과는 구분합니다. AI가 제안한 연결 후보는 교사 검토와 새 버전 공개 전까지 수업에 사용하지 않습니다.</p>
 <button class="btn" onclick="loadExample()">검토용 예시 불러오기</button>
 <button class="btn" onclick="loadSaved()">저장된 초안 다시 열기</button>
 <div id="map" role="status"></div></section>
@@ -2127,7 +2536,7 @@ LEARNING_PATH_EDITOR_HTML = """<!doctype html><html lang="ko"><head><meta charse
 <label>연결할 추론 단계 <select id="transition"></select></label>
 <label>자료 파일 <input id="mediaFile" type="file" accept="image/png,image/jpeg,audio/mpeg,audio/wav,video/mp4,video/webm"></label>
 <button class="btn" onclick="attachFile()">파일 등록·경로에 연결</button><div id="mediaPreview"></div></section>
-<section class="card"><h2>학습경로 상세 편집</h2><p class="muted">조건을 변경하면 추론 및 자료의 검증 조건 스냅샷을 새로 검토해야 합니다. 독립 적용 질문에는 다른 문항과 정답 선택지를 입력하세요.</p>
+<section class="card"><h2>학습경로 상세 편집</h2><p class="muted">조건을 변경하면 추론 및 자료의 검증 조건 스냅샷을 새로 검토해야 합니다. 독립 적용 질문에는 다른 문항과 정답 선택지를 입력하세요. 노드에는 subject(과목), curriculum_level(학년·수준), concept_ref(교육과정 개념 식별자)를 선택적으로 입력할 수 있습니다. concept_relations에는 PREREQUISITE(선수), SIMILARITY(유사), RELATED(관련·보완)를 구별하고 relation_sources에 출처를 등록하세요.</p>
 <textarea id="pathJson" rows="22" aria-label="학습경로 JSON" spellcheck="false"></textarea>
 <div><button class="btn" onclick="previewPath()">구조 미리보기</button>
 <button class="btn" onclick="savePath()">초안 저장·공개 보류</button>
@@ -2140,11 +2549,25 @@ function currentPath(){return JSON.parse(q('#pathJson').value);}
 function setPath(path){q('#pathJson').value=JSON.stringify(path,null,2);renderPath(path);}
 function renderPath(path){
  const nodes=new Map((path.nodes||[]).map(n=>[n.node_id,n]));
+ const sources=new Map((path.relation_sources||[]).map(s=>[s.source_id,s]));
+ const relationLabels={PREREQUISITE:'선수 →',SIMILARITY:'유사 ↔',RELATED:'관련·보완 ↔'};
  q('#map').innerHTML=`<p><b>목표</b> ${esc(nodes.get(path.goal_id)?.label||'미설정')} · <b>현재 단계</b> ${esc(nodes.get(path.current_node_id)?.label||'미설정')}</p>`+
- (path.nodes||[]).map(n=>`<div class="card"><b>${esc(n.stage)} · ${esc(n.label)}</b><p class="muted">선행 개념: ${esc((n.prerequisite_ids||[]).map(id=>nodes.get(id)?.label||id).join(' · ')||'없음')}</p></div>`).join('')+
- (path.transitions||[]).map(t=>`<p><b>${esc(nodes.get(t.from_node)?.label||t.from_node)} → ${esc(nodes.get(t.to_node)?.label||t.to_node)}</b><br>전제 ${esc(t.premise)} / 규칙 ${esc(t.rule)} / 결론 ${esc(t.conclusion)} / 예외 ${esc(t.exception||'없음')}<br><span class="muted">조건 ${esc(JSON.stringify(t.validation_snapshot))} · 근거 ${esc(t.evidence_ref)} · 판정 ${esc(t.validation_status)}</span></p>`).join('');
+ (path.nodes||[]).map(n=>`<div class="card"><b>${esc(n.stage)} · ${esc(n.label)}</b><p class="muted">${esc([n.subject,n.curriculum_level,n.concept_ref].filter(Boolean).join(' · '))}</p><p class="muted">선행 개념: ${esc((n.prerequisite_ids||[]).map(id=>nodes.get(id)?.label||id).join(' · ')||'없음')}</p></div>`).join('')+
+ (path.transitions||[]).map(t=>`<p><b>${esc(nodes.get(t.from_node)?.label||t.from_node)} → ${esc(nodes.get(t.to_node)?.label||t.to_node)}</b><br>전제 ${esc(t.premise)} / 규칙 ${esc(t.rule)} / 결론 ${esc(t.conclusion)} / 예외 ${esc(t.exception||'없음')}<br><span class="muted">조건 ${esc(JSON.stringify(t.validation_snapshot))} · 근거 ${esc(t.evidence_ref)} · 판정 ${esc(t.validation_status)}</span></p>`).join('')+
+ (path.concept_relations||[]).map(r=>`<div class="card" style="border-style:${r.status==='APPROVED'?'solid':'dashed'}"><b>${esc(relationLabels[r.relation_type]||r.relation_type)} · ${esc(nodes.get(r.from_node)?.label||r.from_node)} / ${esc(nodes.get(r.to_node)?.label||r.to_node)}</b><p class="muted">${r.status==='APPROVED'?'검토 선택 · 저장·공개 확인 필요':'연결 후보 · 수업에 사용 안 함'} · ${r.origin==='AI_PROPOSED'?'AI 제안':'교사 입력'}<br>출처: ${esc((r.source_refs||[]).map(id=>sources.get(id)?.reference||'미등록: '+id).join(' · ')||'없음')}<br>검토 근거: ${esc(r.evidence_ref||'없음')}</p>${r.status!=='APPROVED'?`<button class="btn" data-relation-id="${esc(r.relation_id)}" onclick="approveRelation(this.dataset.relationId)">근거 검토 후 승인 초안 만들기</button>`:''}</div>`).join('');
  q('#transition').innerHTML=(path.transitions||[]).map(t=>`<option value="${esc(t.transition_id)}">${esc(t.transition_id)} · ${esc(nodes.get(t.to_node)?.label||t.to_node)}</option>`).join('');
 }
+function approveRelation(relationId){try{
+ const path=currentPath(),r=(path.concept_relations||[]).find(item=>item.relation_id===relationId);
+ if(!r)throw new Error('연결 후보를 다시 불러와 주세요.');
+ const nodes=new Map(path.nodes.map(n=>[n.node_id,n])),sources=new Map((path.relation_sources||[]).map(s=>[s.source_id,s]));
+ if(r.from_node===r.to_node||!nodes.has(r.from_node)||!nodes.has(r.to_node))throw new Error('연결의 두 개념을 먼저 확인해 주세요.');
+ if(!(r.evidence_ref||'').trim()||!(r.source_refs||[]).length||r.source_refs.some(id=>!(sources.get(id)?.reference||'').trim()))throw new Error('등록한 출처와 검토 근거를 먼저 입력해 주세요.');
+ if(r.relation_type==='PREREQUISITE'&&(!(nodes.get(r.to_node).prerequisite_ids||[]).includes(r.from_node)||!path.transitions.some(t=>t.from_node===r.from_node&&t.to_node===r.to_node)))throw new Error('선수 관계에는 같은 방향의 선행개념 선언과 근거가 있는 추론 단계를 먼저 입력해 주세요.');
+ if(!confirm('출처와 근거를 직접 확인했습니까? 이 선택은 새 초안이며 저장·교사 공개 확인 후에만 수업에 반영됩니다.'))return;
+ r.status='APPROVED';path.revision_id='path-'+crypto.randomUUID();setPath(path);savedDigest=null;savedSignature='';previewSignature='';
+ q('#message').textContent='승인 초안을 만들었습니다. 현재 내용을 저장하고 교사 검토 완료·전자칠판 공개를 진행해 주세요.';
+}catch(e){q('#message').textContent=e.message;}}
 function previewPath(){try{renderPath(currentPath());q('#message').textContent='구조를 미리 봤습니다. 조건·근거와 정답은 교사가 확인해 주세요.';}catch(e){q('#message').textContent='학습경로 JSON 형식을 확인해 주세요.';}}
 async function loadExample(){try{const path=await api('/classroom/api/learning-path/example');setPath(path);savedDigest=null;savedSignature='';previewSignature='';q('#mediaPreview').textContent='연결된 파일이 없습니다.';q('#message').textContent='예시입니다. 수업 내용과 근거를 직접 검토해 주세요.';}catch(e){q('#message').textContent=e.message;}}
 async function loadSaved(){try{

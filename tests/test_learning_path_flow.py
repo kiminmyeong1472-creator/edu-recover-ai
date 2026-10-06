@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import app.classroom_tutor as classroom
-from app.services.learning_path import TeachingAsset, example_learning_path
+from app.services.learning_path import ConceptRelation, RelationSource, TeachingAsset, example_learning_path
 
 
 class LearningPathFlowTests(unittest.TestCase):
@@ -105,6 +105,47 @@ class LearningPathFlowTests(unittest.TestCase):
                           "teacher_verified_content": True})
         self.assertEqual(blocked.status_code, 423)
         self.assertTrue(any("STALE_TRANSITION_VALIDATION" in issue for issue in blocked.json()["detail"]["issues"]))
+
+    def test_teacher_digest_releases_only_approved_relations_and_holds_invalid_promotion(self):
+        path = example_learning_path()
+        path.nodes[0].subject = "수학"
+        path.nodes[1].curriculum_level = "고등"
+        path.relation_sources = [RelationSource(source_id="source-1", reference="교사 대조 원자료")]
+        path.concept_relations = [
+            ConceptRelation(relation_id="approved-similarity", from_node="basic", to_node="goal",
+                            relation_type="SIMILARITY", source_refs=["source-1"],
+                            evidence_ref="teacher-only-note-secret", status="APPROVED"),
+            ConceptRelation(relation_id="candidate-only", from_node="goal", to_node="basic",
+                            relation_type="PREREQUISITE", origin="AI_PROPOSED"),
+        ]
+        draft = self.client.put(self.base, params=self.params, headers=self.owner, json=path.model_dump())
+        self.assertEqual(draft.status_code, 200, draft.text)
+        self.assertEqual(len(draft.json()["learning_map"]["concept_relations"]), 2)
+        self.assertTrue(draft.json()["learning_map"]["relation_issues"])
+        publication = {"revision_id": path.revision_id, "expected_digest": draft.json()["digest"],
+                       "teacher_verified_content": True}
+        self.assertEqual(self.client.post(self.base + "/publish", params=self.params,
+                                         json=publication).status_code, 401)
+        published = self.client.post(self.base + "/publish", params=self.params,
+                                     headers=self.owner, json=publication)
+        self.assertEqual(published.status_code, 200, published.text)
+        student = self.client.get(f"/tutor/api/sessions/{self.sid}", params={"join_token": self.join})
+        self.assertEqual(student.status_code, 200, student.text)
+        self.assertIn("approved-similarity", student.text)
+        self.assertNotIn("candidate-only", student.text)
+        self.assertNotIn("teacher-only-note-secret", student.text)
+        self.assertNotIn("source-1", student.text)
+        candidate = path.concept_relations[1]
+        candidate.status = "APPROVED"
+        candidate.source_refs, candidate.evidence_ref = ["source-1"], "선수 관계 검토"
+        path.revision_id = "promotion-new-revision"
+        draft2 = self.client.put(self.base, params=self.params, headers=self.owner, json=path.model_dump())
+        self.assertEqual(draft2.status_code, 200, draft2.text)
+        blocked = self.client.post(self.base + "/publish", params=self.params, headers=self.owner,
+                         json={"revision_id": path.revision_id, "expected_digest": draft2.json()["digest"],
+                               "teacher_verified_content": True})
+        self.assertEqual(blocked.status_code, 423, blocked.text)
+        self.assertIn("UNRESOLVED_RELATION_PREREQUISITE:candidate-only", blocked.json()["detail"]["issues"])
 
     def test_account_owner_and_media_mime_are_checked_and_old_urls_hold(self):
         picture, picture_token = self.upload(b"\x89PNG\r\n\x1a\n" + b"\0" * 20, "image/png")

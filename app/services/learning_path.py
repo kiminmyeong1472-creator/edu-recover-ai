@@ -25,6 +25,33 @@ class PathNode(PathModel):
     label: str = Field(min_length=1, max_length=500)
     stage: Literal["BASIC", "CONNECTION", "GOAL"]
     prerequisite_ids: list[str] = Field(default_factory=list, max_length=30)
+    subject: str | None = Field(default=None, min_length=1, max_length=100)
+    curriculum_level: str | None = Field(default=None, min_length=1, max_length=100)
+    concept_ref: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+class RelationSource(PathModel):
+    """A teacher-supplied citation; its presence is not proof of correctness."""
+    source_id: str = Field(min_length=1, max_length=100)
+    reference: str = Field(min_length=1, max_length=1500)
+    location: str = Field(default="", max_length=500)
+
+
+class ConceptRelation(PathModel):
+    """Semantic relations are distinct from serial/parallel computation.
+
+    PREREQUISITE is directed. SIMILARITY and RELATED are symmetric and never
+    create prerequisite gates. AI proposals remain candidates until an active
+    teacher publishes the exact reviewed path digest.
+    """
+    relation_id: str = Field(min_length=1, max_length=100)
+    from_node: str = Field(min_length=1, max_length=100)
+    to_node: str = Field(min_length=1, max_length=100)
+    relation_type: Literal["PREREQUISITE", "SIMILARITY", "RELATED"]
+    source_refs: list[str] = Field(default_factory=list, max_length=20)
+    evidence_ref: str = Field(default="", max_length=1500)
+    origin: Literal["TEACHER", "AI_PROPOSED"] = "TEACHER"
+    status: Literal["CANDIDATE", "APPROVED"] = "CANDIDATE"
 
 
 class ReasoningTransition(PathModel):
@@ -65,6 +92,8 @@ class LearningPath(PathModel):
     nodes: list[PathNode] = Field(min_length=2, max_length=100)
     transitions: list[ReasoningTransition] = Field(min_length=1, max_length=150)
     assets: list[TeachingAsset] = Field(min_length=1, max_length=300)
+    relation_sources: list[RelationSource] = Field(default_factory=list, max_length=150)
+    concept_relations: list[ConceptRelation] = Field(default_factory=list, max_length=300)
 
 
 class AssessmentAttempt(PathModel):
@@ -87,8 +116,53 @@ class ApplicationDecision(PathModel):
 
 def path_digest(path: LearningPath) -> str:
     """Bind teacher review to the exact complete path, including all assets."""
-    encoded = json.dumps(path.model_dump(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    content = path.model_dump()
+    # Preserve pre-extension review digests for existing stored path_json.
+    # Pop only the newly added defaults; every populated field stays bound.
+    for node in content["nodes"]:
+        for field in ("subject", "curriculum_level", "concept_ref"):
+            if node[field] is None:
+                node.pop(field)
+    for field in ("relation_sources", "concept_relations"):
+        if not content[field]:
+            content.pop(field)
+    encoded = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def relation_issues(path: LearningPath, *, approved_only: bool = False) -> list[str]:
+    """Explain draft issues without activating unapproved inferred relations."""
+    issues: list[str] = []
+    nodes = {node.node_id: node for node in path.nodes}
+    sources = {source.source_id: source for source in path.relation_sources}
+    seen: set[tuple[str, str, str]] = set()
+    for relation in path.concept_relations:
+        if approved_only and relation.status != "APPROVED":
+            continue
+        suffix = relation.relation_id
+        if relation.from_node not in nodes or relation.to_node not in nodes or relation.from_node == relation.to_node:
+            issues.append(f"INVALID_RELATION_ENDPOINT:{suffix}")
+        if not relation.source_refs or len(relation.source_refs) != len(set(relation.source_refs)) or any(
+            source_ref not in sources or not sources[source_ref].reference.strip()
+            for source_ref in relation.source_refs
+        ):
+            issues.append(f"UNKNOWN_RELATION_SOURCE:{suffix}")
+        if not relation.evidence_ref.strip():
+            issues.append(f"RELATION_EVIDENCE_REQUIRED:{suffix}")
+        if relation.relation_type == "PREREQUISITE":
+            endpoints = (relation.from_node, relation.to_node)
+            if relation.to_node in nodes and (relation.from_node not in nodes[relation.to_node].prerequisite_ids or not any(
+                transition.from_node == relation.from_node and transition.to_node == relation.to_node
+                for transition in path.transitions
+            )):
+                issues.append(f"UNRESOLVED_RELATION_PREREQUISITE:{suffix}")
+        else:
+            endpoints = tuple(sorted((relation.from_node, relation.to_node)))
+        key = (relation.relation_type, *endpoints)
+        if key in seen:
+            issues.append(f"DUPLICATE_RELATION_PAIR:{suffix}")
+        seen.add(key)
+    return sorted(set(issues))
 
 
 def _structure_issues(path: LearningPath) -> list[str]:
@@ -97,6 +171,8 @@ def _structure_issues(path: LearningPath) -> list[str]:
         ("NODE", [n.node_id for n in path.nodes]),
         ("TRANSITION", [t.transition_id for t in path.transitions]),
         ("ASSET", [a.asset_id for a in path.assets]),
+        ("RELATION", [relation.relation_id for relation in path.concept_relations]),
+        ("RELATION_SOURCE", [source.source_id for source in path.relation_sources]),
     ):
         if len(identifiers) != len(set(identifiers)):
             issues.append(f"DUPLICATE_{kind}_ID")
@@ -205,6 +281,7 @@ def _structure_issues(path: LearningPath) -> list[str]:
         issues.append("NO_VISUAL_SCENE")
     if not any(a.kind == "QUESTION" and a.question_role == "TRANSFER" for a in path.assets):
         issues.append("NO_TRANSFER_QUESTION")
+    issues.extend(relation_issues(path, approved_only=True))
     return sorted(set(issues))
 
 
@@ -227,6 +304,10 @@ def learning_map(path: LearningPath) -> dict:
         "goal_id": path.goal_id,
         "current_node_id": path.current_node_id,
         "nodes": [node.model_dump() for node in path.nodes],
+        # This endpoint is the authenticated teacher's preview, not release.
+        "concept_relations": [relation.model_dump() for relation in path.concept_relations],
+        "relation_sources": [source.model_dump() for source in path.relation_sources],
+        "relation_issues": relation_issues(path),
         "connections": [{
             "transition_id": t.transition_id, "from_node": t.from_node,
             "to_node": t.to_node, "premise": t.premise,
@@ -298,6 +379,19 @@ def path_lesson(path: LearningPath, *, media_urls: dict[str, str] | None = None,
     lesson = [{**common, "segment_id": "path-map", "kind": "MAP", "title": "학습 전체 지도",
                "text": "목표: " + node_names[path.goal_id] + "\n" + " → ".join(
                    node_names[t.from_node] + " → " + node_names[t.to_node] for t in path.transitions)}]
+    approved_relations = [relation for relation in path.concept_relations if relation.status == "APPROVED"]
+    if approved_relations:
+        labels = {"PREREQUISITE": ("선수", "→"), "SIMILARITY": ("유사", "↔"), "RELATED": ("관련·보완", "↔")}
+        lesson[0]["text"] += "\n검토된 개념 관계:\n" + "\n".join(
+            f"{labels[relation.relation_type][0]}: {node_names[relation.from_node]} "
+            f"{labels[relation.relation_type][1]} {node_names[relation.to_node]}"
+            for relation in approved_relations
+        )
+        # Teacher citation IDs and review notes stay in the authenticated draft.
+        lesson[0]["concept_relations"] = [{
+            "relation_id": relation.relation_id, "from_node": relation.from_node,
+            "to_node": relation.to_node, "relation_type": relation.relation_type,
+        } for relation in approved_relations]
     for t in path.transitions:
         lesson.append({**common, "segment_id": "path-link:" + t.transition_id, "kind": "COMPARE",
                        "title": node_names[t.from_node] + " → " + node_names[t.to_node],
@@ -342,10 +436,14 @@ def affected_assets(previous: LearningPath, updated: LearningPath) -> list[str]:
         "DUPLICATE_", "INVALID_", "UNKNOWN_CONDITION:",
         "UNKNOWN_ASSET_DEPENDENCY:", "UNDECLARED_PREREQUISITE:",
         "UNRESOLVED_PREREQUISITE:", "CYCLIC_PATH", "GOAL_UNREACHABLE", "NO_BASIC_CONCEPT",
+        "UNKNOWN_RELATION_SOURCE:", "RELATION_EVIDENCE_REQUIRED:", "UNRESOLVED_RELATION_PREREQUISITE:",
     )
     if any(issue.startswith(unsafe_prefixes) for issue in [*_structure_issues(previous), *_structure_issues(updated)]):
         return sorted(all_ids)
-    if (previous.goal_id != updated.goal_id or previous.nodes != updated.nodes):
+    if (previous.goal_id != updated.goal_id or previous.nodes != updated.nodes or
+            [r for r in previous.concept_relations if r.status == "APPROVED"] !=
+            [r for r in updated.concept_relations if r.status == "APPROVED"] or
+            previous.relation_sources != updated.relation_sources):
         return sorted(all_ids)
     old_transitions = {t.transition_id: t for t in previous.transitions}
     new_transitions = {t.transition_id: t for t in updated.transitions}

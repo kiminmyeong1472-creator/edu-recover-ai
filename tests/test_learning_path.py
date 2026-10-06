@@ -1,11 +1,13 @@
 """Focused checks for a one-unit macro/micro map and conservative release."""
 
 import unittest
+import hashlib
+import json
 
 from app.services.learning_path import (
-    AssessmentAttempt, LearningPath, PathNode, ReasoningTransition, TeachingAsset,
+    AssessmentAttempt, ConceptRelation, RelationSource, LearningPath, PathNode, ReasoningTransition, TeachingAsset,
     affected_assets, assess_attempt, learning_map, path_digest, publication_issues,
-    example_learning_path, path_lesson,
+    example_learning_path, path_lesson, relation_issues,
 )
 
 
@@ -60,6 +62,98 @@ def reviewed_unit() -> LearningPath:
 
 
 class LearningPathTests(unittest.TestCase):
+    def relation_path(self) -> LearningPath:
+        path = reviewed_unit()
+        path.assets = [asset for asset in path.assets if not asset.media_id]
+        path.nodes[0].subject = "수학"
+        path.nodes[0].curriculum_level = "중등"
+        path.nodes[0].concept_ref = "math:rate"
+        path.nodes[1].subject = "과학"
+        path.relation_sources = [RelationSource(source_id="teacher-source", reference="교사가 대조한 교과 원자료", location="조건 비교")]
+        return path
+
+    def approved_relation(self, **changes) -> ConceptRelation:
+        values = {"relation_id": "relation-1", "from_node": "basic", "to_node": "side",
+                  "relation_type": "SIMILARITY", "source_refs": ["teacher-source"],
+                  "evidence_ref": "두 표현의 대응을 교사가 비교", "status": "APPROVED"}
+        values.update(changes)
+        return ConceptRelation(**values)
+
+    def test_legacy_path_json_preserves_existing_review_digest(self):
+        legacy = reviewed_unit().model_dump()
+        legacy.pop("concept_relations")
+        legacy.pop("relation_sources")
+        for node in legacy["nodes"]:
+            for name in ("subject", "curriculum_level", "concept_ref"):
+                node.pop(name)
+        original_digest = hashlib.sha256(json.dumps(legacy, ensure_ascii=False, sort_keys=True,
+                                            separators=(",", ":")).encode("utf-8")).hexdigest()
+        loaded = LearningPath.model_validate(legacy)
+        self.assertEqual(path_digest(loaded), original_digest)
+        self.assertEqual(path_digest(LearningPath.model_validate_json(loaded.model_dump_json())), original_digest)
+        self.assertEqual(publication_issues(loaded, teacher_reviewed_digest=original_digest), [])
+
+    def test_similarity_has_no_prerequisite_direction_or_gate(self):
+        path = self.relation_path()
+        # There is no side -> goal prerequisite/transition in this unit.
+        path.concept_relations = [self.approved_relation(from_node="side", to_node="goal")]
+        self.assertEqual(publication_issues(path, teacher_reviewed_digest=path_digest(path)), [])
+        self.assertEqual(path.nodes[2].prerequisite_ids, ["middle"])
+        self.assertIn("유사: 독립된 보충 ↔ 목표 문제", path_lesson(path)[0]["text"])
+        # Symmetric duplicate is detected even when supplied in reverse order.
+        path.concept_relations.append(self.approved_relation(relation_id="reverse", from_node="goal", to_node="side"))
+        self.assertIn("DUPLICATE_RELATION_PAIR:reverse", publication_issues(path, teacher_reviewed_digest=path_digest(path)))
+
+    def test_approved_prerequisite_must_match_declared_direction_and_transition(self):
+        path = self.relation_path()
+        path.concept_relations = [self.approved_relation(relation_type="PREREQUISITE", to_node="middle")]
+        self.assertEqual(publication_issues(path, teacher_reviewed_digest=path_digest(path)), [])
+        path.concept_relations[0].from_node, path.concept_relations[0].to_node = "middle", "basic"
+        self.assertIn("UNRESOLVED_RELATION_PREREQUISITE:relation-1",
+                      publication_issues(path, teacher_reviewed_digest=path_digest(path)))
+
+    def test_unknown_source_missing_node_and_self_relation_hold_approved_output(self):
+        for changes, expected in (
+            ({"source_refs": ["not-registered"]}, "UNKNOWN_RELATION_SOURCE:relation-1"),
+            ({"to_node": "missing"}, "INVALID_RELATION_ENDPOINT:relation-1"),
+            ({"to_node": "basic"}, "INVALID_RELATION_ENDPOINT:relation-1"),
+            ({"evidence_ref": " "}, "RELATION_EVIDENCE_REQUIRED:relation-1"),
+        ):
+            with self.subTest(changes=changes):
+                path = self.relation_path()
+                path.concept_relations = [self.approved_relation(**changes)]
+                self.assertIn(expected, publication_issues(path, teacher_reviewed_digest=path_digest(path)))
+
+    def test_inferred_candidate_is_preview_only_and_cannot_change_active_path(self):
+        path = self.relation_path()
+        path.concept_relations = [self.approved_relation(relation_id="candidate-only", from_node="goal",
+                   to_node="basic", relation_type="PREREQUISITE", source_refs=[], evidence_ref="",
+                   origin="AI_PROPOSED", status="CANDIDATE")]
+        self.assertEqual(publication_issues(path, teacher_reviewed_digest=path_digest(path)), [])
+        self.assertTrue(relation_issues(path))  # Draft warnings remain visible.
+        self.assertEqual(learning_map(path)["concept_relations"][0]["status"], "CANDIDATE")
+        self.assertNotIn("concept_relations", path_lesson(path)[0])
+        self.assertNotIn("candidate-only", json.dumps(path_lesson(path)))
+
+    def test_populated_metadata_and_relation_approval_are_bound_to_exact_review(self):
+        path = self.relation_path()
+        path.concept_relations = [self.approved_relation()]
+        reviewed = path_digest(path)
+        path.nodes[0].subject = "다른 과목"
+        self.assertIn("TEACHER_REVIEW_REQUIRED", publication_issues(path, teacher_reviewed_digest=reviewed))
+        path.nodes[0].subject = "수학"
+        path.concept_relations[0].status = "CANDIDATE"
+        self.assertIn("TEACHER_REVIEW_REQUIRED", publication_issues(path, teacher_reviewed_digest=reviewed))
+
+    def test_student_relation_projection_excludes_teacher_sources_and_notes(self):
+        path = self.relation_path()
+        path.concept_relations = [self.approved_relation(evidence_ref="teacher-only-note-secret")]
+        projected = path_lesson(path)[0]["concept_relations"]
+        self.assertEqual(set(projected[0]), {"relation_id", "from_node", "to_node", "relation_type"})
+        serialized = json.dumps(path_lesson(path))
+        self.assertNotIn("teacher-only-note-secret", serialized)
+        self.assertNotIn("teacher-source", serialized)
+
     def test_map_shows_goal_prerequisites_and_false_counterexample_without_socratic_gate(self):
         path = reviewed_unit()
         self.assertEqual(publication_issues(path), ["TEACHER_REVIEW_REQUIRED"])
