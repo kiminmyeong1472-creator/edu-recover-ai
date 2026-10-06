@@ -206,12 +206,12 @@ PILOT_HTML = r"""
             <label>AI 모델 선택</label>
             <select id="genProvider">
               <option value="auto" selected>AUTO · 서버가 비용·개인정보·크레딧 기준 자동배정</option>
-              <option value="gpt-5.6-luna">GPT-5.6 Luna · Amazon Bedrock</option>
-              <option value="gemini-3.8-flash">Gemini 3.8 Flash · Google Vertex AI</option>
-              <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview · Google Vertex AI</option>
-              <option value="claude-haiku-4.5">Claude Haiku 4.5 · Amazon Bedrock</option>
-              <option value="claude-sonnet-5">Claude Sonnet 5 · Amazon Bedrock</option>
-              <option value="claude-opus-5">Claude Opus 5 · Amazon Bedrock</option>
+              <option value="economy-a">저비용 A</option>
+              <option value="economy-b">저비용 B</option>
+              <option value="reasoning-a">고난도 A</option>
+              <option value="privacy-economy">개인정보 보호 · 저비용</option>
+              <option value="privacy-standard">개인정보 보호 · 표준</option>
+              <option value="privacy-premium">개인정보 보호 · 최고급</option>
             </select>
             <label>작업 등급</label>
             <select id="genQualityTier"><option value="low">저비용</option><option value="standard" selected>일반</option><option value="high">최고난도</option></select>
@@ -440,8 +440,7 @@ async function generateQuestions(){
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok){out.textContent=r.status===401?"로그인이 필요합니다. 관리자 로그인 후 다시 실행해 주세요.":"자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
     workspaceRevision++;workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.effective_provider||d.provider;workspace.lastGenerationReceipt=d.execution_receipt||null;workspace.lastCrossVerification=null;workspace.crossVerificationState="PENDING_CHOICE";workspace.authoringRevisionRequired=false;persist();
-    const effective=(d.effective_model||d.model||d.effective_provider||d.provider);
-    out.textContent=effective+" · "+d.count+"문항 생성 완료. "+(d.automatic_routing_used?"AUTO 배정":"사용자 지정")+" · 문항 작업실에서 교사가 확인·수정하십시오.";
+    out.textContent="AI "+d.count+"문항 생성 완료. "+(d.automatic_routing_used?"AUTO 배정":"사용자 지정 프로필")+" · 문항 작업실에서 교사가 확인·수정하십시오.";
     await showCrossVerifyPrompt(workspace.lastGenerationProvider, Number(d.count)||workspace.items.length);
   }catch(e){out.textContent="자동출제 요청 실패: "+e.message;}
   finally{generationInFlight=false;}
