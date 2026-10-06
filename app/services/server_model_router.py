@@ -220,12 +220,12 @@ def _remaining_ratio(cloud: Cloud, ledger: ModelUsageLedger | None = None) -> fl
 
 
 USER_MODEL_KEYS = {
-    "gpt-5.6-luna": "gpt_luna",
-    "gemini-3.8-flash": "gemini_flash",
-    "gemini-3.1-pro-preview": "gemini_pro",
-    "claude-haiku-4.5": "claude_haiku",
-    "claude-sonnet-5": "claude_sonnet",
-    "claude-opus-5": "claude_opus",
+    "economy-a": "gpt_luna",
+    "economy-b": "gemini_flash",
+    "reasoning-a": "gemini_pro",
+    "privacy-economy": "claude_haiku",
+    "privacy-standard": "claude_sonnet",
+    "privacy-premium": "claude_opus",
 }
 
 
@@ -374,8 +374,16 @@ def router_status() -> dict[str, object]:
             "google": settings.google_credit_krw,
             "aws": settings.aws_credit_krw,
         },
-        "models": {name: asdict(spec) for name, spec in _specs().items()},
-        "user_selectable_models": sorted(USER_MODEL_KEYS),
+        "profiles": {
+            "economy-a": {"cloud": "aws", "privacy_class": "NON_PERSONAL_ONLY"},
+            "economy-b": {"cloud": "google", "privacy_class": "NON_PERSONAL_OR_APPROVED_ZDR"},
+            "reasoning-a": {"cloud": "google", "privacy_class": "NON_PERSONAL_OR_APPROVED_ZDR"},
+            "privacy-economy": {"cloud": "aws", "privacy_class": "PRIVACY_PREFERRED"},
+            "privacy-standard": {"cloud": "aws", "privacy_class": "PRIVACY_PREFERRED"},
+            "privacy-premium": {"cloud": "aws", "privacy_class": "PRIVACY_PREFERRED"},
+        },
+        "user_selectable_profiles": sorted(USER_MODEL_KEYS),
+        "model_identity_disclosure": "SERVER_TRADE_SECRET",
         "explicit_user_selection_bypasses_auto_cost_routing": True,
         "budget": budget_snapshot(),
         "gpt_quality_failover": [
