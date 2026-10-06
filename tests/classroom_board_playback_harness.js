@@ -15,6 +15,17 @@ function node(key) {
 }
 const iframe = {id: 'youtubePlayer'};
 const players = [];
+const mediaCalls = [];
+let autoplayAllowed = false;
+const htmlMedia = {
+  currentTime: 0,
+  play() {
+    mediaCalls.push('play');
+    return autoplayAllowed ? Promise.resolve() : Promise.reject(new Error('autoplay blocked'));
+  },
+  pause() {mediaCalls.push('pause');},
+  addEventListener() {},
+};
 const intervals = new Map();
 let nextInterval = 0;
 let spoken = 0;
@@ -45,7 +56,7 @@ const context = vm.createContext({
       if (selector === '#youtubePlayer') {
         return node('#media').innerHTML.includes("id='youtubePlayer'") ? iframe : null;
       }
-      if (selector === '#vid') return null;
+      if (selector === '#vid') return node('#media').innerHTML.includes("id='vid'") ? htmlMedia : null;
       return node(selector);
     },
     createElement: () => ({src: '', onerror: null}),
@@ -93,6 +104,20 @@ async function run() {
 
   vm.runInContext("S.state.playback='STOPPED';render();", context);
   assert.equal(players[0].calls.at(-1), 'stop');
+  vm.runInContext(`S.lesson.push({segment_id:'audio',kind:'EXPLAIN',title:'음성',text:'설명',
+    media_type:'audio/mpeg',media_url:'https://board.example/audio.mp3'});
+    S.state.current_segment_id='audio';S.state.playback='PLAYING';render();`, context);
+  await new Promise(setImmediate);
+  assert.equal(mediaCalls.at(-1), 'play');
+  assert.match(node('#playbackHelp').textContent, /재생을 제한/);
+  assert.equal(node('#boardPlayFallback').style.display, 'inline-block');
+  autoplayAllowed = true;
+  vm.runInContext('resumeBoardPlayback()', context);
+  await new Promise(setImmediate);
+  assert.equal(node('#boardPlayFallback').style.display, 'none');
+  vm.runInContext("S.state.playback='PAUSED';render();", context);
+  assert.equal(mediaCalls.at(-1), 'pause');
+  assert.equal(node('#playbackHelp').textContent, '');
   vm.runInContext(`S.lesson.push({segment_id:'image',kind:'EXPLAIN',title:'그림',text:'새 단계',
     media_type:'image/png',media_url:'/tutor/api/sessions/board-test/media/0123456789abcdef0123456789abcdef?asset_token=asset-secret'});
     S.state.current_segment_id='image';render();`, context);
