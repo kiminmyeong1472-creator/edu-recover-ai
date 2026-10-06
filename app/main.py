@@ -45,6 +45,15 @@ from app.services.auto_generator import (
     generate_questions,
 )
 from app.services.provider_verifier import verify_with_provider
+from app.services.bedrock_runtime import bedrock_credentials_configured
+from app.services.server_model_router import (
+    ModelUsageLedger,
+    record_route_usage,
+    router_status as model_router_status,
+    select_route,
+    select_user_model,
+)
+from app.training.google_gpu_policy import policy_status as google_gpu_policy_status
 from app.services.generation_provenance import (
     ProvenanceError, issue_origin_proof, verify_origin_proof, issue_verification_proof,
 )
@@ -159,6 +168,38 @@ class GenerateQuestionsRequest(BaseModel):
     difficulty: str = "쉬움 25% / 보통 50% / 어려움 25%"
     scope_memo: str = ""
     extra_instructions: str = ""
+
+
+class AutoGenerateQuestionsRequest(BaseModel):
+    """Server-only automatic routing request.
+
+    Automatic routing is the default. A concrete requested_model bypasses cost
+    routing but never bypasses provider/privacy/security gates.
+    """
+    model_config = ConfigDict(extra="forbid")
+    explicit_authorization: Literal[True]
+    source_text: str = Field(..., min_length=1, max_length=100000)
+    count: int = Field(default=20, ge=1, le=50)
+    subject: str = "영어"
+    school_level: str = "고등학교"
+    grade: str = "1학년"
+    exam_type: str = "중간고사"
+    question_types: list[str] = Field(default_factory=list)
+    difficulty: str = "쉬움 25% / 보통 50% / 어려움 25%"
+    scope_memo: str = ""
+    extra_instructions: str = ""
+    requested_model: str = Field(default="auto", max_length=80)
+    contains_personal_data: bool = True
+    quality_tier: Literal["low", "standard", "high"] = "standard"
+    reported_gpt_issue: Literal[
+        "hallucination",
+        "overclaim",
+        "false_report",
+        "lie",
+        "instruction_refusal",
+        "invalid_output",
+        "other_quality_failure",
+    ] | None = None
 
 
 class VerifyWithProviderRequest(BaseModel):
@@ -288,17 +329,17 @@ async def health_check() -> dict[str, str]:
 
 def _provider_secret_configured(provider: str) -> bool:
     return {
-        "openai": settings.openai_api_key is not None,
+        "openai": bedrock_credentials_configured(),
         "gemini": settings.google_credentials_json is not None,
-        "claude": settings.anthropic_api_key is not None,
+        "claude": bedrock_credentials_configured(),
     }[provider]
 
 
 def _provider_model(provider: str) -> str:
     return {
-        "openai": settings.openai_model,
+        "openai": settings.bedrock_gpt_luna_model,
         "gemini": settings.gemini_model,
-        "claude": settings.anthropic_model,
+        "claude": settings.bedrock_claude_sonnet_model,
     }[provider]
 
 
@@ -371,6 +412,15 @@ async def owner_ai_status(_: None = Depends(require_owner)) -> dict[str, Any]:
         "strict_provider_zdr_required": privacy.get("strict_provider_zdr_required", True),
         "platform_chat_history_forwarded": False,
         "provider_calls_are_stateless": True,
+    }
+
+
+@app.get("/owner/model-router-status", tags=["owner"])
+async def owner_model_router_status(_: None = Depends(require_owner)) -> dict[str, Any]:
+    """Return server-side routing, pricing-budget and GPU policy metadata."""
+    return {
+        "router": model_router_status(),
+        "google_gpu": google_gpu_policy_status(),
     }
 
 
@@ -520,6 +570,86 @@ async def revise_authoring(payload: ReviseAuthoringRequest) -> dict[str, Any]:
     return {"provider": origin["provider"], "invocation_id": invocation_id,
             "generation_invocation_id": origin["generation_invocation_id"],
             "origin_proof": proof, "verification_state": "REQUIRED_FOR_REVISED_CONTENT"}
+
+
+@app.post("/authoring/auto-generate", tags=["authoring"], dependencies=[Depends(require_owner)])
+async def auto_generate_questions(payload: AutoGenerateQuestionsRequest) -> dict[str, Any]:
+    """Generate with a server-selected model unless the user chose one explicitly."""
+    try:
+        requested = payload.requested_model.strip().lower()
+        ledger = ModelUsageLedger()
+        route = (
+            select_route(
+                contains_personal_data=payload.contains_personal_data,
+                quality_tier=payload.quality_tier,
+                reported_gpt_issue=payload.reported_gpt_issue,
+                ledger=ledger,
+            )
+            if requested in {"", "auto"}
+            else select_user_model(
+                requested,
+                contains_personal_data=payload.contains_personal_data,
+            )
+        )
+        decision = assert_provider_allowed(route.provider, "generate")
+        result = await generate_questions(
+            provider=route.provider,
+            source_text=payload.source_text,
+            count=payload.count,
+            subject=payload.subject,
+            school_level=payload.school_level,
+            grade=payload.grade,
+            exam_type=payload.exam_type,
+            question_types=payload.question_types,
+            difficulty=payload.difficulty,
+            scope_memo=payload.scope_memo,
+            extra_instructions=payload.extra_instructions,
+            model_override=route.model,
+        )
+    except ValueError as exc:
+        if str(exc) == "UNSUPPORTED_USER_MODEL":
+            raise HTTPException(status_code=422, detail="지원되지 않는 사용자 지정 모델입니다.") from exc
+        raise
+    except (ProviderHeld, ProviderZDRHeld) as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
+    except GeneratorNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except GenerationFailed as exc:
+        raise HTTPException(
+            status_code=exc.http_status,
+            detail=str(exc),
+            headers={"X-EduRecover-Error-Code": exc.code},
+        ) from exc
+
+    response = result.to_dict()
+    response["requested_model"] = payload.requested_model
+    response["effective_provider"] = result.provider
+    response["effective_model"] = result.model
+    response["automatic_routing_used"] = requested in {"", "auto"}
+    response["routing_reason"] = route.reason
+    response["privacy_notice"] = route.privacy_notice
+    response["fallback_from_gpt"] = route.fallback_from_gpt
+    response["cost_receipt"] = record_route_usage(
+        route,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        ledger=ledger,
+    )
+    receipt_request = payload.model_dump(mode="json")
+    response["execution_receipt"] = _execution_receipt(
+        provider=result.provider,
+        action="generate",
+        request_payload=receipt_request,
+        result_payload=response,
+        control_epoch=decision.control_epoch,
+    )
+    receipt = response["execution_receipt"]
+    receipt["origin_proof"] = issue_origin_proof(
+        result.provider,
+        receipt["invocation_id"],
+        response["items"],
+    )
+    return response
 
 
 @app.post("/channel/openai/generate", tags=["authoring"], dependencies=[Depends(require_owner)])
