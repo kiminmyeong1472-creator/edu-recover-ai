@@ -130,7 +130,6 @@ async def _verify_payload(
             result = _parse_result(response.text)
             return {
                 "provider": normalized,
-                "model": model,
                 "input_tokens": response.input_tokens,
                 "output_tokens": response.output_tokens,
                 **result,
@@ -159,7 +158,6 @@ async def _verify_payload(
             output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
             return {
                 "provider": normalized,
-                "model": model,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 **result,
@@ -193,7 +191,6 @@ async def _verify_payload(
             result = _parse_result(response.text)
             return {
                 "provider": normalized,
-                "model": model,
                 "input_tokens": response.input_tokens,
                 "output_tokens": response.output_tokens,
                 **result,
