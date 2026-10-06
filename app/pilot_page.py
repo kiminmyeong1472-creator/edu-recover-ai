@@ -203,8 +203,20 @@ PILOT_HTML = r"""
         <div class="grid c2">
           <div class="card">
             <h3>출제 원문</h3>
-            <label>AI 출제 에이전트</label>
-            <select id="genProvider"><option value="openai" selected>OpenAI API</option><option value="gemini">Gemini API · 고수준 사고 설정</option><option value="claude">Claude</option></select>
+            <label>AI 모델 선택</label>
+            <select id="genProvider">
+              <option value="auto" selected>AUTO · 서버가 비용·개인정보·크레딧 기준 자동배정</option>
+              <option value="gpt-5.6-luna">GPT-5.6 Luna · Amazon Bedrock</option>
+              <option value="gemini-3.8-flash">Gemini 3.8 Flash · Google Vertex AI</option>
+              <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview · Google Vertex AI</option>
+              <option value="claude-haiku-4.5">Claude Haiku 4.5 · Amazon Bedrock</option>
+              <option value="claude-sonnet-5">Claude Sonnet 5 · Amazon Bedrock</option>
+              <option value="claude-opus-5">Claude Opus 5 · Amazon Bedrock</option>
+            </select>
+            <label>작업 등급</label>
+            <select id="genQualityTier"><option value="low">저비용</option><option value="standard" selected>일반</option><option value="high">최고난도</option></select>
+            <label class="check" style="margin-top:10px"><input id="genContainsPersonalData" type="checkbox" checked>개인정보·민감자료 포함</label>
+            <div class="muted">AUTO가 기본입니다. 사용자가 모델을 직접 지정하면 자동 비용 라우팅은 하지 않으며, 해당 공급자의 실제 요금·한도와 개인정보 게이트는 그대로 적용합니다.</div>
             <label>원문·교과서 본문·수업자료</label>
             <textarea id="generationSource" style="min-height:320px" placeholder="출제할 원문을 여기에 붙여 넣으십시오."></textarea>
             <label>추가 출제 지시</label>
@@ -402,11 +414,13 @@ function selectedQuestionTypes(){
   return [...document.querySelectorAll("#settings .check input:checked")].map(x=>x.parentElement.textContent.trim());
 }
 async function generateQuestions(){
-  const out=document.getElementById("generationOutput"),provider=document.getElementById("genProvider").value,source=document.getElementById("generationSource").value,instructions=document.getElementById("generationInstructions").value;
+  const out=document.getElementById("generationOutput"),requestedModel=document.getElementById("genProvider").value,source=document.getElementById("generationSource").value,instructions=document.getElementById("generationInstructions").value;
   if(generationInFlight||verificationInFlight){out.textContent="현재 AI 작업이 끝난 뒤 다시 실행해 주세요.";return;}
   if(!source.trim()){out.textContent="출제 원문을 입력하십시오.";return;}
   const payload={
-    provider,
+    requested_model:requestedModel,
+    contains_personal_data:Boolean(document.getElementById("genContainsPersonalData")?.checked),
+    quality_tier:document.getElementById("genQualityTier")?.value||"standard",
     explicit_authorization:true,
     source_text:source,
     count:Number(workspace.exam.count||1),
@@ -422,13 +436,13 @@ async function generateQuestions(){
   out.textContent="AI가 문항 초안을 생성 중입니다...";
   generationInFlight=true;
   try{
-    const route={openai:"/channel/openai/generate",gemini:"/channel/gemini/generate",claude:"/channel/claude/generate"}[provider];
-    const r=await fetch(route,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const r=await fetch("/authoring/auto-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={detail:t}}
     if(!r.ok){out.textContent=r.status===401?"로그인이 필요합니다. 관리자 로그인 후 다시 실행해 주세요.":"자동출제 실패 ("+r.status+"): "+(d.detail||t);return;}
-    workspaceRevision++;workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.provider;workspace.lastGenerationReceipt=d.execution_receipt||null;workspace.lastCrossVerification=null;workspace.crossVerificationState="PENDING_CHOICE";workspace.authoringRevisionRequired=false;persist();
-    out.textContent=providerLabel(d.provider)+" · "+d.count+"문항 생성 완료. 문항 작업실에서 교사가 확인·수정하십시오.";
-    await showCrossVerifyPrompt(d.provider, Number(d.count)||workspace.items.length);
+    workspaceRevision++;workspace.items=d.items||[];workspace.teacherApproved=false;currentItem=0;workspace.lastGenerationProvider=d.effective_provider||d.provider;workspace.lastGenerationReceipt=d.execution_receipt||null;workspace.lastCrossVerification=null;workspace.crossVerificationState="PENDING_CHOICE";workspace.authoringRevisionRequired=false;persist();
+    const effective=(d.effective_model||d.model||d.effective_provider||d.provider);
+    out.textContent=effective+" · "+d.count+"문항 생성 완료. "+(d.automatic_routing_used?"AUTO 배정":"사용자 지정")+" · 문항 작업실에서 교사가 확인·수정하십시오.";
+    await showCrossVerifyPrompt(workspace.lastGenerationProvider, Number(d.count)||workspace.items.length);
   }catch(e){out.textContent="자동출제 요청 실패: "+e.message;}
   finally{generationInFlight=false;}
 }
