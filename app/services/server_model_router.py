@@ -219,6 +219,48 @@ def _remaining_ratio(cloud: Cloud, ledger: ModelUsageLedger | None = None) -> fl
     return float(budget_snapshot(ledger)["clouds"][cloud]["remaining_ratio"])
 
 
+USER_MODEL_KEYS = {
+    "gpt-5.6-luna": "gpt_luna",
+    "gemini-3.8-flash": "gemini_flash",
+    "gemini-3.1-pro-preview": "gemini_pro",
+    "claude-haiku-4.5": "claude_haiku",
+    "claude-sonnet-5": "claude_sonnet",
+    "claude-opus-5": "claude_opus",
+}
+
+
+def select_user_model(
+    requested_model: str,
+    *,
+    contains_personal_data: bool,
+) -> RouteDecision:
+    """Honor an explicit user model choice without cost-based substitution.
+
+    Privacy and provider-availability gates are enforced by the execution layer.
+    This function only prevents the automatic cost router from silently changing
+    a model selected by the user.
+    """
+    key = USER_MODEL_KEYS.get(requested_model.strip().lower())
+    if key is None:
+        raise ValueError("UNSUPPORTED_USER_MODEL")
+    spec = _specs()[key]
+    privacy_notice = spec.region_notice
+    if contains_personal_data and spec.privacy_class == "NON_PERSONAL_ONLY":
+        privacy_notice = (
+            "The user explicitly selected a model that is not an EduRecover "
+            "privacy-preferred route. Do not silently substitute another model; "
+            "surface the privacy warning and enforce the configured retention gate."
+        )
+    return RouteDecision(
+        spec.provider,
+        spec.model,
+        spec.cloud,
+        "User explicitly selected this model; automatic cost routing bypassed.",
+        privacy_notice,
+        False,
+    )
+
+
 def select_route(
     *,
     contains_personal_data: bool,
@@ -333,6 +375,8 @@ def router_status() -> dict[str, object]:
             "aws": settings.aws_credit_krw,
         },
         "models": {name: asdict(spec) for name, spec in _specs().items()},
+        "user_selectable_models": sorted(USER_MODEL_KEYS),
+        "explicit_user_selection_bypasses_auto_cost_routing": True,
         "budget": budget_snapshot(),
         "gpt_quality_failover": [
             "hallucination",
