@@ -5,14 +5,17 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from anthropic import AsyncAnthropic
 from google import genai
-from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.access_notice import AI_ACCESS_NOTICE
 from app.services.context_overlay import build_verification_context
 from app.services.privacy_guard import assert_provider_zdr
+from app.services.bedrock_runtime import (
+    bedrock_credentials_configured,
+    generate_claude,
+    generate_gpt_luna,
+)
 from app.services.auto_generator import (
     GenerationFailed,
     GeneratorNotConfigured,
@@ -104,6 +107,7 @@ async def _verify_payload(
     provider: str,
     problems: list[dict[str, Any]],
     payload: str,
+    model_override: str | None = None,
 ) -> dict[str, Any]:
     if not problems:
         raise GenerationFailed("At least one generated problem is required.")
@@ -112,41 +116,52 @@ async def _verify_payload(
 
     if normalized == GenerationProvider.OPENAI.value:
         assert_provider_zdr("openai")
-        if settings.openai_api_key is None:
-            raise GeneratorNotConfigured("OPENAI_API_KEY is not configured.")
-        client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
-        try:
-            response = await client.responses.create(
-                model=settings.openai_model,
-                instructions=VERIFICATION_INSTRUCTIONS,
-                input=payload,
-                store=False,
+        if not bedrock_credentials_configured():
+            raise GeneratorNotConfigured(
+                "AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are not configured for Amazon Bedrock."
             )
-            result = _parse_result(response.output_text)
-            return {
-                "provider": normalized,
-                **result,
-            }
-        except GenerationFailed:
-            raise
-        except Exception as exc:
-            raise provider_failure("openai", exc) from exc
-        finally:
-            await client.close()
-
-    if normalized == GenerationProvider.GEMINI.value:
-        assert_provider_zdr("gemini")
-        client = None
+        model = (model_override or settings.bedrock_gpt_luna_model).strip()
         try:
-            client = _vertex_gemini_client()
-            response = await client.aio.models.generate_content(
-                model=settings.gemini_model,
-                contents=payload,
-                config=gemini_generation_config(VERIFICATION_INSTRUCTIONS),
+            response = await generate_gpt_luna(
+                prompt=payload,
+                system_instruction=VERIFICATION_INSTRUCTIONS,
+                model=model,
             )
             result = _parse_result(response.text)
             return {
                 "provider": normalized,
+                "model": model,
+                "input_tokens": response.input_tokens,
+                "output_tokens": response.output_tokens,
+                **result,
+            }
+        except GeneratorNotConfigured:
+            raise
+        except GenerationFailed:
+            raise
+        except Exception as exc:
+            raise provider_failure("openai", exc) from exc
+
+    if normalized == GenerationProvider.GEMINI.value:
+        assert_provider_zdr("gemini")
+        client = None
+        model = (model_override or settings.gemini_model).strip()
+        try:
+            client = _vertex_gemini_client()
+            response = await client.aio.models.generate_content(
+                model=model,
+                contents=payload,
+                config=gemini_generation_config(VERIFICATION_INSTRUCTIONS),
+            )
+            result = _parse_result(response.text)
+            usage = getattr(response, "usage_metadata", None)
+            input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
+            output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
+            return {
+                "provider": normalized,
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
                 **result,
             }
         except GeneratorNotConfigured:
@@ -163,26 +178,24 @@ async def _verify_payload(
 
     if normalized == GenerationProvider.CLAUDE.value:
         assert_provider_zdr("claude")
-        if settings.anthropic_api_key is None:
-            raise GeneratorNotConfigured("ANTHROPIC_API_KEY is not configured.")
-        client = AsyncAnthropic(
-            api_key=settings.anthropic_api_key.get_secret_value(),
-        )
+        if not bedrock_credentials_configured():
+            raise GeneratorNotConfigured(
+                "AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are not configured for Amazon Bedrock."
+            )
+        model = (model_override or settings.bedrock_claude_sonnet_model).strip()
         try:
-            message = await client.messages.create(
-                model=settings.anthropic_model,
+            response = await generate_claude(
+                prompt=payload,
+                system_instruction=VERIFICATION_INSTRUCTIONS,
+                model=model,
                 max_tokens=1200,
-                system=VERIFICATION_INSTRUCTIONS,
-                messages=[{"role": "user", "content": payload}],
             )
-            text = "".join(
-                block.text
-                for block in message.content
-                if getattr(block, "type", None) == "text"
-            )
-            result = _parse_result(text)
+            result = _parse_result(response.text)
             return {
                 "provider": normalized,
+                "model": model,
+                "input_tokens": response.input_tokens,
+                "output_tokens": response.output_tokens,
                 **result,
             }
         except GeneratorNotConfigured:
@@ -191,13 +204,11 @@ async def _verify_payload(
             raise
         except Exception as exc:
             raise provider_failure("claude", exc) from exc
-        finally:
-            await client.close()
 
     raise GenerationFailed(f"Unsupported verification provider: {provider}")
 
 
-async def verify_with_provider(provider: str, problems: list[dict[str, Any]]) -> dict[str, Any]:
+async def verify_with_provider(provider: str, problems: list[dict[str, Any]], model_override: str | None = None) -> dict[str, Any]:
     from app.services.secret_vault import SecretVault
     assert_provider_zdr(provider.strip().lower())
     payload = _serialize(problems, provider=provider.strip().lower())
@@ -205,7 +216,7 @@ async def verify_with_provider(provider: str, problems: list[dict[str, Any]]) ->
     if selection["selection_state"] == "NO_MATCH":
         raise GenerationFailed("검증 작업에 허용된 영업비밀 구간이 없습니다.", code="AUTHORIZED_ASSET_NOT_FOUND", http_status=409)
     try:
-        result = await _verify_payload(provider, problems, payload)
+        result = await _verify_payload(provider, problems, payload, model_override)
     except BaseException:
         SecretVault().mark(selection["request_id"], "FAILED_OR_UNCERTAIN")
         raise
