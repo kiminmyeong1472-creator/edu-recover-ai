@@ -53,6 +53,42 @@ class Settings(BaseSettings):
         default="high",
         validation_alias="GEMINI_THINKING_LEVEL",
     )
+    gemini_flash_model: str = Field(
+        default="gemini-3.8-flash",
+        validation_alias="GEMINI_FLASH_MODEL",
+    )
+    aws_region: str = Field(
+        default="ap-northeast-2",
+        validation_alias="AWS_REGION",
+    )
+    bedrock_gpt_luna_model: str = Field(
+        default="openai.gpt-5.6-luna",
+        validation_alias="BEDROCK_GPT_LUNA_MODEL",
+    )
+    bedrock_claude_haiku_model: str = Field(
+        default="global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        validation_alias="BEDROCK_CLAUDE_HAIKU_MODEL",
+    )
+    bedrock_claude_sonnet_model: str = Field(
+        default="anthropic.claude-sonnet-5",
+        validation_alias="BEDROCK_CLAUDE_SONNET_MODEL",
+    )
+    bedrock_claude_opus_model: str = Field(
+        default="anthropic.claude-opus-5",
+        validation_alias="BEDROCK_CLAUDE_OPUS_MODEL",
+    )
+    google_credit_krw: float = Field(
+        default=400000.0,
+        validation_alias="EDURECOVER_GOOGLE_CREDIT_KRW",
+    )
+    aws_credit_krw: float = Field(
+        default=280000.0,
+        validation_alias="EDURECOVER_AWS_CREDIT_KRW",
+    )
+    budget_usd_krw: float = Field(
+        default=1400.0,
+        validation_alias="EDURECOVER_BUDGET_USD_KRW",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
