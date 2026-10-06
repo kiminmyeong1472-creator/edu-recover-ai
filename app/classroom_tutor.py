@@ -1686,7 +1686,7 @@ def board_html(
 ) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'><title>EduRecover Board</title><style>{COMMON_CSS}</style></head>
 <body><div class='top'><div><b>EduRecover 전자칠판</b> <span class='badge' id='conn'>연결중</span></div><div><span class='badge' id='mode'></span> <button class='btn' onclick='goFull()'>전체화면</button></div></div>
-<div class='grid'><main class='stage'><div class='card'><div class='muted' id='kind'></div><div class='big' id='title'>불러오는 중...</div><p id='text' style='font-size:clamp(18px,2.1vw,32px)'></p><div id='structure'></div><div id='media'></div><p id='playbackHelp' class='muted' role='status'></p><button class='btn' id='boardPlayFallback' style='display:none' onclick='resumeBoardPlayback()'>이 화면에서 영상 재생</button><div id='choices'></div></div><div class='card' id='whiteWrap' style='display:none'><canvas id='whiteboard' class='board'></canvas></div></main>
+<div class='grid'><main class='stage'><div class='card'><div class='muted' id='kind'></div><div class='big' id='title'>불러오는 중...</div><p id='text' style='font-size:clamp(18px,2.1vw,32px)'></p><div id='structure'></div><div id='media'></div><p id='playbackHelp' class='muted' role='status'></p><button class='btn' id='boardPlayFallback' style='display:none' onclick='resumeBoardPlayback()'>이 화면에서 자료 재생</button><div id='choices'></div></div><div class='card' id='whiteWrap' style='display:none'><canvas id='whiteboard' class='board'></canvas></div></main>
 <aside class='side'><div class='card'><b>교사 제어</b><div class='controls'><button class='primary' onclick="cmd('PLAY')">재생/TTS</button><button onclick="cmd('PAUSE')">일시정지</button><button onclick="cmd('PREV')">이전</button><button onclick="cmd('NEXT')">다음</button><button onclick='toggleBoard()'>판서 전환</button><button class='danger' onclick="cmd('STOP')">전체중지</button><button onclick='clearSharedBoard()'>판서 지우기</button></div></div>
 <div class='card'><b>학생 참가</b><div id='qr' style='margin-top:10px'></div><div class='muted' id='joinText'></div></div>
 <div class='card'><b>응답 현황</b><div id='results'>아직 응답 없음</div></div>
@@ -1704,9 +1704,16 @@ function loadYouTubeApi(){{if(window.YT?.Player)return Promise.resolve(window.YT
    script.onerror=()=>{{youtubeApiPromise=null;reject(new Error('YouTube API unavailable'));}};
    document.head.appendChild(script);}});return youtubeApiPromise;}}
 function playbackHelp(message,allowManual=false){{q('#playbackHelp').textContent=message;q('#boardPlayFallback').style.display=allowManual?'inline-block':'none';}}
-function resumeBoardPlayback(){{if(S?.state?.playback==='PLAYING'&&youtubeReady){{youtubePlayer.playVideo();playbackHelp('');}}}}
+function resumeBoardPlayback(){{if(S?.state?.playback!=='PLAYING')return;let v=q('#vid');
+ if(v){{Promise.resolve(v.play()).then(()=>{{if(v===q('#vid')&&S?.state?.playback==='PLAYING')playbackHelp('');}})
+   .catch(()=>{{if(v===q('#vid')&&S?.state?.playback==='PLAYING')
+     playbackHelp('브라우저가 자료 재생을 제한했습니다. 화면의 재생 버튼을 눌러 주세요.',true);}});return;}}
+ if(youtubeReady){{youtubePlayer.playVideo();playbackHelp('');}}}}
 function applyPlayback(){{let x=seg();if(!S||!x)return;let playing=S.state.playback==='PLAYING',v=q('#vid');
- if(v){{if(playing)v.play().catch(()=>{{}});else v.pause();}}
+ if(v){{if(playing)Promise.resolve(v.play()).then(()=>{{if(v===q('#vid')&&S?.state?.playback==='PLAYING')playbackHelp('');}})
+   .catch(()=>{{if(v===q('#vid')&&S?.state?.playback==='PLAYING')
+     playbackHelp('브라우저가 자료 재생을 제한했습니다. 화면의 재생 버튼을 눌러 주세요.',true);}});
+   else{{v.pause();playbackHelp('');}}}}
  else if(q('#youtubePlayer')){{if(!youtubeReady)return;
    if(playing)youtubePlayer.playVideo();else if(S.state.playback==='STOPPED')youtubePlayer.stopVideo();else youtubePlayer.pauseVideo();
    if(!playing)playbackHelp('');}}
