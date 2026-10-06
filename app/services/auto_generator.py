@@ -157,7 +157,6 @@ class GenerationResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "provider": self.provider,
-            "model": self.model,
             "count": len(self.items),
             "items": list(self.items),
             "usage": {
