@@ -1,7 +1,7 @@
 """AI automatic question generation for the teacher platform.
 
-OpenAI, Gemini, and Claude/Anthropic are selectable, provider-isolated channels.
-The caller must explicitly select a provider for each request.
+GPT and Claude run through Amazon Bedrock; Gemini runs through Google Vertex AI.
+Provider/model routing and all privacy gates stay on the EduRecover server.
 """
 
 from __future__ import annotations
@@ -12,16 +12,19 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from anthropic import AsyncAnthropic
 from google import genai
 from google.genai import types
 from google.oauth2 import service_account
-from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.access_notice import AI_ACCESS_NOTICE
 from app.services.context_overlay import build_authoring_context
 from app.services.privacy_guard import assert_provider_zdr
+from app.services.bedrock_runtime import (
+    bedrock_credentials_configured,
+    generate_claude,
+    generate_gpt_luna,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -148,12 +151,19 @@ class GenerationResult:
     provider: str
     model: str
     items: tuple[dict[str, Any], ...]
+    input_tokens: int = 0
+    output_tokens: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "provider": self.provider,
+            "model": self.model,
             "count": len(self.items),
             "items": list(self.items),
+            "usage": {
+                "input_tokens": self.input_tokens,
+                "output_tokens": self.output_tokens,
+            },
         }
 
 
@@ -294,26 +304,31 @@ def _parse_and_validate_items(text: str, expected_count: int) -> tuple[dict[str,
     return tuple(normalized)
 
 
-async def _generate_with_openai(prompt: str, count: int) -> GenerationResult:
+async def _generate_with_openai(
+    prompt: str,
+    count: int,
+    model_override: str | None = None,
+) -> GenerationResult:
+    """Run the OpenAI GPT channel only through Amazon Bedrock."""
     assert_provider_zdr("openai")
-    if settings.openai_api_key is None:
+    if not bedrock_credentials_configured():
         raise GeneratorNotConfigured(
-            "OPENAI_API_KEY is not configured in the server secret store."
+            "AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are not configured for Amazon Bedrock."
         )
-
-    client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+    model = (model_override or settings.bedrock_gpt_luna_model).strip()
     try:
-        response = await client.responses.create(
-            model=settings.openai_model,
-            instructions=SYSTEM_INSTRUCTIONS,
-            input=prompt,
-            store=False,
+        response = await generate_gpt_luna(
+            prompt=prompt,
+            system_instruction=SYSTEM_INSTRUCTIONS,
+            model=model,
         )
-        items = _parse_and_validate_items(response.output_text, count)
+        items = _parse_and_validate_items(response.text, count)
         return GenerationResult(
             provider=GenerationProvider.OPENAI.value,
-            model=settings.openai_model,
+            model=model,
             items=items,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
         )
     except GeneratorNotConfigured:
         raise
@@ -321,26 +336,34 @@ async def _generate_with_openai(prompt: str, count: int) -> GenerationResult:
         raise
     except Exception as exc:
         raise provider_failure("openai", exc) from exc
-    finally:
-        await client.close()
 
 
-async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
+async def _generate_with_gemini(
+    prompt: str,
+    count: int,
+    model_override: str | None = None,
+) -> GenerationResult:
     assert_provider_zdr("gemini")
 
     client = None
+    model = (model_override or settings.gemini_model).strip()
     try:
         client = _vertex_gemini_client()
         response = await client.aio.models.generate_content(
-            model=settings.gemini_model,
+            model=model,
             contents=prompt,
             config=gemini_generation_config(SYSTEM_INSTRUCTIONS),
         )
         items = _parse_and_validate_items(response.text, count)
+        usage = getattr(response, "usage_metadata", None)
+        input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
+        output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
         return GenerationResult(
             provider=GenerationProvider.GEMINI.value,
-            model=settings.gemini_model,
+            model=model,
             items=items,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
     except GeneratorNotConfigured:
         raise
@@ -355,33 +378,32 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
             client.close()
 
 
-async def _generate_with_anthropic(prompt: str, count: int) -> GenerationResult:
+async def _generate_with_anthropic(
+    prompt: str,
+    count: int,
+    model_override: str | None = None,
+) -> GenerationResult:
+    """Run Claude only through Amazon Bedrock; no Anthropic API key is used."""
     assert_provider_zdr("claude")
-    if settings.anthropic_api_key is None:
+    if not bedrock_credentials_configured():
         raise GeneratorNotConfigured(
-            "ANTHROPIC_API_KEY is not configured in the server secret store."
+            "AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are not configured for Amazon Bedrock."
         )
-
-    client = AsyncAnthropic(
-        api_key=settings.anthropic_api_key.get_secret_value(),
-    )
+    model = (model_override or settings.bedrock_claude_sonnet_model).strip()
     try:
-        message = await client.messages.create(
-            model=settings.anthropic_model,
+        response = await generate_claude(
+            prompt=prompt,
+            system_instruction=SYSTEM_INSTRUCTIONS,
+            model=model,
             max_tokens=8000,
-            system=SYSTEM_INSTRUCTIONS,
-            messages=[{"role": "user", "content": prompt}],
         )
-        text = "".join(
-            block.text
-            for block in message.content
-            if getattr(block, "type", None) == "text"
-        )
-        items = _parse_and_validate_items(text, count)
+        items = _parse_and_validate_items(response.text, count)
         return GenerationResult(
             provider=GenerationProvider.CLAUDE.value,
-            model=settings.anthropic_model,
+            model=model,
             items=items,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
         )
     except GeneratorNotConfigured:
         raise
@@ -389,8 +411,6 @@ async def _generate_with_anthropic(prompt: str, count: int) -> GenerationResult:
         raise
     except Exception as exc:
         raise provider_failure("claude", exc) from exc
-    finally:
-        await client.close()
 
 
 async def generate_questions(
@@ -406,6 +426,7 @@ async def generate_questions(
     difficulty: str,
     scope_memo: str,
     extra_instructions: str,
+    model_override: str | None = None,
 ) -> GenerationResult:
     """Generate teacher-editable draft assessment items using one provider."""
 
@@ -441,10 +462,15 @@ async def generate_questions(
                   "claude": _generate_with_anthropic}.get(normalized_provider)
         if runner is None:
             raise GenerationFailed("Unsupported generation provider.")
-        result = await runner(prompt, count)
+        result = await runner(prompt, count, model_override)
     except BaseException:
         SecretVault().mark(selection["request_id"], "FAILED_OR_UNCERTAIN")
         raise
     SecretVault().mark(selection["request_id"], "COMPLETED")
-    return GenerationResult(provider=result.provider, model=result.model,
-        items=tuple(dict(item, subject=subject, grade=grade) for item in result.items))
+    return GenerationResult(
+        provider=result.provider,
+        model=result.model,
+        items=tuple(dict(item, subject=subject, grade=grade) for item in result.items),
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+    )
