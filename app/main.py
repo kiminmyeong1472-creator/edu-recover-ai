@@ -335,14 +335,6 @@ def _provider_secret_configured(provider: str) -> bool:
     }[provider]
 
 
-def _provider_model(provider: str) -> str:
-    return {
-        "openai": settings.bedrock_gpt_luna_model,
-        "gemini": settings.gemini_model,
-        "claude": settings.bedrock_claude_sonnet_model,
-    }[provider]
-
-
 def _provider_ready_for_teacher(provider: str, action: str = "generate") -> bool:
     configured = _provider_secret_configured(provider)
     try:
@@ -399,7 +391,7 @@ async def owner_ai_status(_: None = Depends(require_owner)) -> dict[str, Any]:
             }
         rows[provider] = {
             "configured": _provider_secret_configured(provider),
-            "model": _provider_model(provider),
+            "model": "SERVER_TRADE_SECRET",
             "thinking_level": settings.gemini_thinking_level if provider == "gemini" else None,
             "product_profile": "GOOGLE_CLOUD_VERTEX_AI" if provider == "gemini" else None,
             "location": settings.gemini_vertex_location if provider == "gemini" else None,
@@ -622,9 +614,8 @@ async def auto_generate_questions(payload: AutoGenerateQuestionsRequest) -> dict
         ) from exc
 
     response = result.to_dict()
-    response["requested_model"] = payload.requested_model
+    response["requested_profile"] = payload.requested_model
     response["effective_provider"] = result.provider
-    response["effective_model"] = result.model
     response["automatic_routing_used"] = requested in {"", "auto"}
     response["routing_reason"] = route.reason
     response["privacy_notice"] = route.privacy_notice
