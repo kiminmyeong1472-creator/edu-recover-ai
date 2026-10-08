@@ -10,10 +10,13 @@ from app.domains.medical.hospital_os import (
     ActualUseEvidence,
     CarriedMedicationRecord,
     ClinicalAction,
+    HospitalEventDelivery,
+    HospitalEventSubscription,
     MedicationExecutionObject,
     PatientOperationalStatus,
     SourceRevision,
     TreatmentEpisode,
+    acknowledge_event_delivery,
     apply_action_completion,
     evaluate_prescription_change,
     make_actual_use_evidence,
@@ -21,6 +24,8 @@ from app.domains.medical.hospital_os import (
     assess_claim_readiness,
     make_handoff_snapshot,
     make_hospital_audit_event,
+    make_event_delivery,
+    make_event_subscription,
     make_hospital_event,
     make_hospital_operation_record,
     make_integration_envelope,
@@ -64,6 +69,8 @@ _CARRIED_MED_KIND = "hospital_os_carried_medication"
 _INTEGRATION_KIND = "hospital_os_integration_envelope"
 _TREATMENT_KIND = "hospital_os_treatment_episode"
 _PATIENT_STATUS_KIND = "hospital_os_patient_operational_status"
+_EVENT_SUBSCRIPTION_KIND = "hospital_os_event_subscription"
+_EVENT_DELIVERY_KIND = "hospital_os_event_delivery"
 
 
 class SourceRevisionCreate(BaseModel):
@@ -253,6 +260,18 @@ class HospitalEventCreate(BaseModel):
     payload: dict = Field(default_factory=dict)
 
 
+class EventSubscriptionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    consumer_id: str = Field(min_length=1, max_length=160)
+    event_types: list[Literal[
+        "source.revision.changed", "prescription.revision.changed",
+        "medication.prepared", "medication.dispensed", "medication.received",
+        "medication.administered", "identity.verified", "report.delivered",
+        "handoff.created", "consult.requested", "consult.responded",
+        "test.resulted", "imaging.reported", "preop.review.updated"
+    ]] = Field(min_length=1, max_length=20)
+
+
 class CarriedMedicationCapture(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
@@ -391,6 +410,29 @@ def _carried_from_payload(payload: dict) -> CarriedMedicationRecord:
         physician_decision=payload.get("physician_decision"),
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
+    )
+
+
+def _event_subscription_from_payload(payload: dict) -> HospitalEventSubscription:
+    return HospitalEventSubscription(
+        subscription_id=payload["subscription_id"],
+        consumer_id=payload["consumer_id"],
+        event_types=tuple(payload.get("event_types", [])),
+        active=bool(payload.get("active", True)),
+        created_at=payload["created_at"],
+    )
+
+
+def _event_delivery_from_payload(payload: dict) -> HospitalEventDelivery:
+    return HospitalEventDelivery(
+        delivery_id=payload["delivery_id"],
+        event_id=payload["event_id"],
+        subscription_id=payload["subscription_id"],
+        consumer_id=payload["consumer_id"],
+        state=payload["state"],
+        attempts=int(payload.get("attempts", 0)),
+        created_at=payload["created_at"],
+        acknowledged_at=payload.get("acknowledged_at"),
     )
 
 
@@ -1711,6 +1753,29 @@ def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dic
         payload=to_payload(event),
         resource_id=event.event_id,
     )
+    subscriptions = [
+        _event_subscription_from_payload(item["payload"])
+        for item in list_resources(
+            domain="medical",
+            subject_id=account_id,
+            kind=_EVENT_SUBSCRIPTION_KIND,
+        )
+        if item["payload"].get("active", True)
+        and event.event_type in item["payload"].get("event_types", [])
+    ]
+    for subscription in subscriptions:
+        delivery = make_event_delivery(
+            event_id=event.event_id,
+            subscription_id=subscription.subscription_id,
+            consumer_id=subscription.consumer_id,
+        )
+        put_resource(
+            domain="medical",
+            subject_id=account_id,
+            kind=_EVENT_DELIVERY_KIND,
+            payload=to_payload(delivery),
+            resource_id=delivery.delivery_id,
+        )
     _store_audit(
         account_id=account_id,
         event_type="hospital_event.create",
@@ -1721,6 +1786,101 @@ def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dic
         reason_codes=[],
     )
     return to_payload(event)
+
+
+@router.post("/event-subscriptions")
+def create_event_subscription(
+    payload: EventSubscriptionCreate,
+    request: Request,
+) -> dict:
+    account_id = require_hospital_permission(request, "events.manage")
+    subscription = make_event_subscription(
+        consumer_id=payload.consumer_id,
+        event_types=list(payload.event_types),
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_EVENT_SUBSCRIPTION_KIND,
+        payload=to_payload(subscription),
+        resource_id=subscription.subscription_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="event_subscription.create",
+        patient_id="NO_PATIENT_SCOPE",
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result="ACTIVE",
+        reason_codes=[subscription.consumer_id],
+    )
+    return to_payload(subscription)
+
+
+@router.get("/event-outbox/{consumer_id}")
+def event_outbox(
+    consumer_id: str,
+    request: Request,
+    limit: int = 50,
+) -> dict:
+    account_id = require_hospital_permission(request, "events.manage")
+    deliveries = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical",
+            subject_id=account_id,
+            kind=_EVENT_DELIVERY_KIND,
+        )
+        if item["payload"].get("consumer_id") == consumer_id
+        and item["payload"].get("state") == "PENDING"
+    ]
+    deliveries.sort(key=lambda item: item.get("created_at") or "")
+    rows = []
+    for delivery in deliveries[: max(1, min(limit, 200))]:
+        event_item = get_resource(
+            domain="medical",
+            subject_id=account_id,
+            resource_id=delivery["event_id"],
+        )
+        if not event_item or event_item["kind"] != _EVENT_KIND:
+            continue
+        rows.append({
+            "delivery": delivery,
+            "event": event_item["payload"],
+        })
+    return {
+        "consumer_id": consumer_id,
+        "pending_count": len(deliveries),
+        "items": rows,
+    }
+
+
+@router.post("/event-outbox/{delivery_id}/ack")
+def acknowledge_event_outbox(
+    delivery_id: str,
+    request: Request,
+) -> dict:
+    account_id = require_hospital_permission(request, "events.manage")
+    item = _owned_resource(account_id, delivery_id, _EVENT_DELIVERY_KIND)
+    delivery = _event_delivery_from_payload(item["payload"])
+    updated = acknowledge_event_delivery(delivery)
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_EVENT_DELIVERY_KIND,
+        payload=to_payload(updated),
+        resource_id=updated.delivery_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="event_delivery.ack",
+        patient_id="NO_PATIENT_SCOPE",
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result="ACKED",
+        reason_codes=[updated.consumer_id, updated.event_id],
+    )
+    return to_payload(updated)
 
 
 @router.get("/patients/{patient_id}/timeline")
