@@ -948,5 +948,88 @@ def make_integration_envelope(
         received_at=utcnow(),
     )
 
+
+TreatmentOutcomeState = Literal[
+    "EFFECTIVE", "PARTIALLY_EFFECTIVE", "INEFFECTIVE", "ADVERSE_EVENT",
+    "DISCONTINUED", "UNKNOWN", "CONFLICTING_EVIDENCE",
+]
+
+
+@dataclass(frozen=True)
+class TreatmentEpisode:
+    episode_id: str
+    patient_id: str
+    intervention_type: str
+    indication: str | None
+    start_at: str | None
+    end_at: str | None
+    dose_intensity: str | None
+    source_refs: tuple[str, ...]
+    pre_state: str | None
+    outcome: TreatmentOutcomeState
+    adverse_event: str | None
+    discontinuation_reason: str | None
+    created_at: str
+
+
+@dataclass(frozen=True)
+class TreatmentContextReview:
+    episode_id: str
+    context_relevant: bool
+    review_required: bool
+    reason_codes: tuple[str, ...]
+
+
+def make_treatment_episode(
+    *,
+    patient_id: str,
+    intervention_type: str,
+    indication: str | None,
+    start_at: str | None,
+    end_at: str | None,
+    dose_intensity: str | None,
+    source_refs: list[str],
+    pre_state: str | None,
+    outcome: TreatmentOutcomeState,
+    adverse_event: str | None,
+    discontinuation_reason: str | None,
+) -> TreatmentEpisode:
+    return TreatmentEpisode(
+        episode_id=f"tx_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        intervention_type=intervention_type,
+        indication=indication,
+        start_at=start_at,
+        end_at=end_at,
+        dose_intensity=dose_intensity,
+        source_refs=tuple(dict.fromkeys(source_refs)),
+        pre_state=pre_state,
+        outcome=outcome,
+        adverse_event=adverse_event,
+        discontinuation_reason=discontinuation_reason,
+        created_at=utcnow(),
+    )
+
+
+def review_treatment_context(
+    *,
+    episode: TreatmentEpisode,
+    context_relevant: bool,
+) -> TreatmentContextReview:
+    """Flag human review only; never accept/reject a proposed treatment."""
+    reasons: list[str] = []
+    if context_relevant and episode.outcome in {
+        "INEFFECTIVE", "ADVERSE_EVENT", "DISCONTINUED", "CONFLICTING_EVIDENCE"
+    }:
+        reasons.append(f"PRIOR_{episode.outcome}")
+    if context_relevant and episode.outcome == "UNKNOWN":
+        reasons.append("PRIOR_OUTCOME_UNKNOWN")
+    return TreatmentContextReview(
+        episode_id=episode.episode_id,
+        context_relevant=context_relevant,
+        review_required=bool(reasons),
+        reason_codes=tuple(reasons),
+    )
+
 def to_payload(value: object) -> dict:
     return asdict(value)
