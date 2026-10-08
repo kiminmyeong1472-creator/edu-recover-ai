@@ -29,6 +29,7 @@ from app.domains.medical.hospital_os import (
     verify_patient_identity,
 )
 from app.platform_core.life_auth import require_life_user
+from app.domains.medical.hospital_access_api import require_hospital_permission
 from app.platform_core.persistent_domain_store import get_resource, list_resources, put_resource
 
 
@@ -347,7 +348,7 @@ def _store_audit(
 
 @router.get("/status")
 def hospital_os_status(request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read")
     sources = list_resources(domain="medical", subject_id=account_id, kind=_SOURCE_KIND)
     actions = list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
     receipts = list_resources(domain="medical", subject_id=account_id, kind=_RECEIPT_KIND)
@@ -376,7 +377,7 @@ def hospital_os_status(request: Request) -> dict:
 
 @router.post("/source-revisions")
 def create_source_revision(payload: SourceRevisionCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.write")
     try:
         revision = make_source_revision(
             source_id=payload.source_id,
@@ -402,7 +403,7 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
 
 @router.post("/clinical-actions")
 def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id)
     action_id = "act_" + __import__("uuid").uuid4().hex
     action = ClinicalAction(
         clinical_action_id=action_id,
@@ -428,7 +429,7 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
 
 @router.post("/actual-use-evidence")
 def create_actual_use(payload: ActualUseCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.write")
     _owned_resource(account_id, payload.clinical_action_id, _ACTION_KIND)
     _owned_resource(account_id, payload.source_revision_id, _SOURCE_KIND)
 
@@ -453,7 +454,7 @@ def create_actual_use(payload: ActualUseCreate, request: Request) -> dict:
 
 @router.post("/identity/verify")
 def verify_identity(payload: IdentityCheckRequest, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "identity.verify", patient_id=payload.patient_id)
     result = verify_patient_identity(
         patient_id=payload.patient_id,
         expected=payload.expected,
@@ -479,7 +480,7 @@ def verify_identity(payload: IdentityCheckRequest, request: Request) -> dict:
 
 @router.post("/medication-objects")
 def create_medication_object(payload: MedicationObjectCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "medication.manage", patient_id=payload.patient_id)
     action = _owned_resource(account_id, payload.clinical_action_id, _ACTION_KIND)
     if action["payload"].get("patient_id") != payload.patient_id:
         raise HTTPException(status_code=409, detail="patient_action_mismatch")
@@ -511,7 +512,7 @@ def evaluate_medication_change(
     payload: PrescriptionChangeEvaluate,
     request: Request,
 ) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "medication.manage")
     item = _owned_resource(account_id, medication_object_id, _MEDICATION_KIND)
     medication = _medication_from_payload(item["payload"])
     decision = evaluate_prescription_change(
@@ -544,7 +545,7 @@ def evaluate_medication_change(
 
 @router.get("/medication-objects")
 def list_medication_objects(request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read")
     return {
         "medication_objects": [
             item["payload"]
@@ -555,7 +556,7 @@ def list_medication_objects(request: Request) -> dict:
 
 @router.post("/revalidation")
 def run_revalidation(payload: RevalidationRun, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.write")
     before_item = _owned_resource(account_id, payload.source_before_revision_id, _SOURCE_KIND)
     after_item = _owned_resource(account_id, payload.source_after_revision_id, _SOURCE_KIND)
     before = _source_from_payload(before_item["payload"])
@@ -610,7 +611,7 @@ def complete_clinical_action(
     payload: ClinicalActionComplete,
     request: Request,
 ) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.write")
     item = _owned_resource(account_id, clinical_action_id, _ACTION_KIND)
     action = _action_from_payload(item["payload"])
     identity_status = _latest_identity_status(account_id, action.patient_id)
@@ -658,7 +659,7 @@ def complete_clinical_action(
 
 @router.post("/source-changes")
 def process_source_change(payload: SourceChangeCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.write")
     before_item = _owned_resource(account_id, payload.source_before_revision_id, _SOURCE_KIND)
     before = _source_from_payload(before_item["payload"])
     try:
@@ -724,7 +725,7 @@ def process_source_change(payload: SourceChangeCreate, request: Request) -> dict
 
 @router.post("/handoff/snapshot")
 def create_handoff_snapshot(payload: HandoffSnapshotCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "handoff.manage", patient_id=payload.patient_id)
     actions = [
         item["payload"]
         for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
@@ -764,7 +765,7 @@ def create_handoff_snapshot(payload: HandoffSnapshotCreate, request: Request) ->
 
 @router.get("/handoff/{handoff_snapshot_id}/delta")
 def handoff_delta(handoff_snapshot_id: str, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read")
     item = _owned_resource(account_id, handoff_snapshot_id, _HANDOFF_KIND)
     snapshot = item["payload"]
     patient_id = snapshot["patient_id"]
@@ -817,7 +818,7 @@ def handoff_delta(handoff_snapshot_id: str, request: Request) -> dict:
 
 @router.get("/audit-events")
 def list_audit_events(request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read")
     return {
         "audit_events": [
             item["payload"]
@@ -828,7 +829,7 @@ def list_audit_events(request: Request) -> dict:
 
 @router.post("/reports/snapshot")
 def create_report_snapshot(payload: ReportSnapshotCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "report.manage", patient_id=payload.patient_id)
     actions = [
         item["payload"]
         for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
@@ -865,7 +866,7 @@ def create_report_snapshot(payload: ReportSnapshotCreate, request: Request) -> d
 
 @router.get("/reports/{report_snapshot_id}/delta")
 def report_delta(report_snapshot_id: str, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read")
     item = _owned_resource(account_id, report_snapshot_id, _REPORT_KIND)
     snapshot = item["payload"]
     patient_id = snapshot["patient_id"]
@@ -901,7 +902,7 @@ def report_delta(report_snapshot_id: str, request: Request) -> dict:
 
 @router.post("/er/workflows")
 def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "er.manage", patient_id=payload.patient_id)
     item = make_er_workflow_item(
         patient_id=payload.patient_id,
         workflow_state=payload.workflow_state,
@@ -921,7 +922,7 @@ def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
 
 @router.get("/er/unfinished-loops")
 def er_unfinished_loops(request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read")
     finished = {"ADMISSION", "TRANSFER", "DISCHARGE"}
     workflows = [
         item["payload"]
@@ -945,7 +946,7 @@ def er_unfinished_loops(request: Request) -> dict:
 
 @router.post("/preop/exposures")
 def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "preop.manage", patient_id=payload.patient_id)
     if payload.source_revision_id:
         _owned_resource(account_id, payload.source_revision_id, _SOURCE_KIND)
     exposure = make_preop_exposure(
@@ -972,7 +973,7 @@ def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dic
 
 @router.get("/patients/{patient_id}/preop-exposures")
 def list_preop_exposures(patient_id: str, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read", patient_id=patient_id)
     return {
         "preop_exposures": [
             item["payload"]
@@ -984,7 +985,7 @@ def list_preop_exposures(patient_id: str, request: Request) -> dict:
 
 @router.get("/patients/{patient_id}/current-actions")
 def patient_current_actions(patient_id: str, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read", patient_id=patient_id)
     live_states = {"INCOMPLETE", "CURRENT", "HOLD", "STALE", "REVALIDATION_REQUIRED"}
     return {
         "actions": [
@@ -998,7 +999,7 @@ def patient_current_actions(patient_id: str, request: Request) -> dict:
 
 @router.get("/patients/{patient_id}/medications")
 def patient_medications(patient_id: str, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read", patient_id=patient_id)
     return {
         "medication_objects": [
             item["payload"]
@@ -1010,7 +1011,7 @@ def patient_medications(patient_id: str, request: Request) -> dict:
 
 @router.get("/hospital/today")
 def hospital_today(request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "hospital.dashboard")
     actions = [
         item["payload"]
         for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
@@ -1058,7 +1059,7 @@ def hospital_today(request: Request) -> dict:
 
 @router.post("/claims/readiness")
 def create_claim_readiness(payload: ClaimReadinessCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "claims.manage", patient_id=payload.patient_id)
     assessment = assess_claim_readiness(
         patient_id=payload.patient_id,
         record_complete=payload.record_complete,
@@ -1080,7 +1081,7 @@ def create_claim_readiness(payload: ClaimReadinessCreate, request: Request) -> d
 
 @router.get("/claims/readiness")
 def list_claim_readiness(request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "claims.manage")
     return {
         "claims": [
             item["payload"]
@@ -1091,7 +1092,7 @@ def list_claim_readiness(request: Request) -> dict:
 
 @router.post("/operations")
 def create_hospital_operation(payload: HospitalOperationCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "operations.manage")
     record = make_hospital_operation_record(
         operation_type=payload.operation_type,
         subject_ref=payload.subject_ref,
@@ -1112,7 +1113,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
 
 @router.get("/operations")
 def list_hospital_operations(request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "operations.manage")
     return {
         "operations": [
             item["payload"]
@@ -1123,7 +1124,7 @@ def list_hospital_operations(request: Request) -> dict:
 
 @router.post("/events")
 def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id)
     if payload.source_revision_id:
         _owned_resource(account_id, payload.source_revision_id, _SOURCE_KIND)
     if payload.clinical_action_id:
@@ -1147,7 +1148,7 @@ def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dic
 
 @router.get("/patients/{patient_id}/timeline")
 def patient_timeline(patient_id: str, request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read", patient_id=patient_id)
     rows: list[dict] = []
     mappings = (
         (_SOURCE_KIND, "recorded_time", "source_revision"),
@@ -1176,7 +1177,7 @@ def patient_timeline(patient_id: str, request: Request) -> dict:
 
 @router.get("/patients/{patient_id}/deltas")
 def patient_deltas(patient_id: str, request: Request, since: str | None = None) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read", patient_id=patient_id)
     events = [
         item["payload"]
         for item in list_resources(domain="medical", subject_id=account_id, kind=_EVENT_KIND)
@@ -1189,7 +1190,7 @@ def patient_deltas(patient_id: str, request: Request, since: str | None = None) 
 
 @router.get("/clinical-actions")
 def list_clinical_actions(request: Request) -> dict:
-    account_id = require_life_user(request)
+    account_id = require_hospital_permission(request, "clinical.read")
     return {
         "actions": [
             item["payload"]
