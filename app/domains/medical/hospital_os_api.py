@@ -473,7 +473,7 @@ def _store_audit(
     reason_codes: list[str],
 ) -> str:
     event = make_hospital_audit_event(
-        actor_id=account_id,
+        actor_id=getattr(account_id, "actor_id", str(account_id)),
         event_type=event_type,
         patient_id=patient_id,
         clinical_action_id=clinical_action_id,
@@ -781,7 +781,7 @@ def verify_carried_medication(
     try:
         updated = pharmacist_verify_carried_medication(
             record=record,
-            pharmacist_actor_id=account_id,
+            pharmacist_actor_id=getattr(account_id, "actor_id", str(account_id)),
             verified_ingredient=payload.verified_ingredient,
             needs_more_info=payload.needs_more_info,
         )
@@ -821,7 +821,7 @@ def decide_carried_medication(
     try:
         updated = physician_decide_carried_medication(
             record=record,
-            physician_actor_id=account_id,
+            physician_actor_id=getattr(account_id, "actor_id", str(account_id)),
             decision=payload.decision,
         )
     except ValueError as exc:
