@@ -608,6 +608,18 @@ def _action_source_context(account_id: str, action_id: str) -> tuple[list[Source
     return sources, len(uses), missing
 
 
+def _visible_payloads(account_id: str, kind: str) -> list[dict]:
+    return [
+        item["payload"]
+        for item in list_resources(
+            domain="medical",
+            subject_id=account_id,
+            kind=kind,
+        )
+        if _department_visible(account_id, item["payload"])
+    ]
+
+
 def _store_audit(
     *,
     account_id: str,
@@ -709,7 +721,12 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
 
 @router.post("/clinical-actions")
 def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id)
+    account_id = require_hospital_permission(
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
+    )
     action_id = "act_" + __import__("uuid").uuid4().hex
     action = ClinicalAction(
         clinical_action_id=action_id,
@@ -722,6 +739,7 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
         current_validity=payload.current_validity,
         downstream_action_refs=tuple(payload.downstream_action_refs),
         risk_tier=payload.risk_tier,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1016,7 +1034,10 @@ def list_carried_medications(patient_id: str, request: Request) -> dict:
 @router.post("/integrations/ingest")
 def ingest_integration_record(payload: IntegrationIngest, request: Request) -> dict:
     account_id = require_hospital_permission(
-        request, "clinical.write", patient_id=payload.patient_id
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
     )
     source_id = f"{payload.source_system}:{payload.external_object_id}"
     predecessor = _latest_source_for_id(account_id, source_id)
@@ -1162,12 +1183,7 @@ def ingest_integration_message(
 def list_integrations(request: Request) -> dict:
     account_id = require_hospital_permission(request, "clinical.read")
     return {
-        "integrations": [
-            item["payload"]
-            for item in list_resources(
-                domain="medical", subject_id=account_id, kind=_INTEGRATION_KIND
-            )
-        ]
+        "integrations": _visible_payloads(account_id, _INTEGRATION_KIND)
     }
 
 
@@ -1175,10 +1191,7 @@ def list_integrations(request: Request) -> dict:
 def list_medication_objects(request: Request) -> dict:
     account_id = require_hospital_permission(request, "clinical.read")
     return {
-        "medication_objects": [
-            item["payload"]
-            for item in list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
-        ]
+        "medication_objects": _visible_payloads(account_id, _MEDICATION_KIND)
     }
 
 
@@ -1458,10 +1471,7 @@ def handoff_delta(handoff_snapshot_id: str, request: Request) -> dict:
 def list_audit_events(request: Request) -> dict:
     account_id = require_hospital_permission(request, "clinical.read")
     return {
-        "audit_events": [
-            item["payload"]
-            for item in list_resources(domain="medical", subject_id=account_id, kind=_AUDIT_KIND)
-        ]
+        "audit_events": _visible_payloads(account_id, _AUDIT_KIND)
     }
 
 
@@ -1549,13 +1559,19 @@ def report_delta(report_snapshot_id: str, request: Request) -> dict:
 
 @router.post("/er/workflows")
 def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "er.manage", patient_id=payload.patient_id)
+    account_id = require_hospital_permission(
+        request,
+        "er.manage",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
+    )
     item = make_er_workflow_item(
         patient_id=payload.patient_id,
         workflow_state=payload.workflow_state,
         pending_items=payload.pending_items,
         responsible_role=payload.responsible_role,
         er_workflow_id=payload.er_workflow_id,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1583,10 +1599,7 @@ def er_unfinished_loops(
 ) -> dict:
     account_id = require_hospital_permission(request, "clinical.read")
     finished = {"ADMISSION", "TRANSFER", "DISCHARGE"}
-    workflows = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_ER_WORKFLOW_KIND)
-    ]
+    workflows = _visible_payloads(account_id, _ER_WORKFLOW_KIND)
     unfinished = []
     for item in workflows:
         if item.get("workflow_state") in finished and not item.get("pending_items"):
@@ -1641,6 +1654,7 @@ def upsert_patient_operational_status(
         surgery_planned=payload.surgery_planned,
         state=payload.state,
         patient_status_id=existing.get("patient_status_id") if existing else None,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1665,12 +1679,7 @@ def upsert_patient_operational_status(
 def list_patient_operational_status(request: Request) -> dict:
     account_id = require_hospital_permission(request, "hospital.dashboard")
     return {
-        "patients": [
-            item["payload"]
-            for item in list_resources(
-                domain="medical", subject_id=account_id, kind=_PATIENT_STATUS_KIND
-            )
-        ]
+        "patients": _visible_payloads(account_id, _PATIENT_STATUS_KIND)
     }
 
 
@@ -1754,37 +1763,16 @@ def patient_medications(patient_id: str, request: Request) -> dict:
 @router.get("/hospital/today")
 def hospital_today(request: Request) -> dict:
     account_id = require_hospital_permission(request, "hospital.dashboard")
-    actions = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
-    ]
-    medications = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
-    ]
-    workflows = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_ER_WORKFLOW_KIND)
-    ]
-    claims = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_CLAIM_KIND)
-    ]
-    operations = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_OPERATION_KIND)
-    ]
+    actions = _visible_payloads(account_id, _ACTION_KIND)
+    medications = _visible_payloads(account_id, _MEDICATION_KIND)
+    workflows = _visible_payloads(account_id, _ER_WORKFLOW_KIND)
+    claims = _visible_payloads(account_id, _CLAIM_KIND)
+    operations = _visible_payloads(account_id, _OPERATION_KIND)
     patient_statuses = [
-        item["payload"]
-        for item in list_resources(
-            domain="medical", subject_id=account_id, kind=_PATIENT_STATUS_KIND
-        )
-        if item["payload"].get("state") == "CURRENT"
+        item for item in _visible_payloads(account_id, _PATIENT_STATUS_KIND)
+        if item.get("state") == "CURRENT"
     ]
-    events = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_EVENT_KIND)
-    ]
+    events = _visible_payloads(account_id, _EVENT_KIND)
     recent_events = [
         event for event in events
         if (_age_minutes(event.get("occurred_at")) is not None)
@@ -1892,7 +1880,11 @@ def list_claim_readiness(request: Request) -> dict:
 
 @router.post("/operations")
 def create_hospital_operation(payload: HospitalOperationCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "operations.manage")
+    account_id = require_hospital_permission(
+        request,
+        "operations.manage",
+        department_id=payload.department_id,
+    )
     record = make_hospital_operation_record(
         operation_type=payload.operation_type,
         subject_ref=payload.subject_ref,
@@ -1900,6 +1892,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
         owner_role=payload.owner_role,
         due_at=payload.due_at,
         details=payload.details,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1924,10 +1917,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
 def list_hospital_operations(request: Request) -> dict:
     account_id = require_hospital_permission(request, "operations.manage")
     return {
-        "operations": [
-            item["payload"]
-            for item in list_resources(domain="medical", subject_id=account_id, kind=_OPERATION_KIND)
-        ]
+        "operations": _visible_payloads(account_id, _OPERATION_KIND)
     }
 
 
@@ -2286,8 +2276,5 @@ def professor_brief(patient_id: str, request: Request) -> dict:
 def list_clinical_actions(request: Request) -> dict:
     account_id = require_hospital_permission(request, "clinical.read")
     return {
-        "actions": [
-            item["payload"]
-            for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
-        ]
+        "actions": _visible_payloads(account_id, _ACTION_KIND)
     }
