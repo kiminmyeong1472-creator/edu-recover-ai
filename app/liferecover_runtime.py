@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from html import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 from app.platform_core.life_auth import require_life_user
+from app.domains.medical.hospital_access_api import require_hospital_permission
 from app.platform_core.persistent_domain_store import (
     get_resource,
     list_resources,
@@ -138,47 +140,193 @@ main{{max-width:760px;margin:auto;padding:20px}}a{{color:#1457b8;text-decoration
 
 @router.get("/life/medical/hospital-os", response_class=HTMLResponse)
 def hospital_os_page(request: Request):
-    user = _page_user_or_login(request)
-    if isinstance(user, RedirectResponse):
-        return user
-    actions = list_resources(domain="medical", subject_id=user, kind="hospital_os_clinical_action")
-    sources = list_resources(domain="medical", subject_id=user, kind="hospital_os_source_revision")
-    receipts = list_resources(domain="medical", subject_id=user, kind="hospital_os_revalidation_receipt")
-    identities = list_resources(domain="medical", subject_id=user, kind="hospital_os_identity_check")
-    medications = list_resources(domain="medical", subject_id=user, kind="hospital_os_medication_object")
-    holds = sum(1 for item in actions if item["payload"].get("action_state") == "HOLD")
-    rechecks = sum(1 for item in actions if item["payload"].get("action_state") == "REVALIDATION_REQUIRED")
-    medication_holds = sum(1 for item in medications if item["payload"].get("safety_state") == "HOLD")
+    try:
+        subject_id = require_hospital_permission(request, "hospital.dashboard")
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            return RedirectResponse("/life/auth/login", status_code=303)
+        return HTMLResponse(
+            "<!doctype html><html lang='ko'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>Hospital OS 접근 제한</title></head><body>"
+            "<main><h1>Hospital OS 접근 제한</h1>"
+            "<p>현재 계정에 Hospital Today 조회 권한이 없습니다.</p>"
+            "<a href='/life/medical'>의료 화면으로 돌아가기</a></main></body></html>",
+            status_code=403,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
+
+    actions = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=subject_id, kind="hospital_os_clinical_action"
+        )
+    ]
+    medications = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=subject_id, kind="hospital_os_medication_object"
+        )
+    ]
+    workflows = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=subject_id, kind="hospital_os_er_workflow"
+        )
+    ]
+    claims = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=subject_id, kind="hospital_os_claim_readiness"
+        )
+    ]
+    operations = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=subject_id, kind="hospital_os_operation_record"
+        )
+    ]
+    patient_statuses = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=subject_id, kind="hospital_os_patient_operational_status"
+        )
+        if item["payload"].get("state") == "CURRENT"
+    ]
+    events = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=subject_id, kind="hospital_os_event"
+        )
+    ]
+
+    def operation_count(kind: str) -> int:
+        return sum(
+            1 for item in operations
+            if item.get("operation_type") == kind and item.get("state") != "DONE"
+        )
+
+    def event_is_recent(item: dict) -> bool:
+        raw = item.get("occurred_at")
+        if not raw:
+            return False
+        try:
+            parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds()
+            return 0 <= age <= 3600
+        except (ValueError, TypeError):
+            return False
+
+    recent_events = sorted(
+        (item for item in events if event_is_recent(item)),
+        key=lambda item: item.get("occurred_at") or "",
+        reverse=True,
+    )[:8]
+
+    holds = sum(1 for item in actions if item.get("action_state") == "HOLD")
+    rechecks = sum(
+        1 for item in actions if item.get("action_state") == "REVALIDATION_REQUIRED"
+    )
+    medication_holds = sum(
+        1 for item in medications if item.get("safety_state") == "HOLD"
+    )
+    er_unfinished = sum(
+        1 for item in workflows
+        if item.get("workflow_state") not in {"ADMISSION", "TRANSFER", "DISCHARGE"}
+        or item.get("pending_items")
+    )
+    claim_review = sum(1 for item in claims if item.get("review_reasons"))
+    outpatient = sum(1 for item in patient_statuses if item.get("care_setting") == "OUTPATIENT")
+    inpatient = sum(1 for item in patient_statuses if item.get("care_setting") == "INPATIENT")
+    er_patients = sum(1 for item in patient_statuses if item.get("care_setting") == "ER")
+    discharge_planned = sum(1 for item in patient_statuses if item.get("discharge_planned"))
+    surgery_planned = sum(1 for item in patient_statuses if item.get("surgery_planned"))
+
+    recent_html = "".join(
+        "<div class='change'><b>"
+        + escape(str(item.get("event_type", "변경")))
+        + "</b><span>"
+        + escape(str(item.get("occurred_at", "")))
+        + "</span></div>"
+        for item in recent_events
+    ) or "<div class='empty'>최근 1시간 변경 기록이 없습니다.</div>"
+
+    cards = [
+        ("외래환자", outpatient),
+        ("입원환자", inpatient),
+        ("응급실 환자", er_patients),
+        ("퇴원예정", discharge_planned),
+        ("수술예정", surgery_planned),
+        ("현재 HOLD", holds),
+        ("재확인 필요", rechecks),
+        ("투약보류", medication_holds),
+        ("응급실 미완료", er_unfinished),
+        ("청구 검토", claim_review),
+        ("병상대기", operation_count("BED_WAIT")),
+        ("서명대기", operation_count("SIGNATURE_PENDING")),
+        ("검사대기", operation_count("TEST_PENDING")),
+        ("협진대기", operation_count("CONSULT_PENDING")),
+        ("청구오류", operation_count("BILLING_ERROR")),
+        ("미수금", operation_count("RECEIVABLE")),
+        ("재고부족", operation_count("INVENTORY_SHORTAGE")),
+        ("직원공백", operation_count("STAFF_GAP")),
+    ]
+    cards_html = "".join(
+        f"<div class='box'><span>{escape(label)}</span><strong>{value}</strong></div>"
+        for label, value in cards
+    )
+
+    tenant_badge = ""
+    tenant_id = getattr(subject_id, "tenant_id", None)
+    if tenant_id:
+        tenant_badge = (
+            "<div class='tenant'>병원 조직: "
+            + escape(str(tenant_id))
+            + "</div>"
+        )
+
     html = f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1'><title>Medical Recover Hospital OS</title>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Hospital Today · Medical Recover</title>
 <style>
-body{{margin:0;font-family:system-ui,-apple-system,'Noto Sans KR',sans-serif;background:#f5f7fa;color:#172b45}}
-main{{max-width:820px;margin:auto;padding:20px}}a{{color:#1457b8;text-decoration:none;font-weight:700}}
-.grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}}
-.box{{background:#fff;padding:18px;border-radius:15px;box-shadow:0 4px 18px #0000000d}}
-.num{{font-size:28px;font-weight:850;margin-top:5px}}.note{{background:#eef5ff;padding:16px;border-radius:14px;line-height:1.6}}
-@media(max-width:520px){{.grid{{grid-template-columns:1fr}}}}
-</style></head><body><main><a href='/life/medical'>← 의료</a>
-<h1>Medical Recover Hospital OS</h1>
-<p>현재 의료업무에 실제로 사용된 정보의 변경 영향을 추적하는 안전·업무 관리 계층입니다.</p>
-<div class='grid'>
-<div class='box'>의료정보 변경본<div class='num'>{len(sources)}</div></div>
-<div class='box'>현재 업무<div class='num'>{len(actions)}</div></div>
-<div class='box'>현재 HOLD<div class='num'>{holds}</div></div>
-<div class='box'>재확인 필요<div class='num'>{rechecks}</div></div>
-<div class='box'>재확인 기록<div class='num'>{len(receipts)}</div></div>
-<div class='box'>환자확인 기록<div class='num'>{len(identities)}</div></div>
-<div class='box'>투약 일시 보류<div class='num'>{medication_holds}</div></div>
-</div>
+*{{box-sizing:border-box}}body{{margin:0;font-family:system-ui,-apple-system,'Noto Sans KR',sans-serif;
+background:#f4f7fb;color:#172b45}}main{{max-width:1100px;margin:auto;padding:20px}}
+a{{color:#1457b8;text-decoration:none;font-weight:750}}h1{{margin:14px 0 5px}}
+.sub{{color:#5b6d82;line-height:1.55}}.tenant{{display:inline-block;background:#e8f1ff;color:#164f9b;
+padding:7px 11px;border-radius:999px;font-size:13px;margin-top:10px}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:22px 0}}
+.box{{background:#fff;border-radius:14px;padding:15px;box-shadow:0 4px 18px #1730500c}}
+.box span{{display:block;color:#5b6d82;font-size:13px}}.box strong{{display:block;font-size:27px;margin-top:5px}}
+.panel{{background:#fff;border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 4px 18px #1730500c}}
+.panel h2{{font-size:18px;margin:0 0 12px}}.review{{display:flex;flex-wrap:wrap;gap:8px}}
+.pill{{background:#fff3df;border:1px solid #efd4a5;border-radius:999px;padding:8px 11px;font-size:13px}}
+.change{{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #edf1f5}}
+.change:last-child{{border-bottom:0}}.change span{{font-size:12px;color:#6c7e92}}.empty{{color:#718398}}
+.note{{background:#eef5ff;border-radius:14px;padding:15px;line-height:1.65;color:#31506f}}
+</style></head><body><main>
+<a href='/life/medical'>← 의료</a><h1>Hospital Today</h1>
+<div class='sub'>지금 병원에서 막힌 곳과 최근 변경을 한 화면에서 확인합니다.</div>{tenant_badge}
+<div class='grid'>{cards_html}</div>
+<div class='panel'><h2>지금 확인할 것</h2><div class='review'>
+<div class='pill'>현재 HOLD {holds}</div><div class='pill'>재확인 {rechecks}</div>
+<div class='pill'>투약보류 {medication_holds}</div><div class='pill'>ER 미완료 {er_unfinished}</div>
+<div class='pill'>청구 검토 {claim_review}</div></div></div>
+<div class='panel'><h2>지난 1시간 변경</h2>{recent_html}</div>
 <div class='note'><b>안전 원칙</b><br>
-불확실한 정보를 자동으로 확인 완료 상태로 올리지 않습니다.<br>
-이미 종료된 과거 업무는 변경하지 않고, 실제로 해당 정보를 사용한 현재 업무만 다시 확인 대상으로 분류합니다.<br>
-환자확인이 맞지 않거나 확인되지 않으면 완료 단계로 넘어가지 않습니다.<br>
-예전 처방으로 준비된 미투약 약 중 변경 영향을 받는 것만 일시 보류합니다.<br>
-처방 변경이나 수술 가능 여부를 시스템이 자동 결정하지 않습니다.</div>
+불확실한 정보는 자동으로 VERIFIED가 되지 않습니다. 환자확인 불일치·미확인 상태에서는 완료를 막습니다.
+처방이나 수술 가능 여부를 시스템이 자동 결정하지 않으며, 변경 영향이 있는 현재 업무만 재확인 대상으로 표시합니다.</div>
 </main></body></html>"""
-    return HTMLResponse(html, headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer",
-        "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"})
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+        },
+    )
 
 
 @router.get("/life/legal", response_class=HTMLResponse)
