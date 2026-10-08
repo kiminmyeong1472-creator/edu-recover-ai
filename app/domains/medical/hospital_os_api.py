@@ -523,6 +523,15 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         payload=to_payload(revision),
         resource_id=revision.source_revision_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="source_revision.create",
+        patient_id="NO_PATIENT_SCOPE",
+        clinical_action_id=None,
+        source_revision_ids=[revision.source_revision_id],
+        result=revision.source_state,
+        reason_codes=[revision.verification_state],
+    )
     return {"source_revision_id": revision.source_revision_id, "status": revision.source_state}
 
 
@@ -548,6 +557,15 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
         kind=_ACTION_KIND,
         payload=to_payload(action),
         resource_id=action_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="clinical_action.create",
+        patient_id=action.patient_id,
+        clinical_action_id=action_id,
+        source_revision_ids=[],
+        result=action.action_state,
+        reason_codes=[],
     )
     return {"clinical_action_id": action_id, "action_state": action.action_state}
 
@@ -594,6 +612,15 @@ def verify_identity(payload: IdentityCheckRequest, request: Request) -> dict:
         payload=to_payload(result),
         resource_id=resource_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="identity.verify",
+        patient_id=payload.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=result.status,
+        reason_codes=[result.reason],
+    )
     return {
         "identity_check_id": resource_id,
         "status": result.status,
@@ -623,6 +650,15 @@ def create_medication_object(payload: MedicationObjectCreate, request: Request) 
         kind=_MEDICATION_KIND,
         payload=to_payload(medication),
         resource_id=medication.medication_object_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="medication_object.create",
+        patient_id=medication.patient_id,
+        clinical_action_id=medication.clinical_action_id,
+        source_revision_ids=[medication.prescription_revision_id],
+        result=medication.safety_state,
+        reason_codes=[medication.custody_stage],
     )
     return {
         "medication_object_id": medication.medication_object_id,
@@ -665,6 +701,15 @@ def evaluate_medication_change(
             payload=to_payload(updated),
             resource_id=updated.medication_object_id,
         )
+    _store_audit(
+        account_id=account_id,
+        event_type="medication.prescription_change_review",
+        patient_id=medication.patient_id,
+        clinical_action_id=medication.clinical_action_id,
+        source_revision_ids=[medication.prescription_revision_id],
+        result=decision.next_state,
+        reason_codes=[decision.reason, decision.required_action],
+    )
     return to_payload(decision)
 
 
@@ -1079,6 +1124,15 @@ def create_handoff_snapshot(payload: HandoffSnapshotCreate, request: Request) ->
         payload=to_payload(snapshot),
         resource_id=snapshot.handoff_snapshot_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="handoff.snapshot",
+        patient_id=snapshot.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=list(snapshot.source_revision_ids),
+        result="CREATED",
+        reason_codes=[],
+    )
     return {
         "handoff_snapshot_id": snapshot.handoff_snapshot_id,
         "patient_id": snapshot.patient_id,
@@ -1177,6 +1231,15 @@ def create_report_snapshot(payload: ReportSnapshotCreate, request: Request) -> d
         payload=to_payload(snapshot),
         resource_id=snapshot.report_snapshot_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="report.snapshot",
+        patient_id=snapshot.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=list(snapshot.source_revision_ids),
+        result="CREATED",
+        reason_codes=[],
+    )
     return {
         "report_snapshot_id": snapshot.report_snapshot_id,
         "patient_id": snapshot.patient_id,
@@ -1239,6 +1302,15 @@ def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
         kind=_ER_WORKFLOW_KIND,
         payload=to_payload(item),
         resource_id=item.er_workflow_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="er.workflow.update",
+        patient_id=item.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=item.workflow_state,
+        reason_codes=list(item.pending_items),
     )
     return to_payload(item)
 
@@ -1304,6 +1376,15 @@ def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dic
         kind=_PREOP_KIND,
         payload=to_payload(exposure),
         resource_id=exposure.exposure_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="preop.exposure.create",
+        patient_id=exposure.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[exposure.source_revision_id] if exposure.source_revision_id else [],
+        result=exposure.verification_state,
+        reason_codes=list(exposure.missing_fields),
     )
     return to_payload(exposure)
 
@@ -1413,6 +1494,15 @@ def create_claim_readiness(payload: ClaimReadinessCreate, request: Request) -> d
         payload=to_payload(assessment),
         resource_id=assessment.claim_readiness_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="claim.readiness.review",
+        patient_id=assessment.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result="READY_FOR_HUMAN_REVIEW" if assessment.ready_for_human_review else "REVIEW_NEEDED",
+        reason_codes=list(assessment.review_reasons),
+    )
     return to_payload(assessment)
 
 
@@ -1444,6 +1534,15 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
         kind=_OPERATION_KIND,
         payload=to_payload(record),
         resource_id=record.operation_record_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="hospital_operation.create",
+        patient_id="NO_PATIENT_SCOPE",
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=record.state,
+        reason_codes=[record.operation_type, record.owner_role],
     )
     return to_payload(record)
 
@@ -1479,6 +1578,15 @@ def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dic
         kind=_EVENT_KIND,
         payload=to_payload(event),
         resource_id=event.event_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="hospital_event.create",
+        patient_id=event.patient_id or "NO_PATIENT_SCOPE",
+        clinical_action_id=event.clinical_action_id,
+        source_revision_ids=[event.source_revision_id] if event.source_revision_id else [],
+        result=event.event_type,
+        reason_codes=[],
     )
     return to_payload(event)
 
