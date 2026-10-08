@@ -29,6 +29,7 @@ owner_router = APIRouter(prefix="/owner/life/medical/hospital-access", tags=["ow
 _ROLE_GRANT_KIND = "hospital_os_role_grant"
 _TENANT_MEMBERSHIP_KIND = "hospital_os_tenant_membership"
 _PATIENT_STATUS_KIND = "hospital_os_patient_operational_status"
+_ACTION_KIND = "hospital_os_clinical_action"
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -115,7 +116,18 @@ def require_hospital_permission(
             payload = item["payload"]
             if payload.get("patient_id") == patient_id and payload.get("state") == "CURRENT":
                 resolved_department = payload.get("department_id")
-                break
+                if resolved_department:
+                    break
+        if resolved_department is None:
+            for item in list_resources(
+                domain="medical",
+                subject_id=data_subject_id,
+                kind=_ACTION_KIND,
+            ):
+                payload = item["payload"]
+                if payload.get("patient_id") == patient_id and payload.get("department_id"):
+                    resolved_department = payload.get("department_id")
+                    break
 
     if membership_departments:
         if resolved_department is not None and resolved_department not in membership_departments:
