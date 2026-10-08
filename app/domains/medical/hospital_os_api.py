@@ -1023,6 +1023,14 @@ def hospital_today(request: Request) -> dict:
         item["payload"]
         for item in list_resources(domain="medical", subject_id=account_id, kind=_ER_WORKFLOW_KIND)
     ]
+    claims = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_CLAIM_KIND)
+    ]
+    operations = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_OPERATION_KIND)
+    ]
     return {
         "current_holds": sum(1 for x in actions if x.get("action_state") == "HOLD"),
         "revalidation_required": sum(
