@@ -307,6 +307,7 @@ class IntegrationIngest(BaseModel):
     source_system: str = Field(min_length=1, max_length=160)
     external_object_id: str = Field(min_length=1, max_length=200)
     patient_id: str | None = Field(default=None, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     payload: dict
     source_state: Literal[
         "CURRENT", "CORRECTED", "SUPERSEDED", "WITHDRAWN",
@@ -323,6 +324,7 @@ class IntegrationMessageIngest(BaseModel):
     standard: Literal["FHIR_R4", "HL7_V2", "VENDOR_JSON"]
     source_system: str = Field(min_length=1, max_length=160)
     patient_id: str | None = Field(default=None, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     raw_message: str | dict
     source_state: Literal[
         "CURRENT", "CORRECTED", "SUPERSEDED", "WITHDRAWN",
@@ -653,22 +655,22 @@ def _store_audit(
 def hospital_os_status(request: Request) -> dict:
     account_id = require_hospital_permission(request, "clinical.read")
     sources = list_resources(domain="medical", subject_id=account_id, kind=_SOURCE_KIND)
-    actions = list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+    actions = _visible_payloads(account_id, _ACTION_KIND)
     receipts = list_resources(domain="medical", subject_id=account_id, kind=_RECEIPT_KIND)
-    identities = list_resources(domain="medical", subject_id=account_id, kind=_IDENTITY_KIND)
-    medications = list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND)
+    identities = _visible_payloads(account_id, _IDENTITY_KIND)
+    medications = _visible_payloads(account_id, _MEDICATION_KIND)
     return {
         "product": "Medical Recover Hospital OS",
         "sources": len(sources),
         "actions": len(actions),
-        "current_holds": sum(1 for x in actions if x["payload"].get("action_state") == "HOLD"),
+        "current_holds": sum(1 for x in actions if x.get("action_state") == "HOLD"),
         "revalidation_required": sum(
-            1 for x in actions if x["payload"].get("action_state") == "REVALIDATION_REQUIRED"
+            1 for x in actions if x.get("action_state") == "REVALIDATION_REQUIRED"
         ),
         "receipts": len(receipts),
         "identity_checks": len(identities),
         "medication_objects": len(medications),
-        "medication_holds": sum(1 for x in medications if x["payload"].get("safety_state") == "HOLD"),
+        "medication_holds": sum(1 for x in medications if x.get("safety_state") == "HOLD"),
         "safety_rules": {
             "unknown_auto_verified": False,
             "historical_actions_preserved": True,
@@ -1102,7 +1104,10 @@ def ingest_integration_message(
     request: Request,
 ) -> dict:
     account_id = require_hospital_permission(
-        request, "clinical.write", patient_id=payload.patient_id
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
     )
     try:
         normalized = normalize_integration_message(
@@ -1204,8 +1209,8 @@ def run_revalidation(payload: RevalidationRun, request: Request) -> dict:
     after = _source_from_payload(after_item["payload"])
 
     actions = [
-        _action_from_payload(item["payload"])
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+        _action_from_payload(payload)
+        for payload in _visible_payloads(account_id, _ACTION_KIND)
     ]
     uses = [
         _use_from_payload(item["payload"])
@@ -1871,10 +1876,7 @@ def create_claim_readiness(payload: ClaimReadinessCreate, request: Request) -> d
 def list_claim_readiness(request: Request) -> dict:
     account_id = require_hospital_permission(request, "claims.manage")
     return {
-        "claims": [
-            item["payload"]
-            for item in list_resources(domain="medical", subject_id=account_id, kind=_CLAIM_KIND)
-        ]
+        "claims": _visible_payloads(account_id, _CLAIM_KIND)
     }
 
 
@@ -2024,8 +2026,8 @@ def event_outbox(
         and item["payload"].get("state") == "PENDING"
     ]
     deliveries.sort(key=lambda item: item.get("created_at") or "")
-    rows = []
-    for delivery in deliveries[: max(1, min(limit, 200))]:
+    visible_rows = []
+    for delivery in deliveries:
         event_item = get_resource(
             domain="medical",
             subject_id=account_id,
@@ -2033,14 +2035,17 @@ def event_outbox(
         )
         if not event_item or event_item["kind"] != _EVENT_KIND:
             continue
-        rows.append({
+        if not _department_visible(account_id, event_item["payload"]):
+            continue
+        visible_rows.append({
             "delivery": delivery,
             "event": event_item["payload"],
         })
+    page = visible_rows[: max(1, min(limit, 200))]
     return {
         "consumer_id": consumer_id,
-        "pending_count": len(deliveries),
-        "items": rows,
+        "pending_count": len(visible_rows),
+        "items": page,
     }
 
 
