@@ -33,6 +33,7 @@ HospitalPermission = Literal[
     "claims.manage",
     "operations.manage",
     "hospital.dashboard",
+    "events.manage",
 ]
 
 _ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
@@ -66,10 +67,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         "clinical.read", "claims.manage",
     }),
     "ADMIN_STAFF": frozenset({
-        "operations.manage", "hospital.dashboard",
+        "operations.manage", "hospital.dashboard", "events.manage",
     }),
     "HOSPITAL_ADMIN": frozenset({
-        "clinical.read", "hospital.dashboard", "operations.manage", "claims.manage",
+        "clinical.read", "hospital.dashboard", "operations.manage", "claims.manage", "events.manage",
     }),
 }
 

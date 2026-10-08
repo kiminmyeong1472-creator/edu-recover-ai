@@ -797,6 +797,7 @@ class HospitalEvent:
     source_revision_id: str | None
     clinical_action_id: str | None
     payload_hash: str
+    payload: dict
     occurred_at: str
 
 
@@ -875,6 +876,7 @@ def make_hospital_event(
         source_revision_id=source_revision_id,
         clinical_action_id=clinical_action_id,
         payload_hash=stable_hash(payload),
+        payload=dict(payload),
         occurred_at=utcnow(),
     )
 
@@ -1101,6 +1103,81 @@ def review_treatment_context(
         context_relevant=context_relevant,
         review_required=bool(reasons),
         reason_codes=tuple(reasons),
+    )
+
+
+EventDeliveryState = Literal["PENDING", "ACKED"]
+
+
+@dataclass(frozen=True)
+class HospitalEventSubscription:
+    subscription_id: str
+    consumer_id: str
+    event_types: tuple[str, ...]
+    active: bool
+    created_at: str
+
+
+@dataclass(frozen=True)
+class HospitalEventDelivery:
+    delivery_id: str
+    event_id: str
+    subscription_id: str
+    consumer_id: str
+    state: EventDeliveryState
+    attempts: int
+    created_at: str
+    acknowledged_at: str | None
+
+
+def make_event_subscription(
+    *,
+    consumer_id: str,
+    event_types: list[str],
+) -> HospitalEventSubscription:
+    consumer_id = consumer_id.strip()
+    if not consumer_id:
+        raise ValueError("consumer_id_required")
+    normalized = tuple(dict.fromkeys(x.strip() for x in event_types if x.strip()))
+    if not normalized:
+        raise ValueError("event_types_required")
+    return HospitalEventSubscription(
+        subscription_id=f"sub_{uuid.uuid4().hex}",
+        consumer_id=consumer_id,
+        event_types=normalized,
+        active=True,
+        created_at=utcnow(),
+    )
+
+
+def make_event_delivery(
+    *,
+    event_id: str,
+    subscription_id: str,
+    consumer_id: str,
+) -> HospitalEventDelivery:
+    return HospitalEventDelivery(
+        delivery_id=f"delivery_{uuid.uuid4().hex}",
+        event_id=event_id,
+        subscription_id=subscription_id,
+        consumer_id=consumer_id,
+        state="PENDING",
+        attempts=0,
+        created_at=utcnow(),
+        acknowledged_at=None,
+    )
+
+
+def acknowledge_event_delivery(
+    delivery: HospitalEventDelivery,
+) -> HospitalEventDelivery:
+    if delivery.state == "ACKED":
+        return delivery
+    return replace(
+        delivery,
+        state="ACKED",
+        attempts=delivery.attempts + 1,
+        acknowledged_at=utcnow(),
     )
 
 def to_payload(value: object) -> dict:
