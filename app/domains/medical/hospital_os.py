@@ -597,6 +597,8 @@ class PreopExposure:
     exposure_id: str
     patient_id: str
     drug_name: str
+    ingredient: str | None
+    purpose: str | None
     route: str | None
     dose_intensity: str | None
     start_at: str | None
@@ -606,6 +608,8 @@ class PreopExposure:
     verification_state: VerificationState
     review_categories: tuple[str, ...]
     missing_fields: tuple[str, ...]
+    is_steroid_exposure: bool
+    steroid_route_category: str | None
     created_at: str
 
 
@@ -656,6 +660,8 @@ def make_preop_exposure(
     *,
     patient_id: str,
     drug_name: str,
+    ingredient: str | None = None,
+    purpose: str | None = None,
     route: str | None,
     dose_intensity: str | None,
     start_at: str | None,
@@ -664,18 +670,41 @@ def make_preop_exposure(
     source_revision_id: str | None,
     verification_state: VerificationState,
     review_categories: list[str],
+    is_steroid_exposure: bool = False,
 ) -> PreopExposure:
     values = {
+        "ingredient": ingredient,
+        "purpose": purpose,
         "route": route,
         "dose_intensity": dose_intensity,
         "last_exposure_at": last_exposure_at,
         "source_revision_id": source_revision_id,
     }
     missing_fields = tuple(name for name, value in values.items() if not value)
+    normalized_route = (route or "").strip().lower().replace("_", "-")
+    steroid_routes = {
+        "oral": "ORAL",
+        "iv": "IV",
+        "intravenous": "IV",
+        "im": "IM",
+        "intramuscular": "IM",
+        "epidural": "EPIDURAL",
+        "intra-articular": "INTRA_ARTICULAR",
+        "inhaled": "INHALED",
+        "topical": "TOPICAL",
+    }
+    steroid_route_category = (
+        steroid_routes.get(normalized_route) if is_steroid_exposure else None
+    )
+    categories = list(dict.fromkeys(review_categories))
+    if is_steroid_exposure and steroid_route_category is None:
+        categories.append("EXPOSURE_UNKNOWN")
     return PreopExposure(
         exposure_id=f"preop_{uuid.uuid4().hex}",
         patient_id=patient_id,
         drug_name=drug_name,
+        ingredient=ingredient,
+        purpose=purpose,
         route=route,
         dose_intensity=dose_intensity,
         start_at=start_at,
@@ -683,9 +712,52 @@ def make_preop_exposure(
         last_exposure_at=last_exposure_at,
         source_revision_id=source_revision_id,
         verification_state=verification_state,
-        review_categories=tuple(dict.fromkeys(review_categories)),
+        review_categories=tuple(dict.fromkeys(categories)),
         missing_fields=missing_fields,
+        is_steroid_exposure=is_steroid_exposure,
+        steroid_route_category=steroid_route_category,
         created_at=utcnow(),
+    )
+
+
+CareSetting = Literal["OUTPATIENT", "INPATIENT", "ER"]
+PatientOperationalState = Literal["CURRENT", "DISCHARGED"]
+
+
+@dataclass(frozen=True)
+class PatientOperationalStatus:
+    patient_status_id: str
+    patient_id: str
+    care_setting: CareSetting
+    location: str | None
+    attending_team: str | None
+    discharge_planned: bool
+    surgery_planned: bool
+    state: PatientOperationalState
+    updated_at: str
+
+
+def make_patient_operational_status(
+    *,
+    patient_id: str,
+    care_setting: CareSetting,
+    location: str | None,
+    attending_team: str | None,
+    discharge_planned: bool,
+    surgery_planned: bool,
+    state: PatientOperationalState,
+    patient_status_id: str | None = None,
+) -> PatientOperationalStatus:
+    return PatientOperationalStatus(
+        patient_status_id=patient_status_id or f"pstat_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        care_setting=care_setting,
+        location=location,
+        attending_team=attending_team,
+        discharge_planned=discharge_planned,
+        surgery_planned=surgery_planned,
+        state=state,
+        updated_at=utcnow(),
     )
 
 
