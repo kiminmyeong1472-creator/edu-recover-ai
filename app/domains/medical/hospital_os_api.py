@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -11,6 +12,7 @@ from app.domains.medical.hospital_os import (
     ClinicalAction,
     MedicationExecutionObject,
     SourceRevision,
+    TreatmentEpisode,
     apply_action_completion,
     evaluate_prescription_change,
     make_actual_use_evidence,
@@ -26,8 +28,10 @@ from app.domains.medical.hospital_os import (
     make_preop_exposure,
     make_report_snapshot,
     make_source_revision,
+    make_treatment_episode,
     pharmacist_verify_carried_medication,
     physician_decide_carried_medication,
+    review_treatment_context,
     selective_revalidation,
     to_payload,
     utcnow,
@@ -56,6 +60,7 @@ _OPERATION_KIND = "hospital_os_operation_record"
 _EVENT_KIND = "hospital_os_event"
 _CARRIED_MED_KIND = "hospital_os_carried_medication"
 _INTEGRATION_KIND = "hospital_os_integration_envelope"
+_TREATMENT_KIND = "hospital_os_treatment_episode"
 
 
 class SourceRevisionCreate(BaseModel):
@@ -267,6 +272,29 @@ class IntegrationIngest(BaseModel):
     changed_fields: list[str] = Field(default_factory=list, max_length=100)
 
 
+class TreatmentEpisodeCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+    intervention_type: str = Field(min_length=1, max_length=160)
+    indication: str | None = Field(default=None, max_length=300)
+    start_at: str | None = Field(default=None, max_length=80)
+    end_at: str | None = Field(default=None, max_length=80)
+    dose_intensity: str | None = Field(default=None, max_length=160)
+    source_refs: list[str] = Field(default_factory=list, max_length=100)
+    pre_state: str | None = Field(default=None, max_length=500)
+    outcome: Literal[
+        "EFFECTIVE", "PARTIALLY_EFFECTIVE", "INEFFECTIVE", "ADVERSE_EVENT",
+        "DISCONTINUED", "UNKNOWN", "CONFLICTING_EVIDENCE"
+    ]
+    adverse_event: str | None = Field(default=None, max_length=500)
+    discontinuation_reason: str | None = Field(default=None, max_length=500)
+
+
+class TreatmentContextReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    context_relevant: bool
+
+
 def _source_from_payload(payload: dict) -> SourceRevision:
     return SourceRevision(
         source_revision_id=payload["source_revision_id"],
@@ -344,6 +372,37 @@ def _carried_from_payload(payload: dict) -> CarriedMedicationRecord:
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )
+
+
+def _treatment_from_payload(payload: dict) -> TreatmentEpisode:
+    return TreatmentEpisode(
+        episode_id=payload["episode_id"],
+        patient_id=payload["patient_id"],
+        intervention_type=payload["intervention_type"],
+        indication=payload.get("indication"),
+        start_at=payload.get("start_at"),
+        end_at=payload.get("end_at"),
+        dose_intensity=payload.get("dose_intensity"),
+        source_refs=tuple(payload.get("source_refs", [])),
+        pre_state=payload.get("pre_state"),
+        outcome=payload["outcome"],
+        adverse_event=payload.get("adverse_event"),
+        discontinuation_reason=payload.get("discontinuation_reason"),
+        created_at=payload["created_at"],
+    )
+
+
+def _age_minutes(timestamp: str | None) -> int | None:
+    if not timestamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        seconds = (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds()
+        return max(0, int(seconds // 60))
+    except (ValueError, TypeError):
+        return None
 
 
 def _owned_resource(account_id: str, resource_id: str, kind: str) -> dict:
@@ -464,6 +523,15 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         payload=to_payload(revision),
         resource_id=revision.source_revision_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="source_revision.create",
+        patient_id="NO_PATIENT_SCOPE",
+        clinical_action_id=None,
+        source_revision_ids=[revision.source_revision_id],
+        result=revision.source_state,
+        reason_codes=[revision.verification_state],
+    )
     return {"source_revision_id": revision.source_revision_id, "status": revision.source_state}
 
 
@@ -489,6 +557,15 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
         kind=_ACTION_KIND,
         payload=to_payload(action),
         resource_id=action_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="clinical_action.create",
+        patient_id=action.patient_id,
+        clinical_action_id=action_id,
+        source_revision_ids=[],
+        result=action.action_state,
+        reason_codes=[],
     )
     return {"clinical_action_id": action_id, "action_state": action.action_state}
 
@@ -535,6 +612,15 @@ def verify_identity(payload: IdentityCheckRequest, request: Request) -> dict:
         payload=to_payload(result),
         resource_id=resource_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="identity.verify",
+        patient_id=payload.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=result.status,
+        reason_codes=[result.reason],
+    )
     return {
         "identity_check_id": resource_id,
         "status": result.status,
@@ -564,6 +650,15 @@ def create_medication_object(payload: MedicationObjectCreate, request: Request) 
         kind=_MEDICATION_KIND,
         payload=to_payload(medication),
         resource_id=medication.medication_object_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="medication_object.create",
+        patient_id=medication.patient_id,
+        clinical_action_id=medication.clinical_action_id,
+        source_revision_ids=[medication.prescription_revision_id],
+        result=medication.safety_state,
+        reason_codes=[medication.custody_stage],
     )
     return {
         "medication_object_id": medication.medication_object_id,
@@ -606,6 +701,15 @@ def evaluate_medication_change(
             payload=to_payload(updated),
             resource_id=updated.medication_object_id,
         )
+    _store_audit(
+        account_id=account_id,
+        event_type="medication.prescription_change_review",
+        patient_id=medication.patient_id,
+        clinical_action_id=medication.clinical_action_id,
+        source_revision_ids=[medication.prescription_revision_id],
+        result=decision.next_state,
+        reason_codes=[decision.reason, decision.required_action],
+    )
     return to_payload(decision)
 
 
@@ -1020,6 +1124,15 @@ def create_handoff_snapshot(payload: HandoffSnapshotCreate, request: Request) ->
         payload=to_payload(snapshot),
         resource_id=snapshot.handoff_snapshot_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="handoff.snapshot",
+        patient_id=snapshot.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=list(snapshot.source_revision_ids),
+        result="CREATED",
+        reason_codes=[],
+    )
     return {
         "handoff_snapshot_id": snapshot.handoff_snapshot_id,
         "patient_id": snapshot.patient_id,
@@ -1118,6 +1231,15 @@ def create_report_snapshot(payload: ReportSnapshotCreate, request: Request) -> d
         payload=to_payload(snapshot),
         resource_id=snapshot.report_snapshot_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="report.snapshot",
+        patient_id=snapshot.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=list(snapshot.source_revision_ids),
+        result="CREATED",
+        reason_codes=[],
+    )
     return {
         "report_snapshot_id": snapshot.report_snapshot_id,
         "patient_id": snapshot.patient_id,
@@ -1181,30 +1303,53 @@ def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
         payload=to_payload(item),
         resource_id=item.er_workflow_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="er.workflow.update",
+        patient_id=item.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=item.workflow_state,
+        reason_codes=list(item.pending_items),
+    )
     return to_payload(item)
 
 
 @router.get("/er/unfinished-loops")
-def er_unfinished_loops(request: Request) -> dict:
+def er_unfinished_loops(
+    request: Request,
+    stalled_after_minutes: int = 60,
+) -> dict:
     account_id = require_hospital_permission(request, "clinical.read")
     finished = {"ADMISSION", "TRANSFER", "DISCHARGE"}
     workflows = [
         item["payload"]
         for item in list_resources(domain="medical", subject_id=account_id, kind=_ER_WORKFLOW_KIND)
     ]
-    claims = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_CLAIM_KIND)
-    ]
-    operations = [
-        item["payload"]
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_OPERATION_KIND)
-    ]
+    unfinished = []
+    for item in workflows:
+        if item.get("workflow_state") in finished and not item.get("pending_items"):
+            continue
+        age_minutes = _age_minutes(item.get("updated_at"))
+        unfinished.append({
+            **item,
+            "age_minutes": age_minutes,
+            "stalled": (
+                age_minutes is not None
+                and age_minutes >= max(0, stalled_after_minutes)
+            ),
+            "pending_reasons": list(item.get("pending_items") or []),
+            "responsible_role": item.get("responsible_role"),
+        })
+    unfinished.sort(
+        key=lambda item: (
+            not item.get("stalled", False),
+            -(item.get("age_minutes") or 0),
+        )
+    )
     return {
-        "unfinished_loops": [
-            item for item in workflows
-            if item.get("workflow_state") not in finished or item.get("pending_items")
-        ]
+        "stalled_after_minutes": max(0, stalled_after_minutes),
+        "unfinished_loops": unfinished,
     }
 
 
@@ -1231,6 +1376,15 @@ def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dic
         kind=_PREOP_KIND,
         payload=to_payload(exposure),
         resource_id=exposure.exposure_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="preop.exposure.create",
+        patient_id=exposure.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[exposure.source_revision_id] if exposure.source_revision_id else [],
+        result=exposure.verification_state,
+        reason_codes=list(exposure.missing_fields),
     )
     return to_payload(exposure)
 
@@ -1340,6 +1494,15 @@ def create_claim_readiness(payload: ClaimReadinessCreate, request: Request) -> d
         payload=to_payload(assessment),
         resource_id=assessment.claim_readiness_id,
     )
+    _store_audit(
+        account_id=account_id,
+        event_type="claim.readiness.review",
+        patient_id=assessment.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result="READY_FOR_HUMAN_REVIEW" if assessment.ready_for_human_review else "REVIEW_NEEDED",
+        reason_codes=list(assessment.review_reasons),
+    )
     return to_payload(assessment)
 
 
@@ -1371,6 +1534,15 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
         kind=_OPERATION_KIND,
         payload=to_payload(record),
         resource_id=record.operation_record_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="hospital_operation.create",
+        patient_id="NO_PATIENT_SCOPE",
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=record.state,
+        reason_codes=[record.operation_type, record.owner_role],
     )
     return to_payload(record)
 
@@ -1406,6 +1578,15 @@ def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dic
         kind=_EVENT_KIND,
         payload=to_payload(event),
         resource_id=event.event_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="hospital_event.create",
+        patient_id=event.patient_id or "NO_PATIENT_SCOPE",
+        clinical_action_id=event.clinical_action_id,
+        source_revision_ids=[event.source_revision_id] if event.source_revision_id else [],
+        result=event.event_type,
+        reason_codes=[],
     )
     return to_payload(event)
 
@@ -1450,6 +1631,163 @@ def patient_deltas(patient_id: str, request: Request, since: str | None = None) 
     ]
     events.sort(key=lambda item: item.get("occurred_at") or "")
     return {"patient_id": patient_id, "since": since, "events": events}
+
+
+@router.post("/treatment-memory/episodes")
+def create_treatment_memory_episode(
+    payload: TreatmentEpisodeCreate,
+    request: Request,
+) -> dict:
+    account_id = require_hospital_permission(
+        request, "clinical.write", patient_id=payload.patient_id
+    )
+    for source_ref in payload.source_refs:
+        _owned_resource(account_id, source_ref, _SOURCE_KIND)
+    episode = make_treatment_episode(
+        patient_id=payload.patient_id,
+        intervention_type=payload.intervention_type,
+        indication=payload.indication,
+        start_at=payload.start_at,
+        end_at=payload.end_at,
+        dose_intensity=payload.dose_intensity,
+        source_refs=payload.source_refs,
+        pre_state=payload.pre_state,
+        outcome=payload.outcome,
+        adverse_event=payload.adverse_event,
+        discontinuation_reason=payload.discontinuation_reason,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_TREATMENT_KIND,
+        payload=to_payload(episode),
+        resource_id=episode.episode_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="treatment_memory.episode_recorded",
+        patient_id=episode.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=list(episode.source_refs),
+        result=episode.outcome,
+        reason_codes=[],
+    )
+    return to_payload(episode)
+
+
+@router.get("/patients/{patient_id}/treatment-memory")
+def list_treatment_memory(patient_id: str, request: Request) -> dict:
+    account_id = require_hospital_permission(
+        request, "clinical.read", patient_id=patient_id
+    )
+    episodes = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=account_id, kind=_TREATMENT_KIND
+        )
+        if item["payload"].get("patient_id") == patient_id
+    ]
+    episodes.sort(key=lambda item: item.get("created_at") or "")
+    return {"patient_id": patient_id, "episodes": episodes}
+
+
+@router.post("/treatment-memory/episodes/{episode_id}/context-review")
+def treatment_memory_context_review(
+    episode_id: str,
+    payload: TreatmentContextReviewRequest,
+    request: Request,
+) -> dict:
+    account_id = require_hospital_permission(request, "clinical.write")
+    item = _owned_resource(account_id, episode_id, _TREATMENT_KIND)
+    episode = _treatment_from_payload(item["payload"])
+    require_hospital_permission(
+        request, "clinical.write", patient_id=episode.patient_id
+    )
+    result = review_treatment_context(
+        episode=episode,
+        context_relevant=payload.context_relevant,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="treatment_memory.context_review",
+        patient_id=episode.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=list(episode.source_refs),
+        result="REVIEW_REQUIRED" if result.review_required else "NO_REVIEW_FLAG",
+        reason_codes=list(result.reason_codes),
+    )
+    return to_payload(result)
+
+
+@router.get("/patients/{patient_id}/professor-brief")
+def professor_brief(patient_id: str, request: Request) -> dict:
+    account_id = require_hospital_permission(
+        request, "report.manage", patient_id=patient_id
+    )
+    actions = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+        if item["payload"].get("patient_id") == patient_id
+    ]
+    events = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_EVENT_KIND)
+        if item["payload"].get("patient_id") == patient_id
+    ]
+    events.sort(key=lambda item: item.get("occurred_at") or "", reverse=True)
+    live_states = {"INCOMPLETE", "CURRENT", "HOLD", "STALE", "REVALIDATION_REQUIRED"}
+    live_actions = [x for x in actions if x.get("action_state") in live_states]
+    unresolved = [
+        x for x in live_actions
+        if x.get("action_state") in {"HOLD", "STALE", "REVALIDATION_REQUIRED"}
+    ]
+    decision_roles = {"DOCTOR", "FELLOW", "RESIDENT"}
+    physician_items = [
+        x for x in live_actions if x.get("responsible_role") in decision_roles
+    ]
+    use_rows = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
+        if item["payload"].get("clinical_action_id")
+        in {x.get("clinical_action_id") for x in actions}
+    ]
+    source_revision_ids = list(dict.fromkeys(
+        x.get("source_revision_id") for x in use_rows if x.get("source_revision_id")
+    ))
+    event_groups = {
+        "test_delta": [x for x in events if x.get("event_type") == "test.resulted"],
+        "imaging_delta": [x for x in events if x.get("event_type") == "imaging.reported"],
+        "prescription_delta": [
+            x for x in events if x.get("event_type") == "prescription.revision.changed"
+        ],
+        "consult_delta": [x for x in events if x.get("event_type") == "consult.responded"],
+    }
+    return {
+        "patient_id": patient_id,
+        "generated_at": utcnow(),
+        "thirty_second": {
+            "recent_changes": events[:3],
+            "current_action_ids": [
+                x.get("clinical_action_id") for x in live_actions[:3]
+            ],
+            "physician_attention_action_ids": [
+                x.get("clinical_action_id") for x in physician_items
+            ],
+        },
+        "two_minute": {
+            **event_groups,
+            "pending_action_ids": [
+                x.get("clinical_action_id")
+                for x in live_actions
+                if x.get("action_state") in {"INCOMPLETE", "CURRENT"}
+            ],
+            "unresolved_action_ids": [
+                x.get("clinical_action_id") for x in unresolved
+            ],
+            "source_revision_ids": source_revision_ids,
+        },
+        "note": "Structured workflow brief only; no diagnosis or treatment decision is generated.",
+    }
 
 
 @router.get("/clinical-actions")
