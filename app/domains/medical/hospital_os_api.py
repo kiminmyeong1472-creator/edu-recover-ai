@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -44,6 +45,7 @@ from app.domains.medical.hospital_os import (
     utcnow,
     verify_patient_identity,
 )
+from app.domains.medical.hospital_integration import normalize_integration_message
 from app.platform_core.life_auth import require_life_user
 from app.domains.medical.hospital_access_api import require_hospital_permission
 from app.platform_core.persistent_domain_store import get_resource, list_resources, put_resource
@@ -311,6 +313,22 @@ class IntegrationIngest(BaseModel):
     changed_fields: list[str] = Field(default_factory=list, max_length=100)
 
 
+class IntegrationMessageIngest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    adapter_type: Literal["EMR", "MEDICATION", "LAB_IMAGING", "IDENTITY", "PUBLIC_DATA"]
+    standard: Literal["FHIR_R4", "HL7_V2", "VENDOR_JSON"]
+    source_system: str = Field(min_length=1, max_length=160)
+    patient_id: str | None = Field(default=None, max_length=160)
+    raw_message: str | dict
+    source_state: Literal[
+        "CURRENT", "CORRECTED", "SUPERSEDED", "WITHDRAWN",
+        "LATEST_UNCONFIRMED", "ACCESS_UNAVAILABLE"
+    ] = "CURRENT"
+    verification_state: Literal["VERIFIED", "UNVERIFIED", "UNRESOLVED"] = "UNVERIFIED"
+    valid_time: str | None = Field(default=None, max_length=80)
+    changed_fields: list[str] = Field(default_factory=list, max_length=100)
+
+
 class TreatmentEpisodeCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
@@ -467,6 +485,59 @@ def _age_minutes(timestamp: str | None) -> int | None:
         return None
 
 
+def _latest_source_for_id(account_id: str, source_id: str) -> SourceRevision | None:
+    rows = list_resources(
+        domain="medical",
+        subject_id=account_id,
+        kind=_SOURCE_KIND,
+    )
+    for item in rows:
+        if item["payload"].get("source_id") == source_id:
+            return _source_from_payload(item["payload"])
+    return None
+
+
+def _validate_predecessor(
+    account_id: str,
+    *,
+    source_id: str,
+    predecessor_revision_id: str | None,
+) -> SourceRevision | None:
+    if not predecessor_revision_id:
+        return None
+    item = _owned_resource(
+        account_id,
+        predecessor_revision_id,
+        _SOURCE_KIND,
+    )
+    predecessor = _source_from_payload(item["payload"])
+    if predecessor.source_id != source_id:
+        raise HTTPException(status_code=409, detail="source_predecessor_mismatch")
+    if predecessor.successor_revision_id:
+        raise HTTPException(status_code=409, detail="source_predecessor_already_has_successor")
+    return predecessor
+
+
+def _link_source_successor(
+    account_id: str,
+    predecessor: SourceRevision | None,
+    successor: SourceRevision,
+) -> None:
+    if predecessor is None:
+        return
+    linked = replace(
+        predecessor,
+        successor_revision_id=successor.source_revision_id,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_SOURCE_KIND,
+        payload=to_payload(linked),
+        resource_id=linked.source_revision_id,
+    )
+
+
 def _owned_resource(account_id: str, resource_id: str, kind: str) -> dict:
     item = get_resource(
         domain="medical",
@@ -565,6 +636,11 @@ def hospital_os_status(request: Request) -> dict:
 @router.post("/source-revisions")
 def create_source_revision(payload: SourceRevisionCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "clinical.write")
+    predecessor = _validate_predecessor(
+        account_id,
+        source_id=payload.source_id,
+        predecessor_revision_id=payload.predecessor_revision_id,
+    )
     try:
         revision = make_source_revision(
             source_id=payload.source_id,
@@ -585,6 +661,7 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         payload=to_payload(revision),
         resource_id=revision.source_revision_id,
     )
+    _link_source_successor(account_id, predecessor, revision)
     _store_audit(
         account_id=account_id,
         event_type="source_revision.create",
@@ -909,12 +986,16 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         request, "clinical.write", patient_id=payload.patient_id
     )
     source_id = f"{payload.source_system}:{payload.external_object_id}"
+    predecessor = _latest_source_for_id(account_id, source_id)
     try:
         revision = make_source_revision(
             source_id=source_id,
             payload=payload.payload,
             source_state=payload.source_state,
             verification_state=payload.verification_state,
+            predecessor_revision_id=(
+                predecessor.source_revision_id if predecessor else None
+            ),
             valid_time=payload.valid_time,
             changed_fields=payload.changed_fields,
         )
@@ -927,6 +1008,7 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         payload=to_payload(revision),
         resource_id=revision.source_revision_id,
     )
+    _link_source_successor(account_id, predecessor, revision)
     envelope = make_integration_envelope(
         adapter_type=payload.adapter_type,
         standard=payload.standard,
@@ -957,6 +1039,89 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         "integration_id": envelope.integration_id,
         "source_revision_id": revision.source_revision_id,
         "verification_state": envelope.verification_state,
+    }
+
+
+@router.post("/integrations/messages")
+def ingest_integration_message(
+    payload: IntegrationMessageIngest,
+    request: Request,
+) -> dict:
+    account_id = require_hospital_permission(
+        request, "clinical.write", patient_id=payload.patient_id
+    )
+    try:
+        normalized = normalize_integration_message(
+            standard=payload.standard,
+            raw_message=payload.raw_message,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    source_id = f"{payload.source_system}:{normalized.external_object_id}"
+    predecessor = _latest_source_for_id(account_id, source_id)
+    try:
+        revision = make_source_revision(
+            source_id=source_id,
+            payload=normalized.payload,
+            source_state=payload.source_state,
+            verification_state=payload.verification_state,
+            predecessor_revision_id=(
+                predecessor.source_revision_id if predecessor else None
+            ),
+            valid_time=payload.valid_time,
+            changed_fields=payload.changed_fields,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_SOURCE_KIND,
+        payload=to_payload(revision),
+        resource_id=revision.source_revision_id,
+    )
+    _link_source_successor(account_id, predecessor, revision)
+
+    envelope = make_integration_envelope(
+        adapter_type=payload.adapter_type,
+        standard=payload.standard,
+        source_system=payload.source_system,
+        external_object_id=normalized.external_object_id,
+        patient_id=payload.patient_id,
+        source_revision_id=revision.source_revision_id,
+        payload=normalized.payload,
+        verification_state=payload.verification_state,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_INTEGRATION_KIND,
+        payload=to_payload(envelope),
+        resource_id=envelope.integration_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="integration.message_ingest",
+        patient_id=payload.patient_id or "NO_PATIENT_SCOPE",
+        clinical_action_id=None,
+        source_revision_ids=[revision.source_revision_id],
+        result="INGESTED",
+        reason_codes=[
+            payload.adapter_type,
+            payload.standard,
+            normalized.message_type,
+        ],
+    )
+    return {
+        "integration_id": envelope.integration_id,
+        "source_revision_id": revision.source_revision_id,
+        "predecessor_revision_id": revision.predecessor_revision_id,
+        "external_object_id": normalized.external_object_id,
+        "message_type": normalized.message_type,
+        "external_patient_reference": normalized.patient_reference,
+        "verification_state": revision.verification_state,
     }
 
 
@@ -1111,6 +1276,7 @@ def process_source_change(payload: SourceChangeCreate, request: Request) -> dict
         payload=to_payload(after),
         resource_id=after.source_revision_id,
     )
+    _link_source_successor(account_id, before, after)
     actions = [
         _action_from_payload(item["payload"])
         for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
