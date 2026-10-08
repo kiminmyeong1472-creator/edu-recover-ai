@@ -11,6 +11,7 @@ from app.domains.medical.hospital_os import (
     CarriedMedicationRecord,
     ClinicalAction,
     MedicationExecutionObject,
+    PatientOperationalStatus,
     SourceRevision,
     TreatmentEpisode,
     apply_action_completion,
@@ -25,6 +26,7 @@ from app.domains.medical.hospital_os import (
     make_integration_envelope,
     make_carried_medication_record,
     make_medication_execution_object,
+    make_patient_operational_status,
     make_preop_exposure,
     make_report_snapshot,
     make_source_revision,
@@ -61,6 +63,7 @@ _EVENT_KIND = "hospital_os_event"
 _CARRIED_MED_KIND = "hospital_os_carried_medication"
 _INTEGRATION_KIND = "hospital_os_integration_envelope"
 _TREATMENT_KIND = "hospital_os_treatment_episode"
+_PATIENT_STATUS_KIND = "hospital_os_patient_operational_status"
 
 
 class SourceRevisionCreate(BaseModel):
@@ -184,6 +187,8 @@ class PreopExposureCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
     drug_name: str = Field(min_length=1, max_length=160)
+    ingredient: str | None = Field(default=None, max_length=240)
+    purpose: str | None = Field(default=None, max_length=300)
     route: str | None = Field(default=None, max_length=80)
     dose_intensity: str | None = Field(default=None, max_length=120)
     start_at: str | None = Field(default=None, max_length=80)
@@ -192,6 +197,7 @@ class PreopExposureCreate(BaseModel):
     source_revision_id: str | None = Field(default=None, max_length=160)
     verification_state: Literal["VERIFIED", "UNVERIFIED", "UNRESOLVED"] = "UNVERIFIED"
     review_categories: list[str] = Field(default_factory=list, max_length=20)
+    is_steroid_exposure: bool = False
 
 
 class ClaimReadinessCreate(BaseModel):
@@ -209,13 +215,27 @@ class HospitalOperationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     operation_type: Literal[
         "STAFF_GAP", "INVENTORY_SHORTAGE", "EQUIPMENT_CHECK",
-        "FACILITY_CHECK", "CONTRACT", "LICENSE", "TRAINING", "PURCHASE_ORDER"
+        "FACILITY_CHECK", "CONTRACT", "LICENSE", "TRAINING", "PURCHASE_ORDER",
+        "BED_WAIT", "DISCHARGE_PLANNED", "SURGERY_SCHEDULED",
+        "SIGNATURE_PENDING", "TEST_PENDING", "CONSULT_PENDING",
+        "BILLING_ERROR", "RECEIVABLE"
     ]
     subject_ref: str = Field(min_length=1, max_length=160)
     state: Literal["OPEN", "IN_PROGRESS", "HOLD", "DONE"]
     owner_role: str = Field(min_length=1, max_length=80)
     due_at: str | None = Field(default=None, max_length=80)
     details: dict[str, str] = Field(default_factory=dict)
+
+
+class PatientOperationalStatusUpsert(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+    care_setting: Literal["OUTPATIENT", "INPATIENT", "ER"]
+    location: str | None = Field(default=None, max_length=160)
+    attending_team: str | None = Field(default=None, max_length=160)
+    discharge_planned: bool = False
+    surgery_planned: bool = False
+    state: Literal["CURRENT", "DISCHARGED"] = "CURRENT"
 
 
 class HospitalEventCreate(BaseModel):
@@ -1353,6 +1373,66 @@ def er_unfinished_loops(
     }
 
 
+@router.post("/census/patients")
+def upsert_patient_operational_status(
+    payload: PatientOperationalStatusUpsert,
+    request: Request,
+) -> dict:
+    account_id = require_hospital_permission(
+        request, "clinical.write", patient_id=payload.patient_id
+    )
+    existing = next(
+        (
+            item["payload"]
+            for item in list_resources(
+                domain="medical", subject_id=account_id, kind=_PATIENT_STATUS_KIND
+            )
+            if item["payload"].get("patient_id") == payload.patient_id
+        ),
+        None,
+    )
+    status = make_patient_operational_status(
+        patient_id=payload.patient_id,
+        care_setting=payload.care_setting,
+        location=payload.location,
+        attending_team=payload.attending_team,
+        discharge_planned=payload.discharge_planned,
+        surgery_planned=payload.surgery_planned,
+        state=payload.state,
+        patient_status_id=existing.get("patient_status_id") if existing else None,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_PATIENT_STATUS_KIND,
+        payload=to_payload(status),
+        resource_id=status.patient_status_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="patient.operational_status",
+        patient_id=status.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=status.state,
+        reason_codes=[status.care_setting],
+    )
+    return to_payload(status)
+
+
+@router.get("/census/patients")
+def list_patient_operational_status(request: Request) -> dict:
+    account_id = require_hospital_permission(request, "hospital.dashboard")
+    return {
+        "patients": [
+            item["payload"]
+            for item in list_resources(
+                domain="medical", subject_id=account_id, kind=_PATIENT_STATUS_KIND
+            )
+        ]
+    }
+
+
 @router.post("/preop/exposures")
 def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "preop.manage", patient_id=payload.patient_id)
@@ -1361,6 +1441,8 @@ def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dic
     exposure = make_preop_exposure(
         patient_id=payload.patient_id,
         drug_name=payload.drug_name,
+        ingredient=payload.ingredient,
+        purpose=payload.purpose,
         route=payload.route,
         dose_intensity=payload.dose_intensity,
         start_at=payload.start_at,
@@ -1369,6 +1451,7 @@ def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dic
         source_revision_id=payload.source_revision_id,
         verification_state=payload.verification_state,
         review_categories=payload.review_categories,
+        is_steroid_exposure=payload.is_steroid_exposure,
     )
     put_resource(
         domain="medical",
@@ -1450,27 +1533,76 @@ def hospital_today(request: Request) -> dict:
         item["payload"]
         for item in list_resources(domain="medical", subject_id=account_id, kind=_OPERATION_KIND)
     ]
+    patient_statuses = [
+        item["payload"]
+        for item in list_resources(
+            domain="medical", subject_id=account_id, kind=_PATIENT_STATUS_KIND
+        )
+        if item["payload"].get("state") == "CURRENT"
+    ]
+    events = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_EVENT_KIND)
+    ]
+    recent_events = [
+        event for event in events
+        if (_age_minutes(event.get("occurred_at")) is not None)
+        and (_age_minutes(event.get("occurred_at")) or 0) <= 60
+    ]
+    recent_events.sort(key=lambda item: item.get("occurred_at") or "", reverse=True)
+    current_holds = sum(1 for x in actions if x.get("action_state") == "HOLD")
+    revalidation_required = sum(
+        1 for x in actions if x.get("action_state") == "REVALIDATION_REQUIRED"
+    )
+    medication_holds = sum(1 for x in medications if x.get("safety_state") == "HOLD")
+    er_unfinished = sum(
+        1 for x in workflows
+        if x.get("workflow_state") not in {"ADMISSION", "TRANSFER", "DISCHARGE"}
+        or x.get("pending_items")
+    )
+    claim_review_needed = sum(1 for x in claims if x.get("review_reasons"))
+    count_operation = lambda kind: sum(
+        1 for x in operations
+        if x.get("operation_type") == kind and x.get("state") != "DONE"
+    )
     return {
-        "current_holds": sum(1 for x in actions if x.get("action_state") == "HOLD"),
-        "revalidation_required": sum(
-            1 for x in actions if x.get("action_state") == "REVALIDATION_REQUIRED"
+        "outpatient_patients": sum(
+            1 for x in patient_statuses if x.get("care_setting") == "OUTPATIENT"
         ),
-        "medication_holds": sum(1 for x in medications if x.get("safety_state") == "HOLD"),
-        "er_unfinished_loops": sum(
-            1 for x in workflows
-            if x.get("workflow_state") not in {"ADMISSION", "TRANSFER", "DISCHARGE"}
-            or x.get("pending_items")
+        "inpatient_patients": sum(
+            1 for x in patient_statuses if x.get("care_setting") == "INPATIENT"
         ),
-        "claim_review_needed": sum(1 for x in claims if x.get("review_reasons")),
-        "inventory_shortages": sum(
-            1 for x in operations
-            if x.get("operation_type") == "INVENTORY_SHORTAGE" and x.get("state") != "DONE"
+        "er_patients": sum(
+            1 for x in patient_statuses if x.get("care_setting") == "ER"
         ),
-        "staff_gaps": sum(
-            1 for x in operations
-            if x.get("operation_type") == "STAFF_GAP" and x.get("state") != "DONE"
+        "discharge_planned": sum(
+            1 for x in patient_statuses if x.get("discharge_planned") is True
         ),
+        "surgery_planned": sum(
+            1 for x in patient_statuses if x.get("surgery_planned") is True
+        ),
+        "current_holds": current_holds,
+        "revalidation_required": revalidation_required,
+        "medication_holds": medication_holds,
+        "er_unfinished_loops": er_unfinished,
+        "claim_review_needed": claim_review_needed,
+        "inventory_shortages": count_operation("INVENTORY_SHORTAGE"),
+        "staff_gaps": count_operation("STAFF_GAP"),
+        "bed_waits": count_operation("BED_WAIT"),
+        "signature_pending": count_operation("SIGNATURE_PENDING"),
+        "test_pending": count_operation("TEST_PENDING"),
+        "consult_pending": count_operation("CONSULT_PENDING"),
+        "billing_errors": count_operation("BILLING_ERROR"),
+        "receivables": count_operation("RECEIVABLE"),
         "operations_hold": sum(1 for x in operations if x.get("state") == "HOLD"),
+        "last_hour_changes": recent_events[:20],
+        "now_review": {
+            "current_holds": current_holds,
+            "revalidation_required": revalidation_required,
+            "medication_holds": medication_holds,
+            "er_unfinished_loops": er_unfinished,
+            "claim_review_needed": claim_review_needed,
+        },
     }
 
 
@@ -1601,6 +1733,7 @@ def patient_timeline(patient_id: str, request: Request) -> dict:
         (_IDENTITY_KIND, None, "identity_check"),
         (_MEDICATION_KIND, "updated_at", "medication"),
         (_PREOP_KIND, "created_at", "preop_exposure"),
+        (_PATIENT_STATUS_KIND, "updated_at", "patient_status"),
         (_EVENT_KIND, "occurred_at", "event"),
     )
     for kind, time_field, item_type in mappings:
