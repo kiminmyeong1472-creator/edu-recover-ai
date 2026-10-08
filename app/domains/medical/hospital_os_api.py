@@ -92,6 +92,7 @@ class SourceRevisionCreate(BaseModel):
 class ClinicalActionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     action_type: str = Field(min_length=1, max_length=120)
     responsible_role: str = Field(min_length=1, max_length=80)
     action_state: Literal[
@@ -183,6 +184,7 @@ class ReportSnapshotCreate(BaseModel):
 class ERWorkflowCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     workflow_state: Literal[
         "ARRIVED", "TRIAGED", "SEEN", "TESTING", "RESULTED",
         "CONSULTING", "DECISION", "ADMISSION", "TRANSFER", "DISCHARGE"
@@ -222,6 +224,7 @@ class ClaimReadinessCreate(BaseModel):
 
 class HospitalOperationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    department_id: str | None = Field(default=None, max_length=160)
     operation_type: Literal[
         "STAFF_GAP", "INVENTORY_SHORTAGE", "EQUIPMENT_CHECK",
         "FACILITY_CHECK", "CONTRACT", "LICENSE", "TRAINING", "PURCHASE_ORDER",
@@ -239,6 +242,7 @@ class HospitalOperationCreate(BaseModel):
 class PatientOperationalStatusUpsert(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     care_setting: Literal["OUTPATIENT", "INPATIENT", "ER"]
     location: str | None = Field(default=None, max_length=160)
     attending_team: str | None = Field(default=None, max_length=160)
@@ -380,6 +384,7 @@ def _action_from_payload(payload: dict) -> ClinicalAction:
         current_validity=payload.get("current_validity", "CURRENT"),
         downstream_action_refs=tuple(payload.get("downstream_action_refs", [])),
         risk_tier=payload.get("risk_tier", "MEDIUM"),
+        department_id=payload.get("department_id"),
     )
 
 
@@ -538,6 +543,32 @@ def _link_source_successor(
     )
 
 
+def _patient_department(account_id: str, patient_id: str) -> str | None:
+    for item in list_resources(
+        domain="medical",
+        subject_id=account_id,
+        kind=_PATIENT_STATUS_KIND,
+    ):
+        payload = item["payload"]
+        if payload.get("patient_id") == patient_id and payload.get("state") == "CURRENT":
+            return payload.get("department_id")
+    return None
+
+
+def _department_visible(account_id: str, payload: dict) -> bool:
+    allowed = tuple(getattr(account_id, "department_ids", ()) or ())
+    if not allowed:
+        return True
+    department_id = payload.get("department_id")
+    if department_id:
+        return department_id in allowed
+    patient_id = payload.get("patient_id")
+    if patient_id:
+        resolved = _patient_department(account_id, patient_id)
+        return bool(resolved and resolved in allowed)
+    return True
+
+
 def _owned_resource(account_id: str, resource_id: str, kind: str) -> dict:
     item = get_resource(
         domain="medical",
@@ -545,6 +576,8 @@ def _owned_resource(account_id: str, resource_id: str, kind: str) -> dict:
         resource_id=resource_id,
     )
     if not item or item["kind"] != kind:
+        raise HTTPException(status_code=404, detail="resource_not_found")
+    if not _department_visible(account_id, item["payload"]):
         raise HTTPException(status_code=404, detail="resource_not_found")
     return item
 
