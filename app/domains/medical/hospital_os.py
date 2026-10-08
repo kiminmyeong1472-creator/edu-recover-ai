@@ -806,5 +806,147 @@ def make_hospital_event(
         occurred_at=utcnow(),
     )
 
+
+CarriedMedicationState = Literal[
+    "CANDIDATE", "UNVERIFIED", "PHARMACIST_VERIFIED",
+    "CONTINUE", "STOP", "SUBSTITUTE", "MORE_INFO",
+]
+
+
+@dataclass(frozen=True)
+class CarriedMedicationRecord:
+    carried_medication_id: str
+    patient_id: str
+    captured_description: str
+    imprint: str | None
+    packaging: str | None
+    ingredient_candidates: tuple[str, ...]
+    formulary_matches: tuple[str, ...]
+    external_record_refs: tuple[str, ...]
+    state: CarriedMedicationState
+    pharmacist_actor_id: str | None
+    verified_ingredient: str | None
+    physician_actor_id: str | None
+    physician_decision: str | None
+    created_at: str
+    updated_at: str
+
+
+def make_carried_medication_record(
+    *,
+    patient_id: str,
+    captured_description: str,
+    imprint: str | None = None,
+    packaging: str | None = None,
+    ingredient_candidates: list[str] | None = None,
+    formulary_matches: list[str] | None = None,
+    external_record_refs: list[str] | None = None,
+) -> CarriedMedicationRecord:
+    return CarriedMedicationRecord(
+        carried_medication_id=f"carried_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        captured_description=captured_description,
+        imprint=imprint,
+        packaging=packaging,
+        ingredient_candidates=tuple(dict.fromkeys(ingredient_candidates or ())),
+        formulary_matches=tuple(dict.fromkeys(formulary_matches or ())),
+        external_record_refs=tuple(dict.fromkeys(external_record_refs or ())),
+        state="CANDIDATE",
+        pharmacist_actor_id=None,
+        verified_ingredient=None,
+        physician_actor_id=None,
+        physician_decision=None,
+        created_at=utcnow(),
+        updated_at=utcnow(),
+    )
+
+
+def pharmacist_verify_carried_medication(
+    *,
+    record: CarriedMedicationRecord,
+    pharmacist_actor_id: str,
+    verified_ingredient: str | None,
+    needs_more_info: bool = False,
+) -> CarriedMedicationRecord:
+    if record.state not in {"CANDIDATE", "UNVERIFIED", "MORE_INFO"}:
+        raise ValueError("carried_medication_not_verifiable")
+    if needs_more_info or not (verified_ingredient or "").strip():
+        return replace(
+            record,
+            state="MORE_INFO",
+            pharmacist_actor_id=pharmacist_actor_id,
+            verified_ingredient=None,
+            updated_at=utcnow(),
+        )
+    return replace(
+        record,
+        state="PHARMACIST_VERIFIED",
+        pharmacist_actor_id=pharmacist_actor_id,
+        verified_ingredient=verified_ingredient.strip(),
+        updated_at=utcnow(),
+    )
+
+
+def physician_decide_carried_medication(
+    *,
+    record: CarriedMedicationRecord,
+    physician_actor_id: str,
+    decision: Literal["CONTINUE", "STOP", "SUBSTITUTE"],
+) -> CarriedMedicationRecord:
+    if record.state != "PHARMACIST_VERIFIED":
+        raise ValueError("pharmacist_verification_required")
+    return replace(
+        record,
+        state=decision,
+        physician_actor_id=physician_actor_id,
+        physician_decision=decision,
+        updated_at=utcnow(),
+    )
+
+
+IntegrationStandard = Literal["FHIR_R4", "HL7_V2", "VENDOR_JSON"]
+IntegrationAdapterType = Literal[
+    "EMR", "MEDICATION", "LAB_IMAGING", "IDENTITY", "PUBLIC_DATA"
+]
+
+
+@dataclass(frozen=True)
+class IntegrationEnvelope:
+    integration_id: str
+    adapter_type: IntegrationAdapterType
+    standard: IntegrationStandard
+    source_system: str
+    external_object_id: str
+    patient_id: str | None
+    source_revision_id: str
+    payload_hash: str
+    verification_state: VerificationState
+    received_at: str
+
+
+def make_integration_envelope(
+    *,
+    adapter_type: IntegrationAdapterType,
+    standard: IntegrationStandard,
+    source_system: str,
+    external_object_id: str,
+    patient_id: str | None,
+    source_revision_id: str,
+    payload: dict,
+    verification_state: VerificationState,
+) -> IntegrationEnvelope:
+    return IntegrationEnvelope(
+        integration_id=f"int_{uuid.uuid4().hex}",
+        adapter_type=adapter_type,
+        standard=standard,
+        source_system=source_system,
+        external_object_id=external_object_id,
+        patient_id=patient_id,
+        source_revision_id=source_revision_id,
+        payload_hash=stable_hash(payload),
+        verification_state=verification_state,
+        received_at=utcnow(),
+    )
+
 def to_payload(value: object) -> dict:
     return asdict(value)
