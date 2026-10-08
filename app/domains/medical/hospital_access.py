@@ -25,6 +25,7 @@ HospitalPermission = Literal[
     "identity.verify",
     "medication.manage",
     "medication.verify",
+    "medication.decide",
     "handoff.manage",
     "report.manage",
     "er.manage",
@@ -36,11 +37,11 @@ HospitalPermission = Literal[
 
 _ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "DOCTOR": frozenset({
-        "clinical.read", "clinical.write", "identity.verify", "medication.manage",
+        "clinical.read", "clinical.write", "identity.verify", "medication.manage", "medication.decide",
         "handoff.manage", "report.manage", "preop.manage", "hospital.dashboard",
     }),
     "FELLOW": frozenset({
-        "clinical.read", "clinical.write", "identity.verify", "medication.manage",
+        "clinical.read", "clinical.write", "identity.verify", "medication.manage", "medication.decide",
         "handoff.manage", "report.manage", "preop.manage",
     }),
     "RESIDENT": frozenset({
