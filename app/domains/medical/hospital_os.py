@@ -688,5 +688,123 @@ def make_preop_exposure(
         created_at=utcnow(),
     )
 
+
+@dataclass(frozen=True)
+class ClaimReadiness:
+    claim_readiness_id: str
+    patient_id: str
+    record_complete: bool
+    signature_complete: bool
+    order_treatment_consistent: bool
+    evidence_complete: bool
+    payment_status: str
+    billing_deadline: str | None
+    review_reasons: tuple[str, ...]
+    ready_for_human_review: bool
+    created_at: str
+
+
+@dataclass(frozen=True)
+class HospitalOperationRecord:
+    operation_record_id: str
+    operation_type: str
+    subject_ref: str
+    state: str
+    owner_role: str
+    due_at: str | None
+    details: dict[str, str]
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class HospitalEvent:
+    event_id: str
+    event_type: str
+    patient_id: str | None
+    source_revision_id: str | None
+    clinical_action_id: str | None
+    payload_hash: str
+    occurred_at: str
+
+
+def assess_claim_readiness(
+    *,
+    patient_id: str,
+    record_complete: bool,
+    signature_complete: bool,
+    order_treatment_consistent: bool,
+    evidence_complete: bool,
+    payment_status: str,
+    billing_deadline: str | None,
+) -> ClaimReadiness:
+    reasons: list[str] = []
+    if not record_complete:
+        reasons.append("RECORD_INCOMPLETE")
+    if not signature_complete:
+        reasons.append("SIGNATURE_INCOMPLETE")
+    if not order_treatment_consistent:
+        reasons.append("ORDER_TREATMENT_MISMATCH_REVIEW")
+    if not evidence_complete:
+        reasons.append("EVIDENCE_INCOMPLETE")
+    if payment_status.strip().upper() in {"UNPAID", "PARTIAL", "UNKNOWN"}:
+        reasons.append("PAYMENT_REVIEW")
+    return ClaimReadiness(
+        claim_readiness_id=f"claim_{uuid.uuid4().hex}",
+        patient_id=patient_id,
+        record_complete=record_complete,
+        signature_complete=signature_complete,
+        order_treatment_consistent=order_treatment_consistent,
+        evidence_complete=evidence_complete,
+        payment_status=payment_status,
+        billing_deadline=billing_deadline,
+        review_reasons=tuple(reasons),
+        ready_for_human_review=not reasons,
+        created_at=utcnow(),
+    )
+
+
+def make_hospital_operation_record(
+    *,
+    operation_type: str,
+    subject_ref: str,
+    state: str,
+    owner_role: str,
+    due_at: str | None,
+    details: dict[str, str],
+    operation_record_id: str | None = None,
+) -> HospitalOperationRecord:
+    now = utcnow()
+    return HospitalOperationRecord(
+        operation_record_id=operation_record_id or f"ops_{uuid.uuid4().hex}",
+        operation_type=operation_type,
+        subject_ref=subject_ref,
+        state=state,
+        owner_role=owner_role,
+        due_at=due_at,
+        details=dict(details),
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def make_hospital_event(
+    *,
+    event_type: str,
+    patient_id: str | None,
+    source_revision_id: str | None,
+    clinical_action_id: str | None,
+    payload: dict,
+) -> HospitalEvent:
+    return HospitalEvent(
+        event_id=f"evt_{uuid.uuid4().hex}",
+        event_type=event_type,
+        patient_id=patient_id,
+        source_revision_id=source_revision_id,
+        clinical_action_id=clinical_action_id,
+        payload_hash=stable_hash(payload),
+        occurred_at=utcnow(),
+    )
+
 def to_payload(value: object) -> dict:
     return asdict(value)

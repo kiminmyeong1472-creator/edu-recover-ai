@@ -446,3 +446,112 @@ def test_report_er_preop_and_hospital_today_apis(monkeypatch, tmp_path):
     today = client.get("/life/api/medical/hospital-os/hospital/today")
     assert today.status_code == 200, today.text
     assert today.json()["er_unfinished_loops"] == 1
+
+
+
+def test_claims_operations_timeline_deltas_and_hospital_today(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    _register(client, "hospital-user-7")
+
+    action = client.post(
+        "/life/api/medical/hospital-os/clinical-actions",
+        json={
+            "patient_id": "patient-7",
+            "action_type": "claim-review",
+            "responsible_role": "CLAIMS_STAFF",
+            "action_state": "INCOMPLETE",
+            "risk_tier": "LOW",
+        },
+    )
+    assert action.status_code == 200, action.text
+    action_id = action.json()["clinical_action_id"]
+
+    claim = client.post(
+        "/life/api/medical/hospital-os/claims/readiness",
+        json={
+            "patient_id": "patient-7",
+            "record_complete": True,
+            "signature_complete": False,
+            "order_treatment_consistent": True,
+            "evidence_complete": False,
+            "payment_status": "UNPAID",
+            "billing_deadline": "2026-10-31",
+        },
+    )
+    assert claim.status_code == 200, claim.text
+    assert "SIGNATURE_INCOMPLETE" in claim.json()["review_reasons"]
+    assert "EVIDENCE_INCOMPLETE" in claim.json()["review_reasons"]
+    assert claim.json()["ready_for_human_review"] is False
+
+    inventory = client.post(
+        "/life/api/medical/hospital-os/operations",
+        json={
+            "operation_type": "INVENTORY_SHORTAGE",
+            "subject_ref": "item-7",
+            "state": "OPEN",
+            "owner_role": "ADMIN_STAFF",
+            "details": {"item": "sample", "shortage": "true"},
+        },
+    )
+    assert inventory.status_code == 200, inventory.text
+
+    staff = client.post(
+        "/life/api/medical/hospital-os/operations",
+        json={
+            "operation_type": "STAFF_GAP",
+            "subject_ref": "ward-7",
+            "state": "HOLD",
+            "owner_role": "HOSPITAL_ADMIN",
+            "details": {"shift": "night"},
+        },
+    )
+    assert staff.status_code == 200, staff.text
+
+    event = client.post(
+        "/life/api/medical/hospital-os/events",
+        json={
+            "event_type": "consult.requested",
+            "patient_id": "patient-7",
+            "clinical_action_id": action_id,
+            "payload": {"service": "cardiology"},
+        },
+    )
+    assert event.status_code == 200, event.text
+    assert event.json()["event_type"] == "consult.requested"
+    occurred_at = event.json()["occurred_at"]
+
+    timeline = client.get(
+        "/life/api/medical/hospital-os/patients/patient-7/timeline"
+    )
+    assert timeline.status_code == 200, timeline.text
+    types = {item["type"] for item in timeline.json()["timeline"]}
+    assert "clinical_action" in types
+    assert "event" in types
+
+    deltas = client.get(
+        "/life/api/medical/hospital-os/patients/patient-7/deltas"
+    )
+    assert deltas.status_code == 200, deltas.text
+    assert len(deltas.json()["events"]) == 1
+
+    later = client.get(
+        "/life/api/medical/hospital-os/patients/patient-7/deltas",
+        params={"since": occurred_at},
+    )
+    assert later.status_code == 200, later.text
+    assert later.json()["events"] == []
+
+    claims = client.get("/life/api/medical/hospital-os/claims/readiness")
+    assert claims.status_code == 200, claims.text
+    assert len(claims.json()["claims"]) == 1
+
+    operations = client.get("/life/api/medical/hospital-os/operations")
+    assert operations.status_code == 200, operations.text
+    assert len(operations.json()["operations"]) == 2
+
+    today = client.get("/life/api/medical/hospital-os/hospital/today")
+    assert today.status_code == 200, today.text
+    assert today.json()["claim_review_needed"] == 1
+    assert today.json()["inventory_shortages"] == 1
+    assert today.json()["staff_gaps"] == 1
+    assert today.json()["operations_hold"] == 1
