@@ -137,6 +137,7 @@ def membership_from_payload(payload: dict) -> HospitalTenantMembership:
 class HospitalRoleGrant:
     grant_id: str
     account_id: str
+    tenant_id: str | None
     roles: tuple[HospitalRole, ...]
     patient_scope: tuple[str, ...]
     department_scope: tuple[str, ...]
@@ -148,6 +149,7 @@ def make_role_grant(
     *,
     account_id: str,
     roles: list[HospitalRole],
+    tenant_id: str | None = None,
     patient_scope: list[str] | None = None,
     department_scope: list[str] | None = None,
 ) -> HospitalRoleGrant:
@@ -157,6 +159,7 @@ def make_role_grant(
     return HospitalRoleGrant(
         grant_id=f"hrole_{uuid.uuid4().hex}",
         account_id=account_id,
+        tenant_id=(tenant_id.strip() if tenant_id else None),
         roles=normalized_roles,
         patient_scope=tuple(dict.fromkeys(patient_scope or ())),
         department_scope=tuple(dict.fromkeys(department_scope or ())),
@@ -186,6 +189,7 @@ def grant_from_payload(payload: dict) -> HospitalRoleGrant:
     return HospitalRoleGrant(
         grant_id=payload["grant_id"],
         account_id=payload["account_id"],
+        tenant_id=payload.get("tenant_id"),
         roles=tuple(payload.get("roles", ())),
         patient_scope=tuple(payload.get("patient_scope", ())),
         department_scope=tuple(payload.get("department_scope", ())),
