@@ -75,6 +75,65 @@ _ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
 
 
 @dataclass(frozen=True)
+class HospitalTenantMembership:
+    membership_id: str
+    account_id: str
+    tenant_id: str
+    department_ids: tuple[str, ...]
+    active: bool
+    issued_at: str
+
+
+class HospitalDataSubject(str):
+    """String-compatible storage subject carrying the authenticated actor identity."""
+
+    actor_id: str
+    tenant_id: str | None
+
+    def __new__(
+        cls,
+        value: str,
+        *,
+        actor_id: str,
+        tenant_id: str | None = None,
+    ):
+        obj = str.__new__(cls, value)
+        obj.actor_id = actor_id
+        obj.tenant_id = tenant_id
+        return obj
+
+
+def make_tenant_membership(
+    *,
+    account_id: str,
+    tenant_id: str,
+    department_ids: list[str] | None = None,
+) -> HospitalTenantMembership:
+    tenant_id = tenant_id.strip()
+    if not tenant_id:
+        raise ValueError("hospital_tenant_id_required")
+    return HospitalTenantMembership(
+        membership_id=f"hmem_{uuid.uuid4().hex}",
+        account_id=account_id,
+        tenant_id=tenant_id,
+        department_ids=tuple(dict.fromkeys(department_ids or ())),
+        active=True,
+        issued_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def membership_from_payload(payload: dict) -> HospitalTenantMembership:
+    return HospitalTenantMembership(
+        membership_id=payload["membership_id"],
+        account_id=payload["account_id"],
+        tenant_id=payload["tenant_id"],
+        department_ids=tuple(payload.get("department_ids", ())),
+        active=bool(payload.get("active", True)),
+        issued_at=payload["issued_at"],
+    )
+
+
+@dataclass(frozen=True)
 class HospitalRoleGrant:
     grant_id: str
     account_id: str
