@@ -82,6 +82,7 @@ def require_hospital_permission(
 ) -> HospitalDataSubject:
     account_id = require_life_user(request)
     tenant_id: str | None = None
+    membership_departments: tuple[str, ...] = ()
     memberships = _memberships(account_id)
 
     if tenant_mode_enforced():
@@ -100,7 +101,12 @@ def require_hospital_permission(
             )
         membership = matching[0]
         tenant_id = membership.tenant_id
-        if department_id is not None and membership.department_ids and department_id not in membership.department_ids:
+        membership_departments = membership.department_ids
+        if (
+            department_id is not None
+            and membership_departments
+            and department_id not in membership_departments
+        ):
             raise HTTPException(
                 status_code=403,
                 detail={
@@ -109,19 +115,22 @@ def require_hospital_permission(
                 },
             )
 
+    matched_grants = []
     if rbac_enforced():
         grants = _grants(account_id)
         if tenant_id is not None:
             grants = [grant for grant in grants if grant.tenant_id == tenant_id]
-        if not any(
-            grant_allows(
+        matched_grants = [
+            grant
+            for grant in grants
+            if grant_allows(
                 grant,
                 permission=permission,
                 patient_id=patient_id,
                 department_id=department_id,
             )
-            for grant in grants
-        ):
+        ]
+        if not matched_grants:
             raise HTTPException(
                 status_code=403,
                 detail={
@@ -133,11 +142,31 @@ def require_hospital_permission(
                 },
             )
 
+    grant_departments: tuple[str, ...] = ()
+    if matched_grants and not any(not grant.department_scope for grant in matched_grants):
+        grant_departments = tuple(sorted({
+            department
+            for grant in matched_grants
+            for department in grant.department_scope
+        }))
+
+    if membership_departments and grant_departments:
+        effective_departments = tuple(
+            department
+            for department in membership_departments
+            if department in set(grant_departments)
+        )
+    elif membership_departments:
+        effective_departments = membership_departments
+    else:
+        effective_departments = grant_departments
+
     data_subject_id = f"hospital_tenant:{tenant_id}" if tenant_id else account_id
     return HospitalDataSubject(
         data_subject_id,
         actor_id=account_id,
         tenant_id=tenant_id,
+        department_ids=effective_departments,
     )
 
 
