@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.domains.medical.hospital_os import (
     ActualUseEvidence,
+    CarriedMedicationRecord,
     ClinicalAction,
     MedicationExecutionObject,
     SourceRevision,
@@ -19,10 +20,14 @@ from app.domains.medical.hospital_os import (
     make_hospital_audit_event,
     make_hospital_event,
     make_hospital_operation_record,
+    make_integration_envelope,
+    make_carried_medication_record,
     make_medication_execution_object,
     make_preop_exposure,
     make_report_snapshot,
     make_source_revision,
+    pharmacist_verify_carried_medication,
+    physician_decide_carried_medication,
     selective_revalidation,
     to_payload,
     utcnow,
@@ -49,6 +54,8 @@ _PREOP_KIND = "hospital_os_preop_exposure"
 _CLAIM_KIND = "hospital_os_claim_readiness"
 _OPERATION_KIND = "hospital_os_operation_record"
 _EVENT_KIND = "hospital_os_event"
+_CARRIED_MED_KIND = "hospital_os_carried_medication"
+_INTEGRATION_KIND = "hospital_os_integration_envelope"
 
 
 class SourceRevisionCreate(BaseModel):
@@ -221,6 +228,45 @@ class HospitalEventCreate(BaseModel):
     payload: dict = Field(default_factory=dict)
 
 
+class CarriedMedicationCapture(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_id: str = Field(min_length=1, max_length=160)
+    captured_description: str = Field(min_length=1, max_length=500)
+    imprint: str | None = Field(default=None, max_length=120)
+    packaging: str | None = Field(default=None, max_length=300)
+    ingredient_candidates: list[str] = Field(default_factory=list, max_length=20)
+    formulary_matches: list[str] = Field(default_factory=list, max_length=20)
+    external_record_refs: list[str] = Field(default_factory=list, max_length=50)
+
+
+class PharmacistVerifyCarried(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    verified_ingredient: str | None = Field(default=None, max_length=240)
+    needs_more_info: bool = False
+
+
+class PhysicianDecisionCarried(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["CONTINUE", "STOP", "SUBSTITUTE"]
+
+
+class IntegrationIngest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    adapter_type: Literal["EMR", "MEDICATION", "LAB_IMAGING", "IDENTITY", "PUBLIC_DATA"]
+    standard: Literal["FHIR_R4", "HL7_V2", "VENDOR_JSON"]
+    source_system: str = Field(min_length=1, max_length=160)
+    external_object_id: str = Field(min_length=1, max_length=200)
+    patient_id: str | None = Field(default=None, max_length=160)
+    payload: dict
+    source_state: Literal[
+        "CURRENT", "CORRECTED", "SUPERSEDED", "WITHDRAWN",
+        "LATEST_UNCONFIRMED", "ACCESS_UNAVAILABLE"
+    ] = "CURRENT"
+    verification_state: Literal["VERIFIED", "UNVERIFIED", "UNRESOLVED"] = "UNVERIFIED"
+    valid_time: str | None = Field(default=None, max_length=80)
+    changed_fields: list[str] = Field(default_factory=list, max_length=100)
+
+
 def _source_from_payload(payload: dict) -> SourceRevision:
     return SourceRevision(
         source_revision_id=payload["source_revision_id"],
@@ -275,6 +321,26 @@ def _medication_from_payload(payload: dict) -> MedicationExecutionObject:
         custody_stage=payload["custody_stage"],
         safety_state=payload["safety_state"],
         prepared_fields=dict(payload.get("prepared_fields", {})),
+        created_at=payload["created_at"],
+        updated_at=payload["updated_at"],
+    )
+
+
+def _carried_from_payload(payload: dict) -> CarriedMedicationRecord:
+    return CarriedMedicationRecord(
+        carried_medication_id=payload["carried_medication_id"],
+        patient_id=payload["patient_id"],
+        captured_description=payload["captured_description"],
+        imprint=payload.get("imprint"),
+        packaging=payload.get("packaging"),
+        ingredient_candidates=tuple(payload.get("ingredient_candidates", [])),
+        formulary_matches=tuple(payload.get("formulary_matches", [])),
+        external_record_refs=tuple(payload.get("external_record_refs", [])),
+        state=payload["state"],
+        pharmacist_actor_id=payload.get("pharmacist_actor_id"),
+        verified_ingredient=payload.get("verified_ingredient"),
+        physician_actor_id=payload.get("physician_actor_id"),
+        physician_decision=payload.get("physician_decision"),
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )
@@ -541,6 +607,204 @@ def evaluate_medication_change(
             resource_id=updated.medication_object_id,
         )
     return to_payload(decision)
+
+
+@router.post("/medications/carried")
+def capture_carried_medication(payload: CarriedMedicationCapture, request: Request) -> dict:
+    account_id = require_hospital_permission(
+        request, "medication.manage", patient_id=payload.patient_id
+    )
+    record = make_carried_medication_record(
+        patient_id=payload.patient_id,
+        captured_description=payload.captured_description,
+        imprint=payload.imprint,
+        packaging=payload.packaging,
+        ingredient_candidates=payload.ingredient_candidates,
+        formulary_matches=payload.formulary_matches,
+        external_record_refs=payload.external_record_refs,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_CARRIED_MED_KIND,
+        payload=to_payload(record),
+        resource_id=record.carried_medication_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="carried_medication.capture",
+        patient_id=record.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result="CANDIDATE_CREATED",
+        reason_codes=[],
+    )
+    return to_payload(record)
+
+
+@router.post("/medications/carried/{carried_medication_id}/verify")
+def verify_carried_medication(
+    carried_medication_id: str,
+    payload: PharmacistVerifyCarried,
+    request: Request,
+) -> dict:
+    account_id = require_hospital_permission(request, "medication.verify")
+    item = _owned_resource(account_id, carried_medication_id, _CARRIED_MED_KIND)
+    record = _carried_from_payload(item["payload"])
+    require_hospital_permission(
+        request, "medication.verify", patient_id=record.patient_id
+    )
+    try:
+        updated = pharmacist_verify_carried_medication(
+            record=record,
+            pharmacist_actor_id=account_id,
+            verified_ingredient=payload.verified_ingredient,
+            needs_more_info=payload.needs_more_info,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_CARRIED_MED_KIND,
+        payload=to_payload(updated),
+        resource_id=updated.carried_medication_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="carried_medication.pharmacist_verify",
+        patient_id=updated.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=updated.state,
+        reason_codes=[] if updated.state == "PHARMACIST_VERIFIED" else ["MORE_INFO_REQUIRED"],
+    )
+    return to_payload(updated)
+
+
+@router.post("/medications/carried/{carried_medication_id}/decision")
+def decide_carried_medication(
+    carried_medication_id: str,
+    payload: PhysicianDecisionCarried,
+    request: Request,
+) -> dict:
+    account_id = require_hospital_permission(request, "medication.decide")
+    item = _owned_resource(account_id, carried_medication_id, _CARRIED_MED_KIND)
+    record = _carried_from_payload(item["payload"])
+    require_hospital_permission(
+        request, "medication.decide", patient_id=record.patient_id
+    )
+    try:
+        updated = physician_decide_carried_medication(
+            record=record,
+            physician_actor_id=account_id,
+            decision=payload.decision,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_CARRIED_MED_KIND,
+        payload=to_payload(updated),
+        resource_id=updated.carried_medication_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="carried_medication.physician_decision",
+        patient_id=updated.patient_id,
+        clinical_action_id=None,
+        source_revision_ids=[],
+        result=updated.state,
+        reason_codes=[],
+    )
+    return to_payload(updated)
+
+
+@router.get("/patients/{patient_id}/carried-medications")
+def list_carried_medications(patient_id: str, request: Request) -> dict:
+    account_id = require_hospital_permission(
+        request, "clinical.read", patient_id=patient_id
+    )
+    return {
+        "carried_medications": [
+            item["payload"]
+            for item in list_resources(
+                domain="medical", subject_id=account_id, kind=_CARRIED_MED_KIND
+            )
+            if item["payload"].get("patient_id") == patient_id
+        ]
+    }
+
+
+@router.post("/integrations/ingest")
+def ingest_integration_record(payload: IntegrationIngest, request: Request) -> dict:
+    account_id = require_hospital_permission(
+        request, "clinical.write", patient_id=payload.patient_id
+    )
+    source_id = f"{payload.source_system}:{payload.external_object_id}"
+    try:
+        revision = make_source_revision(
+            source_id=source_id,
+            payload=payload.payload,
+            source_state=payload.source_state,
+            verification_state=payload.verification_state,
+            valid_time=payload.valid_time,
+            changed_fields=payload.changed_fields,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_SOURCE_KIND,
+        payload=to_payload(revision),
+        resource_id=revision.source_revision_id,
+    )
+    envelope = make_integration_envelope(
+        adapter_type=payload.adapter_type,
+        standard=payload.standard,
+        source_system=payload.source_system,
+        external_object_id=payload.external_object_id,
+        patient_id=payload.patient_id,
+        source_revision_id=revision.source_revision_id,
+        payload=payload.payload,
+        verification_state=payload.verification_state,
+    )
+    put_resource(
+        domain="medical",
+        subject_id=account_id,
+        kind=_INTEGRATION_KIND,
+        payload=to_payload(envelope),
+        resource_id=envelope.integration_id,
+    )
+    _store_audit(
+        account_id=account_id,
+        event_type="integration.ingest",
+        patient_id=payload.patient_id or "NO_PATIENT_SCOPE",
+        clinical_action_id=None,
+        source_revision_ids=[revision.source_revision_id],
+        result="INGESTED",
+        reason_codes=[payload.adapter_type, payload.standard],
+    )
+    return {
+        "integration_id": envelope.integration_id,
+        "source_revision_id": revision.source_revision_id,
+        "verification_state": envelope.verification_state,
+    }
+
+
+@router.get("/integrations")
+def list_integrations(request: Request) -> dict:
+    account_id = require_hospital_permission(request, "clinical.read")
+    return {
+        "integrations": [
+            item["payload"]
+            for item in list_resources(
+                domain="medical", subject_id=account_id, kind=_INTEGRATION_KIND
+            )
+        ]
+    }
 
 
 @router.get("/medication-objects")
