@@ -90,6 +90,7 @@ class HospitalDataSubject(str):
 
     actor_id: str
     tenant_id: str | None
+    department_ids: tuple[str, ...]
 
     def __new__(
         cls,
@@ -97,10 +98,12 @@ class HospitalDataSubject(str):
         *,
         actor_id: str,
         tenant_id: str | None = None,
+        department_ids: tuple[str, ...] = (),
     ):
         obj = str.__new__(cls, value)
         obj.actor_id = actor_id
         obj.tenant_id = tenant_id
+        obj.department_ids = tuple(department_ids)
         return obj
 
 
