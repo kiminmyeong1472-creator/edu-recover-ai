@@ -58,6 +58,7 @@ from app.services.socratic_trap import detect_socratic_traps
 from app.platform_core.life_auth import router as life_auth_router, owner_router as life_owner_router
 from app.liferecover_runtime import router as liferecover_router
 from app.domains.medical.hospital_os_api import router as hospital_os_router
+from app.domains.medical.hospital_access_api import router as hospital_access_router, owner_router as hospital_access_owner_router
 
 
 app = FastAPI(
@@ -90,6 +91,8 @@ app.include_router(life_auth_router)
 app.include_router(life_owner_router)
 app.include_router(liferecover_router)
 app.include_router(hospital_os_router)
+app.include_router(hospital_access_router)
+app.include_router(hospital_access_owner_router)
 
 logger = logging.getLogger(__name__)
 
