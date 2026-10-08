@@ -45,7 +45,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         "handoff.manage", "report.manage", "preop.manage",
     }),
     "RESIDENT": frozenset({
-        "clinical.read", "clinical.write", "identity.verify", "medication.manage",
+        "clinical.read", "clinical.write", "identity.verify", "medication.manage", "medication.decide",
         "handoff.manage", "report.manage", "preop.manage",
     }),
     "NURSE": frozenset({
