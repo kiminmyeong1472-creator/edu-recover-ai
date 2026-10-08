@@ -28,6 +28,7 @@ owner_router = APIRouter(prefix="/owner/life/medical/hospital-access", tags=["ow
 
 _ROLE_GRANT_KIND = "hospital_os_role_grant"
 _TENANT_MEMBERSHIP_KIND = "hospital_os_tenant_membership"
+_PATIENT_STATUS_KIND = "hospital_os_patient_operational_status"
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -102,16 +103,35 @@ def require_hospital_permission(
         membership = matching[0]
         tenant_id = membership.tenant_id
         membership_departments = membership.department_ids
-        if (
-            department_id is not None
-            and membership_departments
-            and department_id not in membership_departments
+
+    data_subject_id = f"hospital_tenant:{tenant_id}" if tenant_id else account_id
+    resolved_department = department_id
+    if patient_id is not None and resolved_department is None:
+        for item in list_resources(
+            domain="medical",
+            subject_id=data_subject_id,
+            kind=_PATIENT_STATUS_KIND,
         ):
+            payload = item["payload"]
+            if payload.get("patient_id") == patient_id and payload.get("state") == "CURRENT":
+                resolved_department = payload.get("department_id")
+                break
+
+    if membership_departments:
+        if resolved_department is not None and resolved_department not in membership_departments:
             raise HTTPException(
                 status_code=403,
                 detail={
                     "code": "hospital_department_membership_denied",
-                    "department_id": department_id,
+                    "department_id": resolved_department,
+                },
+            )
+        if patient_id is not None and resolved_department is None:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "hospital_department_unresolved",
+                    "patient_id": patient_id,
                 },
             )
 
@@ -123,11 +143,16 @@ def require_hospital_permission(
         matched_grants = [
             grant
             for grant in grants
-            if grant_allows(
+            if not (
+                patient_id is not None
+                and grant.department_scope
+                and resolved_department is None
+            )
+            and grant_allows(
                 grant,
                 permission=permission,
                 patient_id=patient_id,
-                department_id=department_id,
+                department_id=resolved_department,
             )
         ]
         if not matched_grants:
@@ -137,7 +162,7 @@ def require_hospital_permission(
                     "code": "hospital_permission_denied",
                     "permission": permission,
                     "patient_id": patient_id,
-                    "department_id": department_id,
+                    "department_id": resolved_department,
                     "tenant_id": tenant_id,
                 },
             )
@@ -151,17 +176,22 @@ def require_hospital_permission(
         }))
 
     if membership_departments and grant_departments:
+        allowed = set(grant_departments)
         effective_departments = tuple(
             department
             for department in membership_departments
-            if department in set(grant_departments)
+            if department in allowed
         )
+        if not effective_departments:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "hospital_department_scope_empty"},
+            )
     elif membership_departments:
         effective_departments = membership_departments
     else:
         effective_departments = grant_departments
 
-    data_subject_id = f"hospital_tenant:{tenant_id}" if tenant_id else account_id
     return HospitalDataSubject(
         data_subject_id,
         actor_id=account_id,
