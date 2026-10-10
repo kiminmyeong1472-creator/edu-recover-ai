@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import wraps
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -47,8 +48,14 @@ from app.domains.medical.hospital_os import (
 )
 from app.domains.medical.hospital_integration import normalize_integration_message
 from app.platform_core.life_auth import require_life_user
-from app.domains.medical.hospital_access_api import require_hospital_permission
-from app.platform_core.persistent_domain_store import get_resource, list_resources, put_resource
+from app.domains.medical.hospital_access_api import (
+    require_hospital_permission, hospital_resource_visible,
+    hospital_get_resource as get_resource, hospital_list_resources as list_resources,
+)
+from app.platform_core.persistent_domain_store import (
+    put_resource, resource_transaction,
+    get_resource as raw_get_resource, list_resources as raw_list_resources,
+)
 
 
 router = APIRouter(prefix="/life/api/medical/hospital-os", tags=["medical-recover-hospital-os"])
@@ -75,8 +82,72 @@ _EVENT_SUBSCRIPTION_KIND = "hospital_os_event_subscription"
 _EVENT_DELIVERY_KIND = "hospital_os_event_delivery"
 
 
+def _atomic_write(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        with resource_transaction("medical"):
+            result = fn(*args, **kwargs)
+        # A blocked completion records its denial audit, without a clinical mutation.
+        if isinstance(result, HTTPException):
+            raise result
+        return result
+    return wrapped
+
+
+def _persist_event(account_id: str, event):
+    put_resource(domain="medical", subject_id=account_id, kind=_EVENT_KIND,
+                 payload=to_payload(event), resource_id=event.event_id)
+    # Subscriptions are configuration, not patient records. Delivery reads are scoped.
+    for item in raw_list_resources(domain="medical", subject_id=account_id, kind=_EVENT_SUBSCRIPTION_KIND):
+        data = item["payload"]
+        if not data.get("active", True) or event.event_type not in data.get("event_types", []):
+            continue
+        delivery = make_event_delivery(event_id=event.event_id,
+                                       subscription_id=data["subscription_id"], consumer_id=data["consumer_id"])
+        put_resource(domain="medical", subject_id=account_id, kind=_EVENT_DELIVERY_KIND,
+                     payload=to_payload(delivery), resource_id=delivery.delivery_id)
+
+
+def _apply_source_revalidation(account_id, before, after, dependency_state="RESOLVED", reason_code="SOURCE_REVISION_CHANGED"):
+    if before.source_id != after.source_id or after.predecessor_revision_id != before.source_revision_id:
+        raise HTTPException(status_code=409, detail="source_revalidation_lineage_mismatch")
+    # Calculate the full dependency graph before applying the actor's scope, so that
+    # hidden dependencies cannot be silently skipped during a source correction.
+    actions = [_action_from_payload(x["payload"]) for x in raw_list_resources(
+        domain="medical", subject_id=account_id, kind=_ACTION_KIND)]
+    uses = [_use_from_payload(x["payload"]) for x in raw_list_resources(
+        domain="medical", subject_id=account_id, kind=_USE_KIND)]
+    result = selective_revalidation(source_before=before, source_after=after,
+        actions=actions, actual_use_evidence=uses, dependency_state=dependency_state, reason_code=reason_code)
+    affected = set(result.receipt.affected_action_ids) | set(result.receipt.unresolved_scope)
+    old = {a.clinical_action_id: a for a in actions}
+    for action in result.actions:
+        if action.clinical_action_id in affected and not hospital_resource_visible(account_id,
+                {"resource_id": action.clinical_action_id, "payload": to_payload(action)}):
+            raise HTTPException(status_code=403, detail="source_change_exceeds_patient_scope")
+        if old.get(action.clinical_action_id) != action:
+            put_resource(domain="medical", subject_id=account_id, kind=_ACTION_KIND,
+                         payload=to_payload(action), resource_id=action.clinical_action_id)
+    receipt = result.receipt
+    put_resource(domain="medical", subject_id=account_id, kind=_RECEIPT_KIND,
+                 payload=to_payload(receipt), resource_id=receipt.receipt_id)
+    patient_ids = {a.patient_id for a in result.actions if a.clinical_action_id in affected}
+    if not patient_ids:
+        item = raw_get_resource(domain="medical", subject_id=account_id, resource_id=after.source_revision_id)
+        patient_ids = {item["payload"].get("patient_id") if item else None}
+    for patient_id in sorted(patient_ids, key=lambda value: value or ""):
+        _persist_event(account_id, make_hospital_event(event_type="source.revision.changed",
+            patient_id=patient_id, source_revision_id=after.source_revision_id, clinical_action_id=None,
+            payload={"source_before_revision_id": before.source_revision_id,
+                     "receipt_id": receipt.receipt_id,
+                     "affected_action_ids": [a.clinical_action_id for a in result.actions
+                         if a.patient_id == patient_id and a.clinical_action_id in affected]}))
+    return result
+
+
 class SourceRevisionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    patient_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_id: str = Field(min_length=1, max_length=160)
     payload: dict
     source_state: Literal[
@@ -486,13 +557,15 @@ def _age_minutes(timestamp: str | None) -> int | None:
 
 
 def _latest_source_for_id(account_id: str, source_id: str) -> SourceRevision | None:
-    rows = list_resources(
+    rows = raw_list_resources(
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
     )
     for item in rows:
         if item["payload"].get("source_id") == source_id:
+            if not hospital_resource_visible(account_id, item):
+                raise HTTPException(status_code=403, detail="source_patient_scope_denied")
             return _source_from_payload(item["payload"])
     return None
 
@@ -525,6 +598,7 @@ def _link_source_successor(
 ) -> None:
     if predecessor is None:
         return
+    previous_item = raw_get_resource(domain="medical", subject_id=account_id, resource_id=predecessor.source_revision_id)
     linked = replace(
         predecessor,
         successor_revision_id=successor.source_revision_id,
@@ -533,7 +607,7 @@ def _link_source_successor(
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
-        payload=to_payload(linked),
+        payload={**to_payload(linked), "patient_id": previous_item["payload"].get("patient_id")},
         resource_id=linked.source_revision_id,
     )
 
@@ -546,6 +620,14 @@ def _owned_resource(account_id: str, resource_id: str, kind: str) -> dict:
     )
     if not item or item["kind"] != kind:
         raise HTTPException(status_code=404, detail="resource_not_found")
+    return item
+
+
+def _patient_reference(account_id: str, resource_id: str, kind: str, patient_id: str) -> dict:
+    item = _owned_resource(account_id, resource_id, kind)
+    linked_patient = item["payload"].get("patient_id")
+    if linked_patient is not None and linked_patient != patient_id:
+        raise HTTPException(status_code=409, detail="patient_resource_mismatch")
     return item
 
 
@@ -634,13 +716,18 @@ def hospital_os_status(request: Request) -> dict:
 
 
 @router.post("/source-revisions")
+@_atomic_write
 def create_source_revision(payload: SourceRevisionCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "clinical.write")
+    account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id, allow_scoped=bool(payload.patient_id))
     predecessor = _validate_predecessor(
         account_id,
         source_id=payload.source_id,
         predecessor_revision_id=payload.predecessor_revision_id,
     )
+    if predecessor:
+        previous = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
+        if previous["payload"].get("patient_id") != payload.patient_id:
+            raise HTTPException(status_code=409, detail="source_patient_mismatch")
     try:
         revision = make_source_revision(
             source_id=payload.source_id,
@@ -658,14 +745,16 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
-        payload=to_payload(revision),
+        payload={**to_payload(revision), "patient_id": payload.patient_id},
         resource_id=revision.source_revision_id,
     )
     _link_source_successor(account_id, predecessor, revision)
+    if predecessor:
+        _apply_source_revalidation(account_id, predecessor, revision)
     _store_audit(
         account_id=account_id,
         event_type="source_revision.create",
-        patient_id="NO_PATIENT_SCOPE",
+        patient_id=payload.patient_id or "NO_PATIENT_SCOPE",
         clinical_action_id=None,
         source_revision_ids=[revision.source_revision_id],
         result=revision.source_state,
@@ -675,8 +764,11 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
 
 
 @router.post("/clinical-actions")
+@_atomic_write
 def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id)
+    for action_ref in payload.downstream_action_refs:
+        _patient_reference(account_id, action_ref, _ACTION_KIND, payload.patient_id)
     action_id = "act_" + __import__("uuid").uuid4().hex
     action = ClinicalAction(
         clinical_action_id=action_id,
@@ -710,10 +802,11 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
 
 
 @router.post("/actual-use-evidence")
+@_atomic_write
 def create_actual_use(payload: ActualUseCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "clinical.write")
-    _owned_resource(account_id, payload.clinical_action_id, _ACTION_KIND)
-    _owned_resource(account_id, payload.source_revision_id, _SOURCE_KIND)
+    action = _owned_resource(account_id, payload.clinical_action_id, _ACTION_KIND)
+    _patient_reference(account_id, payload.source_revision_id, _SOURCE_KIND, action["payload"]["patient_id"])
 
     evidence = make_actual_use_evidence(
         clinical_action_id=payload.clinical_action_id,
@@ -735,6 +828,7 @@ def create_actual_use(payload: ActualUseCreate, request: Request) -> dict:
 
 
 @router.post("/identity/verify")
+@_atomic_write
 def verify_identity(payload: IdentityCheckRequest, request: Request) -> dict:
     account_id = require_hospital_permission(request, "identity.verify", patient_id=payload.patient_id)
     result = verify_patient_identity(
@@ -770,12 +864,13 @@ def verify_identity(payload: IdentityCheckRequest, request: Request) -> dict:
 
 
 @router.post("/medication-objects")
+@_atomic_write
 def create_medication_object(payload: MedicationObjectCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "medication.manage", patient_id=payload.patient_id)
     action = _owned_resource(account_id, payload.clinical_action_id, _ACTION_KIND)
     if action["payload"].get("patient_id") != payload.patient_id:
         raise HTTPException(status_code=409, detail="patient_action_mismatch")
-    _owned_resource(account_id, payload.prescription_revision_id, _SOURCE_KIND)
+    _patient_reference(account_id, payload.prescription_revision_id, _SOURCE_KIND, payload.patient_id)
     medication = make_medication_execution_object(
         patient_id=payload.patient_id,
         clinical_action_id=payload.clinical_action_id,
@@ -807,6 +902,7 @@ def create_medication_object(payload: MedicationObjectCreate, request: Request) 
 
 
 @router.post("/medication-objects/{medication_object_id}/prescription-change")
+@_atomic_write
 def evaluate_medication_change(
     medication_object_id: str,
     payload: PrescriptionChangeEvaluate,
@@ -853,6 +949,7 @@ def evaluate_medication_change(
 
 
 @router.post("/medications/carried")
+@_atomic_write
 def capture_carried_medication(payload: CarriedMedicationCapture, request: Request) -> dict:
     account_id = require_hospital_permission(
         request, "medication.manage", patient_id=payload.patient_id
@@ -886,6 +983,7 @@ def capture_carried_medication(payload: CarriedMedicationCapture, request: Reque
 
 
 @router.post("/medications/carried/{carried_medication_id}/verify")
+@_atomic_write
 def verify_carried_medication(
     carried_medication_id: str,
     payload: PharmacistVerifyCarried,
@@ -926,6 +1024,7 @@ def verify_carried_medication(
 
 
 @router.post("/medications/carried/{carried_medication_id}/decision")
+@_atomic_write
 def decide_carried_medication(
     carried_medication_id: str,
     payload: PhysicianDecisionCarried,
@@ -981,12 +1080,17 @@ def list_carried_medications(patient_id: str, request: Request) -> dict:
 
 
 @router.post("/integrations/ingest")
+@_atomic_write
 def ingest_integration_record(payload: IntegrationIngest, request: Request) -> dict:
     account_id = require_hospital_permission(
-        request, "clinical.write", patient_id=payload.patient_id
+        request, "clinical.write", patient_id=payload.patient_id, allow_scoped=bool(payload.patient_id)
     )
     source_id = f"{payload.source_system}:{payload.external_object_id}"
     predecessor = _latest_source_for_id(account_id, source_id)
+    if predecessor:
+        prior = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
+        if prior["payload"].get("patient_id") != payload.patient_id:
+            raise HTTPException(status_code=409, detail="source_patient_mismatch")
     try:
         revision = make_source_revision(
             source_id=source_id,
@@ -1005,7 +1109,7 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
-        payload=to_payload(revision),
+        payload={**to_payload(revision), "patient_id": payload.patient_id},
         resource_id=revision.source_revision_id,
     )
     _link_source_successor(account_id, predecessor, revision)
@@ -1026,6 +1130,8 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         payload=to_payload(envelope),
         resource_id=envelope.integration_id,
     )
+    if predecessor:
+        _apply_source_revalidation(account_id, predecessor, revision)
     _store_audit(
         account_id=account_id,
         event_type="integration.ingest",
@@ -1043,12 +1149,13 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
 
 
 @router.post("/integrations/messages")
+@_atomic_write
 def ingest_integration_message(
     payload: IntegrationMessageIngest,
     request: Request,
 ) -> dict:
     account_id = require_hospital_permission(
-        request, "clinical.write", patient_id=payload.patient_id
+        request, "clinical.write", patient_id=payload.patient_id, allow_scoped=bool(payload.patient_id)
     )
     try:
         normalized = normalize_integration_message(
@@ -1060,6 +1167,10 @@ def ingest_integration_message(
 
     source_id = f"{payload.source_system}:{normalized.external_object_id}"
     predecessor = _latest_source_for_id(account_id, source_id)
+    if predecessor:
+        prior = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
+        if prior["payload"].get("patient_id") != payload.patient_id:
+            raise HTTPException(status_code=409, detail="source_patient_mismatch")
     try:
         revision = make_source_revision(
             source_id=source_id,
@@ -1079,7 +1190,7 @@ def ingest_integration_message(
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
-        payload=to_payload(revision),
+        payload={**to_payload(revision), "patient_id": payload.patient_id},
         resource_id=revision.source_revision_id,
     )
     _link_source_successor(account_id, predecessor, revision)
@@ -1101,6 +1212,8 @@ def ingest_integration_message(
         payload=to_payload(envelope),
         resource_id=envelope.integration_id,
     )
+    if predecessor:
+        _apply_source_revalidation(account_id, predecessor, revision)
     _store_audit(
         account_id=account_id,
         event_type="integration.message_ingest",
@@ -1150,46 +1263,16 @@ def list_medication_objects(request: Request) -> dict:
 
 
 @router.post("/revalidation")
+@_atomic_write
 def run_revalidation(payload: RevalidationRun, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "clinical.write")
+    account_id = require_hospital_permission(request, "clinical.write", allow_scoped=False)
     before_item = _owned_resource(account_id, payload.source_before_revision_id, _SOURCE_KIND)
     after_item = _owned_resource(account_id, payload.source_after_revision_id, _SOURCE_KIND)
     before = _source_from_payload(before_item["payload"])
     after = _source_from_payload(after_item["payload"])
 
-    actions = [
-        _action_from_payload(item["payload"])
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
-    ]
-    uses = [
-        _use_from_payload(item["payload"])
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
-    ]
-    result = selective_revalidation(
-        source_before=before,
-        source_after=after,
-        actions=actions,
-        actual_use_evidence=uses,
-        dependency_state=payload.dependency_state,
-        reason_code=payload.reason_code,
-    )
-
-    for action in result.actions:
-        put_resource(
-            domain="medical",
-            subject_id=account_id,
-            kind=_ACTION_KIND,
-            payload=to_payload(action),
-            resource_id=action.clinical_action_id,
-        )
+    result = _apply_source_revalidation(account_id, before, after, payload.dependency_state, payload.reason_code)
     receipt = result.receipt
-    put_resource(
-        domain="medical",
-        subject_id=account_id,
-        kind=_RECEIPT_KIND,
-        payload=to_payload(receipt),
-        resource_id=receipt.receipt_id,
-    )
     return {
         "receipt_id": receipt.receipt_id,
         "affected_action_ids": list(receipt.affected_action_ids),
@@ -1201,6 +1284,7 @@ def run_revalidation(payload: RevalidationRun, request: Request) -> dict:
 
 
 @router.post("/clinical-actions/{clinical_action_id}/complete")
+@_atomic_write
 def complete_clinical_action(
     clinical_action_id: str,
     payload: ClinicalActionComplete,
@@ -1229,7 +1313,7 @@ def complete_clinical_action(
         reason_codes=list(decision.blocked_reasons),
     )
     if not decision.allowed:
-        raise HTTPException(
+        return HTTPException(
             status_code=409,
             detail={
                 "code": "clinical_action_completion_blocked",
@@ -1253,10 +1337,13 @@ def complete_clinical_action(
 
 
 @router.post("/source-changes")
+@_atomic_write
 def process_source_change(payload: SourceChangeCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "clinical.write")
+    account_id = require_hospital_permission(request, "clinical.write", allow_scoped=False)
     before_item = _owned_resource(account_id, payload.source_before_revision_id, _SOURCE_KIND)
     before = _source_from_payload(before_item["payload"])
+    if before.successor_revision_id:
+        raise HTTPException(status_code=409, detail="source_predecessor_already_has_successor")
     try:
         after = make_source_revision(
             source_id=before.source_id,
@@ -1273,42 +1360,12 @@ def process_source_change(payload: SourceChangeCreate, request: Request) -> dict
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
-        payload=to_payload(after),
+        payload={**to_payload(after), "patient_id": before_item["payload"].get("patient_id")},
         resource_id=after.source_revision_id,
     )
     _link_source_successor(account_id, before, after)
-    actions = [
-        _action_from_payload(item["payload"])
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
-    ]
-    uses = [
-        _use_from_payload(item["payload"])
-        for item in list_resources(domain="medical", subject_id=account_id, kind=_USE_KIND)
-    ]
-    result = selective_revalidation(
-        source_before=before,
-        source_after=after,
-        actions=actions,
-        actual_use_evidence=uses,
-        dependency_state=payload.dependency_state,
-        reason_code=payload.reason_code,
-    )
-    for action in result.actions:
-        put_resource(
-            domain="medical",
-            subject_id=account_id,
-            kind=_ACTION_KIND,
-            payload=to_payload(action),
-            resource_id=action.clinical_action_id,
-        )
+    result = _apply_source_revalidation(account_id, before, after, payload.dependency_state, payload.reason_code)
     receipt = result.receipt
-    put_resource(
-        domain="medical",
-        subject_id=account_id,
-        kind=_RECEIPT_KIND,
-        payload=to_payload(receipt),
-        resource_id=receipt.receipt_id,
-    )
     return {
         "source_after_revision_id": after.source_revision_id,
         "receipt_id": receipt.receipt_id,
@@ -1320,6 +1377,7 @@ def process_source_change(payload: SourceChangeCreate, request: Request) -> dict
 
 
 @router.post("/handoff/snapshot")
+@_atomic_write
 def create_handoff_snapshot(payload: HandoffSnapshotCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "handoff.manage", patient_id=payload.patient_id)
     actions = [
@@ -1433,6 +1491,7 @@ def list_audit_events(request: Request) -> dict:
 
 
 @router.post("/reports/snapshot")
+@_atomic_write
 def create_report_snapshot(payload: ReportSnapshotCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "report.manage", patient_id=payload.patient_id)
     actions = [
@@ -1515,8 +1574,13 @@ def report_delta(report_snapshot_id: str, request: Request) -> dict:
 
 
 @router.post("/er/workflows")
+@_atomic_write
 def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "er.manage", patient_id=payload.patient_id)
+    if payload.er_workflow_id:
+        existing = _owned_resource(account_id, payload.er_workflow_id, _ER_WORKFLOW_KIND)
+        if existing["payload"].get("patient_id") != payload.patient_id:
+            raise HTTPException(status_code=409, detail="patient_workflow_mismatch")
     item = make_er_workflow_item(
         patient_id=payload.patient_id,
         workflow_state=payload.workflow_state,
@@ -1582,6 +1646,7 @@ def er_unfinished_loops(
 
 
 @router.post("/census/patients")
+@_atomic_write
 def upsert_patient_operational_status(
     payload: PatientOperationalStatusUpsert,
     request: Request,
@@ -1642,10 +1707,11 @@ def list_patient_operational_status(request: Request) -> dict:
 
 
 @router.post("/preop/exposures")
+@_atomic_write
 def create_preop_exposure(payload: PreopExposureCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "preop.manage", patient_id=payload.patient_id)
     if payload.source_revision_id:
-        _owned_resource(account_id, payload.source_revision_id, _SOURCE_KIND)
+        _patient_reference(account_id, payload.source_revision_id, _SOURCE_KIND, payload.patient_id)
     exposure = make_preop_exposure(
         patient_id=payload.patient_id,
         drug_name=payload.drug_name,
@@ -1816,6 +1882,7 @@ def hospital_today(request: Request) -> dict:
 
 
 @router.post("/claims/readiness")
+@_atomic_write
 def create_claim_readiness(payload: ClaimReadinessCreate, request: Request) -> dict:
     account_id = require_hospital_permission(request, "claims.manage", patient_id=payload.patient_id)
     assessment = assess_claim_readiness(
@@ -1858,8 +1925,9 @@ def list_claim_readiness(request: Request) -> dict:
 
 
 @router.post("/operations")
+@_atomic_write
 def create_hospital_operation(payload: HospitalOperationCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "operations.manage")
+    account_id = require_hospital_permission(request, "operations.manage", allow_scoped=False)
     record = make_hospital_operation_record(
         operation_type=payload.operation_type,
         subject_ref=payload.subject_ref,
@@ -1889,7 +1957,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
 
 @router.get("/operations")
 def list_hospital_operations(request: Request) -> dict:
-    account_id = require_hospital_permission(request, "operations.manage")
+    account_id = require_hospital_permission(request, "operations.manage", allow_scoped=False)
     return {
         "operations": [
             item["payload"]
@@ -1899,12 +1967,15 @@ def list_hospital_operations(request: Request) -> dict:
 
 
 @router.post("/events")
+@_atomic_write
 def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id)
+    account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id, allow_scoped=bool(payload.patient_id))
     if payload.source_revision_id:
-        _owned_resource(account_id, payload.source_revision_id, _SOURCE_KIND)
+        _patient_reference(account_id, payload.source_revision_id, _SOURCE_KIND, payload.patient_id)
     if payload.clinical_action_id:
-        _owned_resource(account_id, payload.clinical_action_id, _ACTION_KIND)
+        action = _owned_resource(account_id, payload.clinical_action_id, _ACTION_KIND)
+        if action["payload"]["patient_id"] != payload.patient_id:
+            raise HTTPException(status_code=409, detail="patient_action_mismatch")
     event = make_hospital_event(
         event_type=payload.event_type,
         patient_id=payload.patient_id,
@@ -1912,36 +1983,7 @@ def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dic
         clinical_action_id=payload.clinical_action_id,
         payload=payload.payload,
     )
-    put_resource(
-        domain="medical",
-        subject_id=account_id,
-        kind=_EVENT_KIND,
-        payload=to_payload(event),
-        resource_id=event.event_id,
-    )
-    subscriptions = [
-        _event_subscription_from_payload(item["payload"])
-        for item in list_resources(
-            domain="medical",
-            subject_id=account_id,
-            kind=_EVENT_SUBSCRIPTION_KIND,
-        )
-        if item["payload"].get("active", True)
-        and event.event_type in item["payload"].get("event_types", [])
-    ]
-    for subscription in subscriptions:
-        delivery = make_event_delivery(
-            event_id=event.event_id,
-            subscription_id=subscription.subscription_id,
-            consumer_id=subscription.consumer_id,
-        )
-        put_resource(
-            domain="medical",
-            subject_id=account_id,
-            kind=_EVENT_DELIVERY_KIND,
-            payload=to_payload(delivery),
-            resource_id=delivery.delivery_id,
-        )
+    _persist_event(account_id, event)
     _store_audit(
         account_id=account_id,
         event_type="hospital_event.create",
@@ -1955,6 +1997,7 @@ def create_hospital_event(payload: HospitalEventCreate, request: Request) -> dic
 
 
 @router.post("/event-subscriptions")
+@_atomic_write
 def create_event_subscription(
     payload: EventSubscriptionCreate,
     request: Request,
@@ -2022,6 +2065,7 @@ def event_outbox(
 
 
 @router.post("/event-outbox/{delivery_id}/ack")
+@_atomic_write
 def acknowledge_event_outbox(
     delivery_id: str,
     request: Request,
@@ -2093,6 +2137,7 @@ def patient_deltas(patient_id: str, request: Request, since: str | None = None) 
 
 
 @router.post("/treatment-memory/episodes")
+@_atomic_write
 def create_treatment_memory_episode(
     payload: TreatmentEpisodeCreate,
     request: Request,
@@ -2101,7 +2146,7 @@ def create_treatment_memory_episode(
         request, "clinical.write", patient_id=payload.patient_id
     )
     for source_ref in payload.source_refs:
-        _owned_resource(account_id, source_ref, _SOURCE_KIND)
+        _patient_reference(account_id, source_ref, _SOURCE_KIND, payload.patient_id)
     episode = make_treatment_episode(
         patient_id=payload.patient_id,
         intervention_type=payload.intervention_type,
@@ -2151,6 +2196,7 @@ def list_treatment_memory(patient_id: str, request: Request) -> dict:
 
 
 @router.post("/treatment-memory/episodes/{episode_id}/context-review")
+@_atomic_write
 def treatment_memory_context_review(
     episode_id: str,
     payload: TreatmentContextReviewRequest,
@@ -2258,3 +2304,4 @@ def list_clinical_actions(request: Request) -> dict:
             for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
         ]
     }
+

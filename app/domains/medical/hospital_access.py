@@ -90,6 +90,7 @@ class HospitalDataSubject(str):
 
     actor_id: str
     tenant_id: str | None
+    patient_scope: frozenset[str] | None
 
     def __new__(
         cls,
@@ -97,10 +98,12 @@ class HospitalDataSubject(str):
         *,
         actor_id: str,
         tenant_id: str | None = None,
+        patient_scope: frozenset[str] | None = None,
     ):
         obj = str.__new__(cls, value)
         obj.actor_id = actor_id
         obj.tenant_id = tenant_id
+        obj.patient_scope = patient_scope
         return obj
 
 
@@ -201,3 +204,4 @@ def grant_from_payload(payload: dict) -> HospitalRoleGrant:
 
 def to_payload(grant: HospitalRoleGrant) -> dict:
     return asdict(grant)
+

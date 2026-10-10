@@ -55,6 +55,7 @@ def test_treatment_memory_flags_review_only_when_context_is_relevant(monkeypatch
         "/life/api/medical/hospital-os/source-revisions",
         json={
             "source_id": "tx-source-9",
+            "patient_id": "patient-9",
             "payload": {"note": "historical treatment record"},
             "source_state": "CURRENT",
             "verification_state": "VERIFIED",
@@ -156,3 +157,4 @@ def test_professor_brief_and_er_stall_tracking_are_structural(monkeypatch, tmp_p
     assert row["stalled"] is True
     assert row["pending_reasons"] == ["imaging interpretation pending"]
     assert row["responsible_role"] == "ER_STAFF"
+

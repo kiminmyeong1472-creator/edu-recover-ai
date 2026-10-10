@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 from app.platform_core.life_auth import require_life_user
-from app.domains.medical.hospital_access_api import require_hospital_permission
+from app.domains.medical.hospital_access_api import require_hospital_permission, hospital_list_resources
 from app.platform_core.persistent_domain_store import (
     get_resource,
     list_resources,
@@ -158,44 +158,44 @@ def hospital_os_page(request: Request):
 
     actions = [
         item["payload"]
-        for item in list_resources(
+        for item in hospital_list_resources(
             domain="medical", subject_id=subject_id, kind="hospital_os_clinical_action"
         )
     ]
     medications = [
         item["payload"]
-        for item in list_resources(
+        for item in hospital_list_resources(
             domain="medical", subject_id=subject_id, kind="hospital_os_medication_object"
         )
     ]
     workflows = [
         item["payload"]
-        for item in list_resources(
+        for item in hospital_list_resources(
             domain="medical", subject_id=subject_id, kind="hospital_os_er_workflow"
         )
     ]
     claims = [
         item["payload"]
-        for item in list_resources(
+        for item in hospital_list_resources(
             domain="medical", subject_id=subject_id, kind="hospital_os_claim_readiness"
         )
     ]
     operations = [
         item["payload"]
-        for item in list_resources(
+        for item in hospital_list_resources(
             domain="medical", subject_id=subject_id, kind="hospital_os_operation_record"
         )
     ]
     patient_statuses = [
         item["payload"]
-        for item in list_resources(
+        for item in hospital_list_resources(
             domain="medical", subject_id=subject_id, kind="hospital_os_patient_operational_status"
         )
         if item["payload"].get("state") == "CURRENT"
     ]
     events = [
         item["payload"]
-        for item in list_resources(
+        for item in hospital_list_resources(
             domain="medical", subject_id=subject_id, kind="hospital_os_event"
         )
     ]
@@ -373,6 +373,8 @@ def me(request: Request) -> dict[str, str]:
 @router.post("/life/api/resources")
 def save_resource(payload: ResourceWrite, request: Request) -> dict[str, str]:
     account_id = require_life_user(request)
+    if payload.kind.strip().lower().startswith("hospital_os_"):
+        raise HTTPException(status_code=403, detail="hospital_resource_requires_dedicated_api")
     resource_id = put_resource(
         domain=payload.domain,
         subject_id=account_id,
@@ -385,14 +387,15 @@ def save_resource(payload: ResourceWrite, request: Request) -> dict[str, str]:
 @router.get("/life/api/resources/{domain}")
 def resources(domain: Literal["life","medical","legal"], request: Request) -> dict:
     account_id = require_life_user(request)
-    return {"resources": list_resources(domain=domain, subject_id=account_id)}
+    return {"resources": [item for item in list_resources(domain=domain, subject_id=account_id)
+                          if not item["kind"].startswith("hospital_os_")]}
 
 
 @router.get("/life/api/resources/{domain}/{resource_id}")
 def resource(domain: Literal["life","medical","legal"], resource_id: str, request: Request) -> dict:
     account_id = require_life_user(request)
     item = get_resource(domain=domain, subject_id=account_id, resource_id=resource_id)
-    if not item:
+    if not item or item["kind"].startswith("hospital_os_"):
         raise HTTPException(status_code=404, detail="resource_not_found")
     return item
 
@@ -400,3 +403,4 @@ def resource(domain: Literal["life","medical","legal"], resource_id: str, reques
 @router.get("/owner/liferecover-storage-status")
 def owner_storage_status(_: None = Depends(require_owner)) -> dict:
     return storage_status()
+
