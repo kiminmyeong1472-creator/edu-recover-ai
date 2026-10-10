@@ -43,7 +43,7 @@ def _bool_env(name: str, default: bool = False) -> bool:
 
 
 def rbac_enforced() -> bool:
-    return _bool_env("EDURECOVER_HOSPITAL_RBAC_ENFORCED", False)
+    return tenant_mode_enforced() or _bool_env("EDURECOVER_HOSPITAL_RBAC_ENFORCED", False)
 
 
 def tenant_mode_enforced() -> bool:
@@ -59,6 +59,7 @@ def _memberships(account_id: str):
             kind=_TENANT_MEMBERSHIP_KIND,
         )
         if item["payload"].get("active", True)
+        and item["payload"].get("account_id") == account_id
     ]
 
 
@@ -70,6 +71,7 @@ def _grants(account_id: str):
             subject_id=account_id,
             kind=_ROLE_GRANT_KIND,
         )
+        if item["payload"].get("account_id") == account_id
     ]
 
 
@@ -79,9 +81,11 @@ def require_hospital_permission(
     *,
     patient_id: str | None = None,
     department_id: str | None = None,
+    allow_scoped: bool = True,
 ) -> HospitalDataSubject:
     account_id = require_life_user(request)
     tenant_id: str | None = None
+    patient_scope = None
     memberships = _memberships(account_id)
 
     if tenant_mode_enforced():
@@ -111,17 +115,16 @@ def require_hospital_permission(
 
     if rbac_enforced():
         grants = _grants(account_id)
-        if tenant_id is not None:
-            grants = [grant for grant in grants if grant.tenant_id == tenant_id]
-        if not any(
+        grants = [grant for grant in grants if grant.tenant_id == tenant_id]
+        allowed_grants = [grant for grant in grants if
             grant_allows(
                 grant,
                 permission=permission,
                 patient_id=patient_id,
                 department_id=department_id,
             )
-            for grant in grants
-        ):
+        ]
+        if not allowed_grants:
             raise HTTPException(
                 status_code=403,
                 detail={
@@ -133,12 +136,46 @@ def require_hospital_permission(
                 },
             )
 
+        if all(grant.patient_scope for grant in allowed_grants):
+            patient_scope = frozenset(p for grant in allowed_grants for p in grant.patient_scope)
+        if not allow_scoped and (patient_scope is not None or all(g.department_scope for g in allowed_grants)):
+            raise HTTPException(status_code=403, detail="hospital_unrestricted_scope_required")
+
     data_subject_id = f"hospital_tenant:{tenant_id}" if tenant_id else account_id
     return HospitalDataSubject(
         data_subject_id,
         actor_id=account_id,
         tenant_id=tenant_id,
+        patient_scope=patient_scope,
     )
+
+
+def hospital_resource_visible(subject_id: str, item: dict, seen: frozenset[str] = frozenset()) -> bool:
+    scope = getattr(subject_id, "patient_scope", None)
+    if scope is None:
+        return True
+    payload = item["payload"]
+    patient_id = payload.get("patient_id")
+    if patient_id:
+        return patient_id in scope
+    # Use evidence and deliveries inherit scope from their canonical referenced record.
+    for field in ("clinical_action_id", "event_id"):
+        ref = payload.get(field)
+        if ref and ref != item["resource_id"] and ref not in seen:
+            parent = get_resource(domain="medical", subject_id=subject_id, resource_id=ref)
+            if parent:
+                return hospital_resource_visible(subject_id, parent, seen | {ref})
+    return False
+
+
+def hospital_list_resources(*, domain, subject_id, kind=None):
+    return [item for item in list_resources(domain=domain, subject_id=subject_id, kind=kind)
+            if hospital_resource_visible(subject_id, item)]
+
+
+def hospital_get_resource(*, domain, subject_id, resource_id):
+    item = get_resource(domain=domain, subject_id=subject_id, resource_id=resource_id)
+    return item if item and hospital_resource_visible(subject_id, item) else None
 
 
 class RoleGrantCreate(BaseModel):
@@ -262,3 +299,4 @@ def my_hospital_access(request: Request) -> dict:
         "memberships": [to_payload(membership) for membership in memberships],
         "grants": [to_payload(grant) for grant in grants],
     }
+

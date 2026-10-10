@@ -7,6 +7,7 @@ import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -18,6 +19,7 @@ from app.services.secret_vault import state_root
 
 
 Domain = Literal["life", "medical", "legal"]
+_active_transactions: ContextVar[dict] = ContextVar("domain_transactions", default={})
 
 
 def _key() -> bytes:
@@ -46,6 +48,10 @@ def _db_path(domain: Domain) -> Path:
 
 @contextmanager
 def _db(domain: Domain):
+    active = _active_transactions.get().get(domain)
+    if active is not None:
+        yield active
+        return
     conn = sqlite3.connect(_db_path(domain))
     conn.row_factory = sqlite3.Row
     try:
@@ -68,6 +74,25 @@ def _db(domain: Domain):
         conn.close()
 
 
+@contextmanager
+def resource_transaction(domain: Domain):
+    """Serialize a domain mutation; nested writes share one commit or rollback."""
+    if domain in _active_transactions.get():
+        yield _active_transactions.get()[domain]
+        return
+    with _db(domain) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        token = _active_transactions.set({**_active_transactions.get(), domain: conn})
+        try:
+            yield conn
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            _active_transactions.reset(token)
+
+
 def _aad(domain: Domain, subject_id: str, resource_id: str, kind: str) -> bytes:
     return f"{domain}|{subject_id}|{resource_id}|{kind}".encode("utf-8")
 
@@ -86,11 +111,13 @@ def put_resource(
     ciphertext = AESGCM(_key()).encrypt(nonce, plaintext, _aad(domain, subject_id, resource_id, kind))
     digest = hashlib.sha256(plaintext).hexdigest()
     now = datetime.now(timezone.utc).isoformat()
-    with _db(domain) as conn:
+    with resource_transaction(domain) as conn:
         existing = conn.execute(
-            "SELECT created_at FROM resource WHERE resource_id = ?",
+            "SELECT created_at, subject_id, kind FROM resource WHERE resource_id = ?",
             (resource_id,),
         ).fetchone()
+        if existing and (existing["subject_id"] != str(subject_id) or existing["kind"] != kind):
+            raise HTTPException(status_code=409, detail="resource_scope_conflict")
         created_at = existing["created_at"] if existing else now
         conn.execute(
             """
@@ -106,7 +133,6 @@ def put_resource(
             """,
             (resource_id, subject_id, kind, nonce, ciphertext, digest, created_at, now),
         )
-        conn.commit()
     return resource_id
 
 
@@ -165,3 +191,4 @@ def storage_status() -> dict[str, Any]:
         "encrypted_payloads": True,
         "algorithm": "AES-256-GCM",
     }
+
