@@ -430,6 +430,13 @@ class TreatmentContextReviewRequest(BaseModel):
     context_relevant: bool
 
 
+def _write_department(account_id: str, requested: str | None) -> str | None:
+    if requested:
+        return requested
+    allowed = tuple(getattr(account_id, "department_ids", ()) or ())
+    return allowed[0] if len(allowed) == 1 else None
+
+
 def _source_from_payload(payload: dict) -> SourceRevision:
     return SourceRevision(
         source_revision_id=payload["source_revision_id"],
@@ -730,9 +737,10 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         request,
         "clinical.write",
         patient_id=payload.patient_id,
-        department_id=payload.department_id,
+        department_id=resolved_department,
         allow_scoped=bool(payload.patient_id or payload.department_id),
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     predecessor = _validate_predecessor(
         account_id,
         source_id=payload.source_id,
@@ -742,7 +750,7 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         previous = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
         if previous["payload"].get("patient_id") != payload.patient_id:
             raise HTTPException(status_code=409, detail="source_patient_mismatch")
-        if previous["payload"].get("department_id") != payload.department_id:
+        if previous["payload"].get("department_id") != resolved_department:
             raise HTTPException(status_code=409, detail="source_department_mismatch")
     try:
         revision = make_source_revision(
@@ -764,7 +772,7 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         payload={
             **to_payload(revision),
             "patient_id": payload.patient_id,
-            "department_id": payload.department_id,
+            "department_id": resolved_department,
         },
         resource_id=revision.source_revision_id,
     )
@@ -790,10 +798,11 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
         request,
         "clinical.write",
         patient_id=payload.patient_id,
-        department_id=payload.department_id,
+        department_id=resolved_department,
     )
     for action_ref in payload.downstream_action_refs:
         _patient_reference(account_id, action_ref, _ACTION_KIND, payload.patient_id)
+    resolved_department = _write_department(account_id, payload.department_id)
     action_id = "act_" + __import__("uuid").uuid4().hex
     action = ClinicalAction(
         clinical_action_id=action_id,
@@ -806,7 +815,7 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
         current_validity=payload.current_validity,
         downstream_action_refs=tuple(payload.downstream_action_refs),
         risk_tier=payload.risk_tier,
-        department_id=payload.department_id,
+        department_id=resolved_department,
     )
     put_resource(
         domain="medical",
@@ -1112,18 +1121,19 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         request,
         "clinical.write",
         patient_id=payload.patient_id,
-        department_id=payload.department_id,
+        department_id=resolved_department,
         allow_scoped=bool(payload.patient_id or payload.department_id),
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     source_id = f"{payload.source_system}:{payload.external_object_id}"
     predecessor = _latest_source_for_id(account_id, source_id)
     if predecessor:
         prior = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
         if prior["payload"].get("patient_id") != payload.patient_id:
             raise HTTPException(status_code=409, detail="source_patient_mismatch")
-        if prior["payload"].get("department_id") != payload.department_id:
+        if prior["payload"].get("department_id") != resolved_department:
             raise HTTPException(status_code=409, detail="source_department_mismatch")
-        if prior["payload"].get("department_id") != payload.department_id:
+        if prior["payload"].get("department_id") != resolved_department:
             raise HTTPException(status_code=409, detail="source_department_mismatch")
     try:
         revision = make_source_revision(
@@ -1146,7 +1156,7 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         payload={
             **to_payload(revision),
             "patient_id": payload.patient_id,
-            "department_id": payload.department_id,
+            "department_id": resolved_department,
         },
         resource_id=revision.source_revision_id,
     )
@@ -1199,6 +1209,7 @@ def ingest_integration_message(
         department_id=payload.department_id,
         allow_scoped=bool(payload.patient_id or payload.department_id),
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     try:
         normalized = normalize_integration_message(
             standard=payload.standard,
@@ -1235,7 +1246,7 @@ def ingest_integration_message(
         payload={
             **to_payload(revision),
             "patient_id": payload.patient_id,
-            "department_id": payload.department_id,
+            "department_id": resolved_department,
         },
         resource_id=revision.source_revision_id,
     )
@@ -1628,6 +1639,7 @@ def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
         patient_id=payload.patient_id,
         department_id=payload.department_id,
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     if payload.er_workflow_id:
         existing = _owned_resource(account_id, payload.er_workflow_id, _ER_WORKFLOW_KIND)
         if existing["payload"].get("patient_id") != payload.patient_id:
@@ -1709,6 +1721,7 @@ def upsert_patient_operational_status(
         patient_id=payload.patient_id,
         department_id=payload.department_id,
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     existing = next(
         (
             item["payload"]
@@ -1988,6 +2001,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
         "operations.manage",
         department_id=payload.department_id,
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     record = make_hospital_operation_record(
         operation_type=payload.operation_type,
         subject_ref=payload.subject_ref,
