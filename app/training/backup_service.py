@@ -32,6 +32,7 @@ from app.training.backup_adapters import (
 from app.training.trade_secret_backup_runner import BackupCycleError, execute_backup_cycle
 from app.training.trade_secret_engine import AssetKind, SecretAsset, classify_secret_asset
 from app.training.backup_inventory import (
+    ACCOUNT_DATABASE,
     MAX_RUNTIME_FILES, MAX_RUNTIME_FILE_BYTES, MAX_RUNTIME_TOTAL_BYTES,
     checked_source_path, credential_source_reason, discover_runtime_assets, merge_runtime_assets,
 )
@@ -302,6 +303,13 @@ def _snapshot(item: RegisteredAsset, source_root: Path, destination: Path) -> st
 
 def _safe_asset(item: RegisteredAsset, digest: str) -> SecretAsset:
     values = item.model_dump(exclude={"source", "sqlite_snapshot", "expected_sha256"})
+    if Path(item.source).as_posix() == ACCOUNT_DATABASE:
+        # Account identifiers and password verifiers are required for recovery.
+        # Even a manually registered source must stay in restricted encrypted
+        # destinations, never the public/general or metadata-only routes.
+        values.update(kind=AssetKind.CONFIGURATION, contains_personal_data=True,
+                      deidentified=False, explicit_public_release=False,
+                      provenance_complete=True)
     return SecretAsset(**values, content_hash=digest, integrity_verified=not item.contains_credentials)
 
 
@@ -345,6 +353,8 @@ def _run_assets(*, manifest: list[RegisteredAsset], source_root: Path, server_ro
                 token = hashlib.sha256(item.asset_id.encode()).hexdigest()
                 success_path = state_dir / ("success-" + token + ".json")
                 try:
+                    if Path(item.source).as_posix() == ACCOUNT_DATABASE and item.contains_credentials:
+                        raise BackupStorageError("ACCOUNT_DATABASE_CONTENT_BACKUP_REQUIRED")
                     # A credential asset is NEVER opened, hashed or copied. Preserve only metadata.
                     digest = "credential-source-omitted" if item.contains_credentials else _snapshot(item, source_root, work / token)
                     if not item.contains_credentials:

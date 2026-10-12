@@ -13,8 +13,9 @@ from app.training.backup_adapters import (
     BackupStorageError, DriveBackupAdapter, EncryptedPayloads, ServerBackupAdapter,
 )
 from app.training.backup_service import (
-    RegisteredAsset, _run_assets, get_backup_service_status, run_configured_backup_once,
+    RegisteredAsset, _run_assets, _safe_asset, get_backup_service_status, run_configured_backup_once,
 )
+from app.training.backup_inventory import ACCOUNT_DATABASE, discover_runtime_assets
 from app.training.trade_secret_backup_runner import BackupCycleError, execute_backup_cycle
 from app.training.trade_secret_engine import AssetKind, BackupTarget, SecretAsset, classify_secret_asset
 
@@ -107,6 +108,123 @@ def test_server_and_drive_ciphertext_identical_and_restore_verified(storage):
     result = decrypt_file(stored, root / "restored.txt")
     assert result["decrypted_sha256"] == item.content_hash
     assert (root / "restored.txt").read_bytes() == source.read_bytes()
+
+
+@pytest.mark.parametrize("owner_password", [False, True])
+def test_account_backup_restores_login_and_original_resource_ownership(storage, monkeypatch, owner_password):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.platform_core.life_auth import router as auth_router
+    from app.liferecover_runtime import router as runtime_router
+
+    root = storage[0]
+    source_root = root / "source"
+    monkeypatch.setenv("EDURECOVER_CLASSROOM_STATE_DIR", str(source_root))
+    monkeypatch.setenv("LIFERECOVER_SESSION_SECRET", "synthetic-session-secret-" * 3)
+    monkeypatch.setenv("LIFERECOVER_REGISTRATION_INVITE", "synthetic-invite")
+    monkeypatch.setenv("LIFERECOVER_DATA_KEY", "22" * 32)
+    if owner_password:
+        monkeypatch.setenv("EDURECOVER_BACKUP_OWNER_PASSPHRASE", "synthetic recovery password")
+    app = FastAPI()
+    app.include_router(auth_router)
+    app.include_router(runtime_router)
+    account_ids, resource_ids = {}, {}
+    for name in ("original-user", "other-user"):
+        with TestClient(app, base_url="https://testserver") as client:
+            registered = client.post("/life/auth/register", json={
+                "username": name, "password": "synthetic-long-password", "invite_code": "synthetic-invite"})
+            assert registered.status_code == 200
+            account_ids[name] = registered.json()["account_id"]
+            saved = client.post("/life/api/resources", json={
+                "domain": "life", "kind": "note", "payload": {"owner_marker": name}})
+            assert saved.status_code == 200
+            resource_ids[name] = saved.json()["resource_id"]
+
+    inventory = discover_runtime_assets(source_root)
+    assert inventory.summary()["account_database_discovered"]
+    assert not inventory.issues
+    restored_root = root / "restored"
+    (restored_root / "liferecover").mkdir(mode=0o700, parents=True)
+    for entry in inventory.assets:
+        http = FakeDrive()
+        def factory(*, payloads):
+            return DriveBackupAdapter(session=http, folders={
+                BackupTarget.DRIVE_RESTRICTED_PERSONAL: "folder"}, payloads=payloads)
+        result = _run_assets(manifest=[RegisteredAsset.model_validate(entry)],
+                             source_root=source_root, server_root=root / "server",
+                             state_dir=root / "state", now=datetime.now(timezone.utc),
+                             drive_factory=factory)
+        assert result["status"] == "verified", result
+        writes = result["assets"][0]["writes"]
+        assert {w["target"] for w in writes} == {
+            "SERVER_RESTRICTED_PERSONAL", "DRIVE_RESTRICTED_PERSONAL"}
+        assert all(w["encrypted"] and w["restore_verified"] and not w["metadata_only"] for w in writes)
+        ciphertext = Path(writes[0]["storage_ref"])
+        assert ciphertext.read_bytes() == http.uploaded
+        assert b"original-user" not in http.uploaded
+        assert b"SQLite format 3" not in http.uploaded
+        decrypt_file(ciphertext, restored_root / entry["source"])
+
+    # New sessions are issued after restoration; no deployment key is copied.
+    monkeypatch.setenv("EDURECOVER_CLASSROOM_STATE_DIR", str(restored_root))
+    monkeypatch.setenv("LIFERECOVER_SESSION_SECRET", "rotated-synthetic-secret-" * 3)
+    with TestClient(app, base_url="https://testserver") as client:
+        login = client.post("/life/auth/login", json={
+            "username": "original-user", "password": "synthetic-long-password"})
+        assert login.status_code == 200
+        assert login.json()["account_id"] == account_ids["original-user"]
+        own = client.get("/life/api/resources/life/" + resource_ids["original-user"])
+        assert own.status_code == 200
+        assert own.json()["payload"]["owner_marker"] == "original-user"
+        assert client.get("/life/api/resources/life/" + resource_ids["other-user"]).status_code == 404
+        assert client.post("/life/auth/login", json={
+            "username": "original-user", "password": "wrong-password"}).status_code == 401
+
+
+def test_manual_account_entry_cannot_select_public_or_general_backup():
+    asset = _safe_asset(RegisteredAsset(asset_id="account", source=ACCOUNT_DATABASE, kind="OTHER",
+                                       explicit_public_release=True, deidentified=True), "a" * 64)
+    decision = classify_secret_asset(asset)
+    assert decision.raw_content_backup_allowed
+    assert not decision.external_provider_delivery_allowed
+    assert set(decision.backup_targets) == {
+        BackupTarget.SERVER_RESTRICTED_PERSONAL, BackupTarget.DRIVE_RESTRICTED_PERSONAL}
+
+
+def test_metadata_only_account_entry_is_failure_not_success(storage):
+    root = storage[0]
+    http = FakeDrive()
+    def factory(*, payloads):
+        return DriveBackupAdapter(session=http, folders={BackupTarget.DRIVE_QUARANTINE: "folder"}, payloads=payloads)
+    result = _run_assets(manifest=[RegisteredAsset(asset_id="account", source=ACCOUNT_DATABASE,
+                                                  kind="CONFIGURATION", contains_credentials=True)],
+                         source_root=root / "source", server_root=root / "server", state_dir=root / "state",
+                         now=datetime.now(timezone.utc), drive_factory=factory)
+    assert result["status"] == "failed" and result["verified_assets"] == 0
+    assert result["assets"][0]["failure_code"] == "ACCOUNT_DATABASE_CONTENT_BACKUP_REQUIRED"
+    assert not http.calls
+    assert not list((root / "server").rglob("*.edurbk"))
+
+
+def test_account_backup_without_encryption_key_never_uploads(storage, monkeypatch):
+    root = storage[0]
+    path = root / "source" / ACCOUNT_DATABASE
+    path.parent.mkdir(mode=0o700)
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE account (account_id TEXT)")
+        db.execute("INSERT INTO account VALUES ('synthetic-account')")
+    monkeypatch.delenv("EDURECOVER_BACKUP_MASTER_KEY")
+    http = FakeDrive()
+    def factory(*, payloads):
+        return DriveBackupAdapter(session=http, folders={
+            BackupTarget.DRIVE_RESTRICTED_PERSONAL: "folder"}, payloads=payloads)
+    result = _run_assets(manifest=[RegisteredAsset(asset_id="account", source=ACCOUNT_DATABASE,
+                                                  kind="CONFIGURATION")],
+                         source_root=root / "source", server_root=root / "server", state_dir=root / "state",
+                         now=datetime.now(timezone.utc), drive_factory=factory)
+    assert result["status"] == "failed" and result["verified_assets"] == 0
+    assert not any(method in {"POST", "PUT"} for method, _ in http.calls)
+    assert not list((root / "server").rglob("*.edurbk"))
 
 
 @pytest.mark.parametrize("flag", ["public", "my_drive"])
