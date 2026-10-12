@@ -1,9 +1,9 @@
 """Bounded inventory of app-owned runtime data, refreshed for each backup run.
 
 This is an allowlist, not a recursive scan of a volume. Discovery never changes
-the owner's manifest or enables backups. New raw credential containers and OAuth
-tokens stay outside this scope; the existing encrypted classroom DB policy is
-preserved, including its authentication-related data.
+the owner's manifest or enables backups. The application's account database is
+included as restricted personal data for encrypted recovery. Raw deployment
+credentials and OAuth tokens stay outside this scope.
 """
 from __future__ import annotations
 
@@ -22,9 +22,12 @@ MAX_SCAN_ENTRIES = 8192
 MAX_RUNTIME_FILE_BYTES = 256 * 1024 * 1024
 MAX_RUNTIME_TOTAL_BYTES = 512 * 1024 * 1024
 
+ACCOUNT_DATABASE = "liferecover/accounts.sqlite3"
+
 # These are the paths actually written by the runtime at the reviewed revision.
 RUNTIME_DATABASES = (
     "classroom_tutor.sqlite3", "ai_tutor_training.sqlite3", "secret_vault.sqlite3",
+    ACCOUNT_DATABASE,
     "liferecover/life.sqlite3", "liferecover/medical.sqlite3", "liferecover/legal.sqlite3",
 )
 _METADATA_NAME = re.compile(r"[0-9a-f]{64}\.json\Z")
@@ -38,7 +41,9 @@ def _private_document_name(name: str) -> bool:
 
 
 def credential_source_reason(relative: Path) -> str | None:
-    """Reject credential containers even if accidentally registered as uploads."""
+    """Permit only the canonical application account DB, not arbitrary credentials."""
+    if relative.as_posix() == ACCOUNT_DATABASE:
+        return None
     parts = [part.lower() for part in relative.parts]
     name = relative.name.lower()
     if any(part in {"oauth_private", ".aws", ".ssh", ".git"} for part in parts):
@@ -108,7 +113,9 @@ class RuntimeInventory:
             "absent_databases": self.absent_databases, "issues": self.issues,
             "oauth_tokens_environment_and_encryption_keys": "excluded",
             "classroom_database": "existing_encrypted_policy_may_include_authentication_data",
-            "account_database": "excluded_separate_recovery_policy_required",
+            "account_database": "included_in_encrypted_backup_scope",
+            "account_database_discovered": any(
+                item["source"] == ACCOUNT_DATABASE for item in self.assets),
             "snapshot_consistency": "per_asset_not_atomic_across_service",
             "full_service_restore_verified": False,
         }
@@ -157,7 +164,9 @@ def discover_runtime_assets(source_root: Path, *, max_files: int = MAX_RUNTIME_F
                 return False
             result.assets.append({
                 "asset_id": "runtime-" + hashlib.sha256(relative.encode()).hexdigest(),
-                "source": relative, "kind": "TRAINING_RECORD" if database else "UPLOAD",
+                "source": relative,
+                "kind": ("CONFIGURATION" if relative == ACCOUNT_DATABASE
+                         else "TRAINING_RECORD" if database else "UPLOAD"),
                 # No public provenance or deidentification is assumed for uploads.
                 "contains_personal_data": True, "owner_marked_trade_secret": True,
                 "provenance_complete": True, "sqlite_snapshot": database,

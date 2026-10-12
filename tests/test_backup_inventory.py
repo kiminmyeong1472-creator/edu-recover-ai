@@ -43,7 +43,7 @@ class BackupInventoryTests(unittest.TestCase):
                  "classroom_media/" + "a" * 32 + ".mp4"}
         for relative in files:
             self.write(relative)
-        for relative in ("oauth_private/drive_oauth.edurbk", "liferecover/accounts.sqlite3",
+        for relative in ("oauth_private/drive_oauth.edurbk", "unapproved/accounts.sqlite3",
                          ".env", "backups/nested.docx", "backup_state/latest.json",
                          "private_documents/documents/.import.abc.tmp",
                          "classroom_media/" + "b" * 32 + ".tmp"):
@@ -55,7 +55,8 @@ class BackupInventoryTests(unittest.TestCase):
         self.assertTrue(all(item["sqlite_snapshot"] for item in inventory.assets
                             if item["source"] in expected))
         self.assertEqual(inventory.summary()["account_database"],
-                         "excluded_separate_recovery_policy_required")
+                         "included_in_encrypted_backup_scope")
+        self.assertTrue(inventory.summary()["account_database_discovered"])
         self.assertFalse(inventory.summary()["full_service_restore_verified"])
 
     def test_traversal_symlink_parent_and_symlink_file_are_rejected(self):
@@ -132,7 +133,8 @@ class BackupInventoryTests(unittest.TestCase):
         self.assertEqual(destination.stat().st_mode & 0o077, 0)
 
     def test_explicit_credential_paths_are_rejected_before_opening(self):
-        for source in ("oauth_private/drive_oauth.edurbk", "liferecover/accounts.sqlite3",
+        for source in ("oauth_private/drive_oauth.edurbk", "unapproved/accounts.sqlite3",
+                       "liferecover/accounts.sqlite3-wal", "liferecover/accounts.sqlite3-shm",
                        ".env", "service_account.json", "private.key", "token.json"):
             asset = RegisteredAsset(asset_id="sensitive", source=source, kind="UPLOAD")
             with self.subTest(source=source), self.assertRaises(BackupStorageError) as failure:
