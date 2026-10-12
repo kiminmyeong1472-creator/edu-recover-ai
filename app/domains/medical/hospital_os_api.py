@@ -49,7 +49,7 @@ from app.domains.medical.hospital_os import (
 from app.domains.medical.hospital_integration import normalize_integration_message
 from app.platform_core.life_auth import require_life_user
 from app.domains.medical.hospital_access_api import (
-    require_hospital_permission, hospital_resource_visible,
+    require_hospital_permission, hospital_resource_visible, hospital_actor_roles,
     hospital_get_resource as get_resource, hospital_list_resources as list_resources,
 )
 from app.platform_core.persistent_domain_store import (
@@ -2164,6 +2164,119 @@ def acknowledge_event_outbox(
         reason_codes=[updated.consumer_id, updated.event_id],
     )
     return to_payload(updated)
+
+
+@router.get("/my-work")
+def my_work(request: Request) -> dict:
+    account_id = require_hospital_permission(request, "clinical.read")
+    roles = set(hospital_actor_roles(account_id))
+    live_states = {"INCOMPLETE", "CURRENT", "HOLD", "STALE", "REVALIDATION_REQUIRED"}
+    actions = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND)
+        if item["payload"].get("action_state") in live_states
+        and item["payload"].get("responsible_role") in roles
+    ]
+    workflows = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_ER_WORKFLOW_KIND)
+        if item["payload"].get("responsible_role") in roles
+        and (
+            item["payload"].get("workflow_state") not in {"ADMISSION", "TRANSFER", "DISCHARGE"}
+            or item["payload"].get("pending_items")
+        )
+    ]
+    operations = [
+        item["payload"]
+        for item in list_resources(domain="medical", subject_id=account_id, kind=_OPERATION_KIND)
+        if item["payload"].get("state") != "DONE"
+        and item["payload"].get("owner_role") in roles
+    ]
+    return {
+        "roles": sorted(roles),
+        "clinical_actions": actions,
+        "er_workflows": workflows,
+        "operations": operations,
+        "total_items": len(actions) + len(workflows) + len(operations),
+    }
+
+
+@router.get("/safety-alerts")
+def safety_alerts(request: Request) -> dict:
+    account_id = require_hospital_permission(request, "clinical.read")
+    alerts = []
+    for item in list_resources(domain="medical", subject_id=account_id, kind=_ACTION_KIND):
+        payload = item["payload"]
+        state = payload.get("action_state")
+        if state in {"HOLD", "STALE", "REVALIDATION_REQUIRED"}:
+            alerts.append({
+                "kind": "clinical_action",
+                "severity": "HIGH" if state == "HOLD" else "MEDIUM",
+                "patient_id": payload.get("patient_id"),
+                "resource_id": payload.get("clinical_action_id"),
+                "reason": state,
+            })
+    for item in list_resources(domain="medical", subject_id=account_id, kind=_MEDICATION_KIND):
+        payload = item["payload"]
+        state = payload.get("safety_state")
+        if state in {"HOLD", "REVALIDATION_REQUIRED"}:
+            alerts.append({
+                "kind": "medication",
+                "severity": "HIGH",
+                "patient_id": payload.get("patient_id"),
+                "resource_id": payload.get("medication_object_id"),
+                "reason": state,
+            })
+    for item in list_resources(domain="medical", subject_id=account_id, kind=_IDENTITY_KIND):
+        payload = item["payload"]
+        state = payload.get("status")
+        if state in {"MISMATCH", "UNRESOLVED"}:
+            alerts.append({
+                "kind": "identity",
+                "severity": "HIGH" if state == "MISMATCH" else "MEDIUM",
+                "patient_id": payload.get("patient_id"),
+                "resource_id": item["resource_id"],
+                "reason": state,
+            })
+    for item in list_resources(domain="medical", subject_id=account_id, kind=_PREOP_KIND):
+        payload = item["payload"]
+        if payload.get("missing_fields") or payload.get("verification_state") != "VERIFIED":
+            alerts.append({
+                "kind": "preop",
+                "severity": "MEDIUM",
+                "patient_id": payload.get("patient_id"),
+                "resource_id": payload.get("exposure_id"),
+                "reason": "MISSING_OR_UNVERIFIED",
+                "missing_fields": payload.get("missing_fields", []),
+            })
+    return {"alerts": alerts, "total": len(alerts)}
+
+
+@router.get("/source-revisions/{source_revision_id}/diff")
+def source_revision_diff(source_revision_id: str, request: Request) -> dict:
+    account_id = require_hospital_permission(request, "clinical.read")
+    after_item = _owned_resource(account_id, source_revision_id, _SOURCE_KIND)
+    after = after_item["payload"]
+    predecessor_id = after.get("predecessor_revision_id")
+    before = None
+    if predecessor_id:
+        before = _owned_resource(account_id, predecessor_id, _SOURCE_KIND)["payload"]
+    return {
+        "source_revision_id": source_revision_id,
+        "predecessor_revision_id": predecessor_id,
+        "source_id": after.get("source_id"),
+        "patient_id": after.get("patient_id"),
+        "department_id": after.get("department_id"),
+        "changed_fields": after.get("changed_fields", []),
+        "content_changed": bool(before and before.get("content_hash") != after.get("content_hash")),
+        "source_state_before": before.get("source_state") if before else None,
+        "source_state_after": after.get("source_state"),
+        "verification_state_before": before.get("verification_state") if before else None,
+        "verification_state_after": after.get("verification_state"),
+        "recorded_time_before": before.get("recorded_time") if before else None,
+        "recorded_time_after": after.get("recorded_time"),
+        "note": "Source payload values are not stored in SourceRevision; this endpoint returns lineage and change metadata only.",
+    }
 
 
 @router.get("/patients/{patient_id}/timeline")

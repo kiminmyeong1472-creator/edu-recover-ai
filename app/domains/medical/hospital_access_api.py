@@ -307,6 +307,21 @@ def hospital_resource_visible(
     return patient_scope is None and not department_scope
 
 
+def hospital_actor_roles(subject_id: str) -> tuple[str, ...]:
+    actor_id = getattr(subject_id, "actor_id", str(subject_id))
+    tenant_id = getattr(subject_id, "tenant_id", None)
+    roles = []
+    for grant in _grants(actor_id):
+        if grant.revoked:
+            continue
+        if grant.tenant_id != tenant_id:
+            continue
+        for role in grant.roles:
+            if role not in roles:
+                roles.append(role)
+    return tuple(roles)
+
+
 def hospital_list_resources(*, domain, subject_id, kind=None):
     return [item for item in list_resources(domain=domain, subject_id=subject_id, kind=kind)
             if hospital_resource_visible(subject_id, item)]
