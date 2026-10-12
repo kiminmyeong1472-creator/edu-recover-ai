@@ -1121,7 +1121,7 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         request,
         "clinical.write",
         patient_id=payload.patient_id,
-        department_id=resolved_department,
+        department_id=payload.department_id,
         allow_scoped=bool(payload.patient_id or payload.department_id),
     )
     resolved_department = _write_department(account_id, payload.department_id)
