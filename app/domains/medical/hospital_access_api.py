@@ -258,21 +258,24 @@ def hospital_resource_visible(
     if patient_scope is not None and patient_id and patient_id not in patient_scope:
         return False
 
-    if department_scope:
-        department_id = payload.get("department_id")
-        if not department_id and patient_id:
-            department_id = _patient_department(subject_id, patient_id)
-        if department_id:
-            return department_id in department_scope
-        if patient_id:
-            return False
+    department_id = payload.get("department_id")
+    if department_scope and not department_id and patient_id:
+        department_id = _patient_department(subject_id, patient_id)
+    if department_scope and department_id:
+        return department_id in department_scope
 
     if patient_scope is None and not department_scope:
         return True
-    if patient_id:
+    if patient_id and patient_scope is not None and not department_scope:
         return True
 
-    for field in ("clinical_action_id", "event_id"):
+    # Derived resources inherit scope from the canonical resource they reference.
+    for field in (
+        "clinical_action_id",
+        "event_id",
+        "source_revision_id",
+        "prescription_revision_id",
+    ):
         ref = payload.get(field)
         if ref and ref != item["resource_id"] and ref not in seen:
             parent = get_resource(
@@ -280,9 +283,13 @@ def hospital_resource_visible(
                 subject_id=subject_id,
                 resource_id=ref,
             )
-            if parent:
-                return hospital_resource_visible(subject_id, parent, seen | {ref})
+            if parent and hospital_resource_visible(subject_id, parent, seen | {ref}):
+                return True
 
+    # A patient-bound record with unresolved department is hidden from
+    # department-scoped actors rather than treated as globally visible.
+    if patient_id and department_scope:
+        return False
     return patient_scope is None and not department_scope
 
 
