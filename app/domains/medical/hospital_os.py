@@ -62,6 +62,7 @@ class ClinicalAction:
     current_validity: str = "CURRENT"
     downstream_action_refs: tuple[str, ...] = ()
     risk_tier: RiskTier = "MEDIUM"
+    department_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -590,6 +591,7 @@ class ERWorkflowItem:
     pending_items: tuple[str, ...]
     responsible_role: str
     updated_at: str
+    department_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -645,6 +647,7 @@ def make_er_workflow_item(
     pending_items: list[str],
     responsible_role: str,
     er_workflow_id: str | None = None,
+    department_id: str | None = None,
 ) -> ERWorkflowItem:
     return ERWorkflowItem(
         er_workflow_id=er_workflow_id or f"er_{uuid.uuid4().hex}",
@@ -653,6 +656,7 @@ def make_er_workflow_item(
         pending_items=tuple(item for item in pending_items if item),
         responsible_role=responsible_role,
         updated_at=utcnow(),
+        department_id=department_id,
     )
 
 
@@ -735,6 +739,7 @@ class PatientOperationalStatus:
     surgery_planned: bool
     state: PatientOperationalState
     updated_at: str
+    department_id: str | None = None
 
 
 def make_patient_operational_status(
@@ -747,6 +752,7 @@ def make_patient_operational_status(
     surgery_planned: bool,
     state: PatientOperationalState,
     patient_status_id: str | None = None,
+    department_id: str | None = None,
 ) -> PatientOperationalStatus:
     return PatientOperationalStatus(
         patient_status_id=patient_status_id or f"pstat_{uuid.uuid4().hex}",
@@ -758,6 +764,7 @@ def make_patient_operational_status(
         surgery_planned=surgery_planned,
         state=state,
         updated_at=utcnow(),
+        department_id=department_id,
     )
 
 
@@ -787,6 +794,7 @@ class HospitalOperationRecord:
     details: dict[str, str]
     created_at: str
     updated_at: str
+    department_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -846,6 +854,7 @@ def make_hospital_operation_record(
     due_at: str | None,
     details: dict[str, str],
     operation_record_id: str | None = None,
+    department_id: str | None = None,
 ) -> HospitalOperationRecord:
     now = utcnow()
     return HospitalOperationRecord(
@@ -858,6 +867,7 @@ def make_hospital_operation_record(
         details=dict(details),
         created_at=now,
         updated_at=now,
+        department_id=department_id,
     )
 
 

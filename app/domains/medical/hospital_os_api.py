@@ -148,6 +148,7 @@ def _apply_source_revalidation(account_id, before, after, dependency_state="RESO
 class SourceRevisionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str | None = Field(default=None, min_length=1, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     source_id: str = Field(min_length=1, max_length=160)
     payload: dict
     source_state: Literal[
@@ -163,6 +164,7 @@ class SourceRevisionCreate(BaseModel):
 class ClinicalActionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     action_type: str = Field(min_length=1, max_length=120)
     responsible_role: str = Field(min_length=1, max_length=80)
     action_state: Literal[
@@ -254,6 +256,7 @@ class ReportSnapshotCreate(BaseModel):
 class ERWorkflowCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     workflow_state: Literal[
         "ARRIVED", "TRIAGED", "SEEN", "TESTING", "RESULTED",
         "CONSULTING", "DECISION", "ADMISSION", "TRANSFER", "DISCHARGE"
@@ -293,6 +296,7 @@ class ClaimReadinessCreate(BaseModel):
 
 class HospitalOperationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    department_id: str | None = Field(default=None, max_length=160)
     operation_type: Literal[
         "STAFF_GAP", "INVENTORY_SHORTAGE", "EQUIPMENT_CHECK",
         "FACILITY_CHECK", "CONTRACT", "LICENSE", "TRAINING", "PURCHASE_ORDER",
@@ -310,6 +314,7 @@ class HospitalOperationCreate(BaseModel):
 class PatientOperationalStatusUpsert(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_id: str = Field(min_length=1, max_length=160)
+    department_id: str | None = Field(default=None, max_length=160)
     care_setting: Literal["OUTPATIENT", "INPATIENT", "ER"]
     location: str | None = Field(default=None, max_length=160)
     attending_team: str | None = Field(default=None, max_length=160)
@@ -369,6 +374,7 @@ class PhysicianDecisionCarried(BaseModel):
 
 class IntegrationIngest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    department_id: str | None = Field(default=None, max_length=160)
     adapter_type: Literal["EMR", "MEDICATION", "LAB_IMAGING", "IDENTITY", "PUBLIC_DATA"]
     standard: Literal["FHIR_R4", "HL7_V2", "VENDOR_JSON"]
     source_system: str = Field(min_length=1, max_length=160)
@@ -386,6 +392,7 @@ class IntegrationIngest(BaseModel):
 
 class IntegrationMessageIngest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    department_id: str | None = Field(default=None, max_length=160)
     adapter_type: Literal["EMR", "MEDICATION", "LAB_IMAGING", "IDENTITY", "PUBLIC_DATA"]
     standard: Literal["FHIR_R4", "HL7_V2", "VENDOR_JSON"]
     source_system: str = Field(min_length=1, max_length=160)
@@ -423,6 +430,13 @@ class TreatmentContextReviewRequest(BaseModel):
     context_relevant: bool
 
 
+def _write_department(account_id: str, requested: str | None) -> str | None:
+    if requested:
+        return requested
+    allowed = tuple(getattr(account_id, "department_ids", ()) or ())
+    return allowed[0] if len(allowed) == 1 else None
+
+
 def _source_from_payload(payload: dict) -> SourceRevision:
     return SourceRevision(
         source_revision_id=payload["source_revision_id"],
@@ -451,6 +465,7 @@ def _action_from_payload(payload: dict) -> ClinicalAction:
         current_validity=payload.get("current_validity", "CURRENT"),
         downstream_action_refs=tuple(payload.get("downstream_action_refs", [])),
         risk_tier=payload.get("risk_tier", "MEDIUM"),
+        department_id=payload.get("department_id"),
     )
 
 
@@ -718,7 +733,14 @@ def hospital_os_status(request: Request) -> dict:
 @router.post("/source-revisions")
 @_atomic_write
 def create_source_revision(payload: SourceRevisionCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id, allow_scoped=bool(payload.patient_id))
+    account_id = require_hospital_permission(
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
+        allow_scoped=bool(payload.patient_id or payload.department_id),
+    )
+    resolved_department = _write_department(account_id, payload.department_id)
     predecessor = _validate_predecessor(
         account_id,
         source_id=payload.source_id,
@@ -728,6 +750,8 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         previous = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
         if previous["payload"].get("patient_id") != payload.patient_id:
             raise HTTPException(status_code=409, detail="source_patient_mismatch")
+        if previous["payload"].get("department_id") != resolved_department:
+            raise HTTPException(status_code=409, detail="source_department_mismatch")
     try:
         revision = make_source_revision(
             source_id=payload.source_id,
@@ -745,7 +769,11 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
-        payload={**to_payload(revision), "patient_id": payload.patient_id},
+        payload={
+            **to_payload(revision),
+            "patient_id": payload.patient_id,
+            "department_id": resolved_department,
+        },
         resource_id=revision.source_revision_id,
     )
     _link_source_successor(account_id, predecessor, revision)
@@ -766,9 +794,15 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
 @router.post("/clinical-actions")
 @_atomic_write
 def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "clinical.write", patient_id=payload.patient_id)
+    account_id = require_hospital_permission(
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
+    )
     for action_ref in payload.downstream_action_refs:
         _patient_reference(account_id, action_ref, _ACTION_KIND, payload.patient_id)
+    resolved_department = _write_department(account_id, payload.department_id)
     action_id = "act_" + __import__("uuid").uuid4().hex
     action = ClinicalAction(
         clinical_action_id=action_id,
@@ -781,6 +815,7 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
         current_validity=payload.current_validity,
         downstream_action_refs=tuple(payload.downstream_action_refs),
         risk_tier=payload.risk_tier,
+        department_id=resolved_department,
     )
     put_resource(
         domain="medical",
@@ -1083,14 +1118,21 @@ def list_carried_medications(patient_id: str, request: Request) -> dict:
 @_atomic_write
 def ingest_integration_record(payload: IntegrationIngest, request: Request) -> dict:
     account_id = require_hospital_permission(
-        request, "clinical.write", patient_id=payload.patient_id, allow_scoped=bool(payload.patient_id)
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
+        allow_scoped=bool(payload.patient_id or payload.department_id),
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     source_id = f"{payload.source_system}:{payload.external_object_id}"
     predecessor = _latest_source_for_id(account_id, source_id)
     if predecessor:
         prior = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
         if prior["payload"].get("patient_id") != payload.patient_id:
             raise HTTPException(status_code=409, detail="source_patient_mismatch")
+        if prior["payload"].get("department_id") != resolved_department:
+            raise HTTPException(status_code=409, detail="source_department_mismatch")
     try:
         revision = make_source_revision(
             source_id=source_id,
@@ -1109,7 +1151,11 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
-        payload={**to_payload(revision), "patient_id": payload.patient_id},
+        payload={
+            **to_payload(revision),
+            "patient_id": payload.patient_id,
+            "department_id": resolved_department,
+        },
         resource_id=revision.source_revision_id,
     )
     _link_source_successor(account_id, predecessor, revision)
@@ -1155,8 +1201,13 @@ def ingest_integration_message(
     request: Request,
 ) -> dict:
     account_id = require_hospital_permission(
-        request, "clinical.write", patient_id=payload.patient_id, allow_scoped=bool(payload.patient_id)
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
+        allow_scoped=bool(payload.patient_id or payload.department_id),
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     try:
         normalized = normalize_integration_message(
             standard=payload.standard,
@@ -1190,7 +1241,11 @@ def ingest_integration_message(
         domain="medical",
         subject_id=account_id,
         kind=_SOURCE_KIND,
-        payload={**to_payload(revision), "patient_id": payload.patient_id},
+        payload={
+            **to_payload(revision),
+            "patient_id": payload.patient_id,
+            "department_id": resolved_department,
+        },
         resource_id=revision.source_revision_id,
     )
     _link_source_successor(account_id, predecessor, revision)
@@ -1576,7 +1631,13 @@ def report_delta(report_snapshot_id: str, request: Request) -> dict:
 @router.post("/er/workflows")
 @_atomic_write
 def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "er.manage", patient_id=payload.patient_id)
+    account_id = require_hospital_permission(
+        request,
+        "er.manage",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
+    )
+    resolved_department = _write_department(account_id, payload.department_id)
     if payload.er_workflow_id:
         existing = _owned_resource(account_id, payload.er_workflow_id, _ER_WORKFLOW_KIND)
         if existing["payload"].get("patient_id") != payload.patient_id:
@@ -1587,6 +1648,7 @@ def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
         pending_items=payload.pending_items,
         responsible_role=payload.responsible_role,
         er_workflow_id=payload.er_workflow_id,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1652,8 +1714,12 @@ def upsert_patient_operational_status(
     request: Request,
 ) -> dict:
     account_id = require_hospital_permission(
-        request, "clinical.write", patient_id=payload.patient_id
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
     )
+    resolved_department = _write_department(account_id, payload.department_id)
     existing = next(
         (
             item["payload"]
@@ -1673,6 +1739,7 @@ def upsert_patient_operational_status(
         surgery_planned=payload.surgery_planned,
         state=payload.state,
         patient_status_id=existing.get("patient_status_id") if existing else None,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1927,7 +1994,12 @@ def list_claim_readiness(request: Request) -> dict:
 @router.post("/operations")
 @_atomic_write
 def create_hospital_operation(payload: HospitalOperationCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "operations.manage", allow_scoped=False)
+    account_id = require_hospital_permission(
+        request,
+        "operations.manage",
+        department_id=payload.department_id,
+    )
+    resolved_department = _write_department(account_id, payload.department_id)
     record = make_hospital_operation_record(
         operation_type=payload.operation_type,
         subject_ref=payload.subject_ref,
@@ -1935,6 +2007,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
         owner_role=payload.owner_role,
         due_at=payload.due_at,
         details=payload.details,
+        department_id=resolved_department,
     )
     put_resource(
         domain="medical",
@@ -1957,7 +2030,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
 
 @router.get("/operations")
 def list_hospital_operations(request: Request) -> dict:
-    account_id = require_hospital_permission(request, "operations.manage", allow_scoped=False)
+    account_id = require_hospital_permission(request, "operations.manage")
     return {
         "operations": [
             item["payload"]
