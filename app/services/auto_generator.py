@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.services.access_notice import AI_ACCESS_NOTICE
 from app.services.context_overlay import build_authoring_context
 from app.services.privacy_guard import assert_provider_zdr
+from app.services import bedrock_provider
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,8 @@ def _log_gemini_error(action: str, exc: Exception) -> None:
 
 def provider_failure(provider: str, exc: Exception) -> GenerationFailed:
     """Classify upstream failures without disclosing its body, headers or key."""
+    if isinstance(exc, bedrock_provider.BedrockProviderError):
+        return GenerationFailed(str(exc), code=exc.code, http_status=exc.http_status)
     code = getattr(exc, "status_code", None)
     gemini_code, _ = _gemini_error_metadata(exc)
     if type(code) is not int:
@@ -90,6 +93,23 @@ def provider_failure(provider: str, exc: Exception) -> GenerationFailed:
     if code in {408, 504} or error_type in {"APITimeoutError", "TimeoutError"}:
         return GenerationFailed(f"{label} API 응답 시간이 초과되었습니다. 잠시 후 같은 AI로 다시 시도해 주세요.", code="PROVIDER_TIMEOUT", http_status=504)
     return GenerationFailed(f"{label} API 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.", code="PROVIDER_REQUEST_FAILED")
+
+
+def bedrock_selected(provider: str) -> bool:
+    """An invalid transport must fail, rather than choose a direct API."""
+    try:
+        return bedrock_provider.uses_bedrock(provider)
+    except bedrock_provider.BedrockProviderError as exc:
+        raise provider_failure(provider, exc) from exc
+
+
+async def bedrock_text(provider: str, instructions: str, prompt: str, *, max_tokens: int) -> tuple[str, str]:
+    try:
+        return await bedrock_provider.converse_text(
+            provider, instructions, prompt, max_tokens=max_tokens,
+        )
+    except bedrock_provider.BedrockProviderError as exc:
+        raise provider_failure(provider, exc) from exc
 
 
 def _vertex_gemini_client():
@@ -296,6 +316,10 @@ def _parse_and_validate_items(text: str, expected_count: int) -> tuple[dict[str,
 
 async def _generate_with_openai(prompt: str, count: int) -> GenerationResult:
     assert_provider_zdr("openai")
+    if bedrock_selected("openai"):
+        text, model = await bedrock_text("openai", SYSTEM_INSTRUCTIONS, prompt, max_tokens=8000)
+        return GenerationResult(provider=GenerationProvider.OPENAI.value, model=model,
+                                items=_parse_and_validate_items(text, count))
     if settings.openai_api_key is None:
         raise GeneratorNotConfigured(
             "OPENAI_API_KEY is not configured in the server secret store."
@@ -357,6 +381,10 @@ async def _generate_with_gemini(prompt: str, count: int) -> GenerationResult:
 
 async def _generate_with_anthropic(prompt: str, count: int) -> GenerationResult:
     assert_provider_zdr("claude")
+    if bedrock_selected("claude"):
+        text, model = await bedrock_text("claude", SYSTEM_INSTRUCTIONS, prompt, max_tokens=8000)
+        return GenerationResult(provider=GenerationProvider.CLAUDE.value, model=model,
+                                items=_parse_and_validate_items(text, count))
     if settings.anthropic_api_key is None:
         raise GeneratorNotConfigured(
             "ANTHROPIC_API_KEY is not configured in the server secret store."

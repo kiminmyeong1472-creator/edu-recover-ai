@@ -127,7 +127,12 @@ async def generate_candidates(req: CandidateGenerationRequest, *, verified_reaso
     invocation_id = uuid.uuid4().hex
     client = None
     try:
-        if req.provider == "openai":
+        from app.services import bedrock_provider
+        if req.provider in {"openai", "claude"} and bedrock_provider.uses_bedrock(req.provider):
+            text, _ = await bedrock_provider.converse_text(
+                req.provider, instructions, prompt, max_tokens=12000,
+            )
+        elif req.provider == "openai":
             if settings.openai_api_key is None:
                 raise generator.GeneratorNotConfigured("OpenAI 서버 API 인증 설정이 없습니다.")
             model = settings.openai_model
@@ -153,6 +158,8 @@ async def generate_candidates(req: CandidateGenerationRequest, *, verified_reaso
         raise
     except generator.GeneratorNotConfigured as exc:
         raise CandidateGenerationError(503, "PROVIDER_NOT_CONFIGURED", str(exc)) from exc
+    except bedrock_provider.BedrockProviderError as exc:
+        raise CandidateGenerationError(exc.http_status, exc.code, str(exc)) from exc
     except Exception as exc:
         failure = generator.provider_failure(req.provider, exc)
         raise CandidateGenerationError(failure.http_status, failure.code, str(failure)) from exc
@@ -163,7 +170,7 @@ async def generate_candidates(req: CandidateGenerationRequest, *, verified_reaso
                 client.close()
             else:
                 await client.close()
-    receipt = {"invocation_id": invocation_id, "provider": req.provider, "model": model,
+    receipt = {"invocation_id": invocation_id, "provider": req.provider,
                "fallback_used": False, "requested_count": req.count,
                "request_digest": hashlib.sha256(prompt.encode()).hexdigest(),
                "candidate_digest": hashlib.sha256(json.dumps([candidate.model_dump() for candidate in candidates],

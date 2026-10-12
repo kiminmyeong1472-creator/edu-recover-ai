@@ -1,0 +1,20 @@
+{
+  "region": "ap-northeast-2",
+  "stack_name": "edurecover-aws-migration",
+  "vpc_id": null,
+  "subnet_id": null,
+  "availability_zone": null,
+  "ami_id": null,
+  "ecr_image_uri": null,
+  "ecr_repository_arn": null,
+  "application_secret_arn": null,
+  "application_secret_version_id": null,
+  "instance_type": "t3.small",
+  "data_volume_size_gb": 5,
+  "outbound_mode": "public-egress",
+  "existing_data_volume_id": "",
+  "secret_kms_key_arn": "",
+  "data_kms_key_arn": "",
+  "allow_approved_bedrock_runtime": false,
+  "approved_bedrock_resource_arns": []
+}
