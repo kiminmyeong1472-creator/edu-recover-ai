@@ -91,6 +91,7 @@ class HospitalDataSubject(str):
     actor_id: str
     tenant_id: str | None
     patient_scope: frozenset[str] | None
+    department_ids: tuple[str, ...]
 
     def __new__(
         cls,
@@ -99,11 +100,13 @@ class HospitalDataSubject(str):
         actor_id: str,
         tenant_id: str | None = None,
         patient_scope: frozenset[str] | None = None,
+        department_ids: tuple[str, ...] = (),
     ):
         obj = str.__new__(cls, value)
         obj.actor_id = actor_id
         obj.tenant_id = tenant_id
         obj.patient_scope = patient_scope
+        obj.department_ids = tuple(department_ids)
         return obj
 
 
