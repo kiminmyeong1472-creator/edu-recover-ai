@@ -28,6 +28,8 @@ owner_router = APIRouter(prefix="/owner/life/medical/hospital-access", tags=["ow
 
 _ROLE_GRANT_KIND = "hospital_os_role_grant"
 _TENANT_MEMBERSHIP_KIND = "hospital_os_tenant_membership"
+_PATIENT_STATUS_KIND = "hospital_os_patient_operational_status"
+_ACTION_KIND = "hospital_os_clinical_action"
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -86,6 +88,7 @@ def require_hospital_permission(
     account_id = require_life_user(request)
     tenant_id: str | None = None
     patient_scope = None
+    membership_departments: tuple[str, ...] = ()
     memberships = _memberships(account_id)
 
     if tenant_mode_enforced():
@@ -104,24 +107,67 @@ def require_hospital_permission(
             )
         membership = matching[0]
         tenant_id = membership.tenant_id
-        if department_id is not None and membership.department_ids and department_id not in membership.department_ids:
+        membership_departments = membership.department_ids
+
+    data_subject_id = f"hospital_tenant:{tenant_id}" if tenant_id else account_id
+
+    resolved_department = department_id
+    if patient_id is not None and resolved_department is None:
+        for item in list_resources(
+            domain="medical",
+            subject_id=data_subject_id,
+            kind=_PATIENT_STATUS_KIND,
+        ):
+            payload = item["payload"]
+            if payload.get("patient_id") == patient_id and payload.get("state") == "CURRENT":
+                resolved_department = payload.get("department_id")
+                if resolved_department:
+                    break
+        if resolved_department is None:
+            for item in list_resources(
+                domain="medical",
+                subject_id=data_subject_id,
+                kind=_ACTION_KIND,
+            ):
+                payload = item["payload"]
+                if payload.get("patient_id") == patient_id and payload.get("department_id"):
+                    resolved_department = payload.get("department_id")
+                    break
+
+    if membership_departments:
+        if resolved_department is not None and resolved_department not in membership_departments:
             raise HTTPException(
                 status_code=403,
                 detail={
                     "code": "hospital_department_membership_denied",
-                    "department_id": department_id,
+                    "department_id": resolved_department,
+                },
+            )
+        if patient_id is not None and resolved_department is None:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "hospital_department_unresolved",
+                    "patient_id": patient_id,
                 },
             )
 
+    allowed_grants = []
     if rbac_enforced():
-        grants = _grants(account_id)
-        grants = [grant for grant in grants if grant.tenant_id == tenant_id]
-        allowed_grants = [grant for grant in grants if
-            grant_allows(
+        grants = [grant for grant in _grants(account_id) if grant.tenant_id == tenant_id]
+        allowed_grants = [
+            grant
+            for grant in grants
+            if not (
+                patient_id is not None
+                and grant.department_scope
+                and resolved_department is None
+            )
+            and grant_allows(
                 grant,
                 permission=permission,
                 patient_id=patient_id,
-                department_id=department_id,
+                department_id=resolved_department,
             )
         ]
         if not allowed_grants:
@@ -131,41 +177,113 @@ def require_hospital_permission(
                     "code": "hospital_permission_denied",
                     "permission": permission,
                     "patient_id": patient_id,
-                    "department_id": department_id,
+                    "department_id": resolved_department,
                     "tenant_id": tenant_id,
                 },
             )
 
         if all(grant.patient_scope for grant in allowed_grants):
-            patient_scope = frozenset(p for grant in allowed_grants for p in grant.patient_scope)
-        if not allow_scoped and (patient_scope is not None or all(g.department_scope for g in allowed_grants)):
-            raise HTTPException(status_code=403, detail="hospital_unrestricted_scope_required")
+            patient_scope = frozenset(
+                patient for grant in allowed_grants for patient in grant.patient_scope
+            )
 
-    data_subject_id = f"hospital_tenant:{tenant_id}" if tenant_id else account_id
+    grant_departments: tuple[str, ...] = ()
+    if allowed_grants and not any(not grant.department_scope for grant in allowed_grants):
+        grant_departments = tuple(sorted({
+            department
+            for grant in allowed_grants
+            for department in grant.department_scope
+        }))
+
+    if membership_departments and grant_departments:
+        allowed = set(grant_departments)
+        effective_departments = tuple(
+            department
+            for department in membership_departments
+            if department in allowed
+        )
+        if not effective_departments:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "hospital_department_scope_empty"},
+            )
+    elif membership_departments:
+        effective_departments = membership_departments
+    else:
+        effective_departments = grant_departments
+
+    if not allow_scoped and (
+        patient_scope is not None
+        or bool(effective_departments)
+    ):
+        raise HTTPException(status_code=403, detail="hospital_unrestricted_scope_required")
+
     return HospitalDataSubject(
         data_subject_id,
         actor_id=account_id,
         tenant_id=tenant_id,
         patient_scope=patient_scope,
+        department_ids=effective_departments,
     )
 
 
-def hospital_resource_visible(subject_id: str, item: dict, seen: frozenset[str] = frozenset()) -> bool:
-    scope = getattr(subject_id, "patient_scope", None)
-    if scope is None:
-        return True
+def _patient_department(subject_id: str, patient_id: str) -> str | None:
+    for kind in (_PATIENT_STATUS_KIND, _ACTION_KIND):
+        for item in list_resources(
+            domain="medical",
+            subject_id=subject_id,
+            kind=kind,
+        ):
+            payload = item["payload"]
+            if payload.get("patient_id") != patient_id:
+                continue
+            if kind == _PATIENT_STATUS_KIND and payload.get("state") != "CURRENT":
+                continue
+            department_id = payload.get("department_id")
+            if department_id:
+                return department_id
+    return None
+
+
+def hospital_resource_visible(
+    subject_id: str,
+    item: dict,
+    seen: frozenset[str] = frozenset(),
+) -> bool:
+    patient_scope = getattr(subject_id, "patient_scope", None)
+    department_scope = tuple(getattr(subject_id, "department_ids", ()) or ())
     payload = item["payload"]
     patient_id = payload.get("patient_id")
+
+    if patient_scope is not None and patient_id and patient_id not in patient_scope:
+        return False
+
+    if department_scope:
+        department_id = payload.get("department_id")
+        if not department_id and patient_id:
+            department_id = _patient_department(subject_id, patient_id)
+        if department_id:
+            return department_id in department_scope
+        if patient_id:
+            return False
+
+    if patient_scope is None and not department_scope:
+        return True
     if patient_id:
-        return patient_id in scope
-    # Use evidence and deliveries inherit scope from their canonical referenced record.
+        return True
+
     for field in ("clinical_action_id", "event_id"):
         ref = payload.get(field)
         if ref and ref != item["resource_id"] and ref not in seen:
-            parent = get_resource(domain="medical", subject_id=subject_id, resource_id=ref)
+            parent = get_resource(
+                domain="medical",
+                subject_id=subject_id,
+                resource_id=ref,
+            )
             if parent:
                 return hospital_resource_visible(subject_id, parent, seen | {ref})
-    return False
+
+    return patient_scope is None and not department_scope
 
 
 def hospital_list_resources(*, domain, subject_id, kind=None):
