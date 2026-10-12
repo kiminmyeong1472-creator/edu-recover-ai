@@ -737,7 +737,7 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         request,
         "clinical.write",
         patient_id=payload.patient_id,
-        department_id=resolved_department,
+        department_id=payload.department_id,
         allow_scoped=bool(payload.patient_id or payload.department_id),
     )
     resolved_department = _write_department(account_id, payload.department_id)
@@ -798,7 +798,7 @@ def create_clinical_action(payload: ClinicalActionCreate, request: Request) -> d
         request,
         "clinical.write",
         patient_id=payload.patient_id,
-        department_id=resolved_department,
+        department_id=payload.department_id,
     )
     for action_ref in payload.downstream_action_refs:
         _patient_reference(account_id, action_ref, _ACTION_KIND, payload.patient_id)
@@ -1131,8 +1131,6 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         prior = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
         if prior["payload"].get("patient_id") != payload.patient_id:
             raise HTTPException(status_code=409, detail="source_patient_mismatch")
-        if prior["payload"].get("department_id") != resolved_department:
-            raise HTTPException(status_code=409, detail="source_department_mismatch")
         if prior["payload"].get("department_id") != resolved_department:
             raise HTTPException(status_code=409, detail="source_department_mismatch")
     try:
@@ -2009,7 +2007,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
         owner_role=payload.owner_role,
         due_at=payload.due_at,
         details=payload.details,
-        department_id=payload.department_id,
+        department_id=resolved_department,
     )
     put_resource(
         domain="medical",
