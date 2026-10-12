@@ -742,6 +742,8 @@ def create_source_revision(payload: SourceRevisionCreate, request: Request) -> d
         previous = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
         if previous["payload"].get("patient_id") != payload.patient_id:
             raise HTTPException(status_code=409, detail="source_patient_mismatch")
+        if previous["payload"].get("department_id") != payload.department_id:
+            raise HTTPException(status_code=409, detail="source_department_mismatch")
     try:
         revision = make_source_revision(
             source_id=payload.source_id,
@@ -1119,6 +1121,10 @@ def ingest_integration_record(payload: IntegrationIngest, request: Request) -> d
         prior = _owned_resource(account_id, predecessor.source_revision_id, _SOURCE_KIND)
         if prior["payload"].get("patient_id") != payload.patient_id:
             raise HTTPException(status_code=409, detail="source_patient_mismatch")
+        if prior["payload"].get("department_id") != payload.department_id:
+            raise HTTPException(status_code=409, detail="source_department_mismatch")
+        if prior["payload"].get("department_id") != payload.department_id:
+            raise HTTPException(status_code=409, detail="source_department_mismatch")
     try:
         revision = make_source_revision(
             source_id=source_id,
@@ -1616,7 +1622,12 @@ def report_delta(report_snapshot_id: str, request: Request) -> dict:
 @router.post("/er/workflows")
 @_atomic_write
 def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "er.manage", patient_id=payload.patient_id)
+    account_id = require_hospital_permission(
+        request,
+        "er.manage",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
+    )
     if payload.er_workflow_id:
         existing = _owned_resource(account_id, payload.er_workflow_id, _ER_WORKFLOW_KIND)
         if existing["payload"].get("patient_id") != payload.patient_id:
@@ -1627,6 +1638,7 @@ def upsert_er_workflow(payload: ERWorkflowCreate, request: Request) -> dict:
         pending_items=payload.pending_items,
         responsible_role=payload.responsible_role,
         er_workflow_id=payload.er_workflow_id,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1692,7 +1704,10 @@ def upsert_patient_operational_status(
     request: Request,
 ) -> dict:
     account_id = require_hospital_permission(
-        request, "clinical.write", patient_id=payload.patient_id
+        request,
+        "clinical.write",
+        patient_id=payload.patient_id,
+        department_id=payload.department_id,
     )
     existing = next(
         (
@@ -1713,6 +1728,7 @@ def upsert_patient_operational_status(
         surgery_planned=payload.surgery_planned,
         state=payload.state,
         patient_status_id=existing.get("patient_status_id") if existing else None,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1967,7 +1983,11 @@ def list_claim_readiness(request: Request) -> dict:
 @router.post("/operations")
 @_atomic_write
 def create_hospital_operation(payload: HospitalOperationCreate, request: Request) -> dict:
-    account_id = require_hospital_permission(request, "operations.manage", allow_scoped=False)
+    account_id = require_hospital_permission(
+        request,
+        "operations.manage",
+        department_id=payload.department_id,
+    )
     record = make_hospital_operation_record(
         operation_type=payload.operation_type,
         subject_ref=payload.subject_ref,
@@ -1975,6 +1995,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
         owner_role=payload.owner_role,
         due_at=payload.due_at,
         details=payload.details,
+        department_id=payload.department_id,
     )
     put_resource(
         domain="medical",
@@ -1997,7 +2018,7 @@ def create_hospital_operation(payload: HospitalOperationCreate, request: Request
 
 @router.get("/operations")
 def list_hospital_operations(request: Request) -> dict:
-    account_id = require_hospital_permission(request, "operations.manage", allow_scoped=False)
+    account_id = require_hospital_permission(request, "operations.manage")
     return {
         "operations": [
             item["payload"]
