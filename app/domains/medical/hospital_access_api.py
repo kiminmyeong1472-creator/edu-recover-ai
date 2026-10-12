@@ -134,23 +134,18 @@ def require_hospital_permission(
                     resolved_department = payload.get("department_id")
                     break
 
-    if membership_departments:
-        if resolved_department is not None and resolved_department not in membership_departments:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "code": "hospital_department_membership_denied",
-                    "department_id": resolved_department,
-                },
-            )
-        if patient_id is not None and resolved_department is None:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "code": "hospital_department_unresolved",
-                    "patient_id": patient_id,
-                },
-            )
+    if (
+        resolved_department is not None
+        and membership_departments
+        and resolved_department not in membership_departments
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "hospital_department_membership_denied",
+                "department_id": resolved_department,
+            },
+        )
 
     allowed_grants = []
     if rbac_enforced():
@@ -158,12 +153,7 @@ def require_hospital_permission(
         allowed_grants = [
             grant
             for grant in grants
-            if not (
-                patient_id is not None
-                and grant.department_scope
-                and resolved_department is None
-            )
-            and grant_allows(
+            if grant_allows(
                 grant,
                 permission=permission,
                 patient_id=patient_id,
@@ -181,7 +171,6 @@ def require_hospital_permission(
                     "tenant_id": tenant_id,
                 },
             )
-
         if all(grant.patient_scope for grant in allowed_grants):
             patient_scope = frozenset(
                 patient for grant in allowed_grants for patient in grant.patient_scope
@@ -211,6 +200,31 @@ def require_hospital_permission(
         effective_departments = membership_departments
     else:
         effective_departments = grant_departments
+
+    if resolved_department is None and patient_id is not None:
+        if len(effective_departments) == 1:
+            resolved_department = effective_departments[0]
+        elif len(effective_departments) > 1:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "hospital_department_unresolved",
+                    "patient_id": patient_id,
+                },
+            )
+
+    if (
+        resolved_department is not None
+        and effective_departments
+        and resolved_department not in effective_departments
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "hospital_department_scope_denied",
+                "department_id": resolved_department,
+            },
+        )
 
     if not allow_scoped and (
         patient_scope is not None
