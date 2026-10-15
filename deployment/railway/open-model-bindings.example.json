@@ -1,0 +1,177 @@
+{
+  "DeepSeek-V4-Pro": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-01.example.com/v1/chat/completions",
+    "model_id": "deepseek-ai/DeepSeek-V4-Pro",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_01_API_KEY",
+    "request_format": "chat"
+  },
+  "DeepSeek-V4-Flash": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-02.example.com/v1/chat/completions",
+    "model_id": "deepseek-ai/DeepSeek-V4-Flash",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_02_API_KEY",
+    "request_format": "chat"
+  },
+  "DeepSeek-R1": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-03.example.com/v1/chat/completions",
+    "model_id": "deepseek-ai/DeepSeek-R1",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_03_API_KEY",
+    "request_format": "chat"
+  },
+  "DeepSeek-V4.1-Flash": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-04.example.com/v1/chat/completions",
+    "model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_04_API_KEY",
+    "request_format": "chat"
+  },
+  "Qwen3.6-27B": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-05.example.com/v1/chat/completions",
+    "model_id": "Qwen/Qwen3.6-27B",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_05_API_KEY",
+    "request_format": "chat"
+  },
+  "Qwen3.6-35B-A3B": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-06.example.com/v1/chat/completions",
+    "model_id": "Qwen/Qwen3.6-35B-A3B",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_06_API_KEY",
+    "request_format": "chat"
+  },
+  "Qwen3.5-397B-A17B": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-07.example.com/v1/chat/completions",
+    "model_id": "Qwen/Qwen3.5-397B-A17B",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_07_API_KEY",
+    "request_format": "chat"
+  },
+  "Qwen3.8-27B": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-08.example.com/v1/chat/completions",
+    "model_id": "Qwen/Qwen3.8-27B",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_08_API_KEY",
+    "request_format": "chat"
+  },
+  "gpt-oss-20b": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-09.example.com/v1/chat/completions",
+    "model_id": "openai/gpt-oss-20b",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_09_API_KEY",
+    "request_format": "chat"
+  },
+  "gpt-oss-120b": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-10.example.com/v1/chat/completions",
+    "model_id": "openai/gpt-oss-120b",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_10_API_KEY",
+    "request_format": "chat"
+  },
+  "gemma-4-E2B-it": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-11.example.com/v1/chat/completions",
+    "model_id": "google/gemma-4-E2B-it",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_11_API_KEY",
+    "request_format": "chat"
+  },
+  "gemma-4-E4B-it": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-12.example.com/v1/chat/completions",
+    "model_id": "google/gemma-4-E4B-it",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_12_API_KEY",
+    "request_format": "chat"
+  },
+  "gemma-4-12B-it": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-13.example.com/v1/chat/completions",
+    "model_id": "google/gemma-4-12B-it",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_13_API_KEY",
+    "request_format": "chat"
+  },
+  "gemma-4-26B-A4B-it": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-14.example.com/v1/chat/completions",
+    "model_id": "google/gemma-4-26B-A4B-it",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_14_API_KEY",
+    "request_format": "chat"
+  },
+  "gemma-4-31B-it": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-15.example.com/v1/chat/completions",
+    "model_id": "google/gemma-4-31B-it",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_15_API_KEY",
+    "request_format": "chat"
+  },
+  "GLM-5.1": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-16.example.com/v1/chat/completions",
+    "model_id": "zai-org/GLM-5.1",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_16_API_KEY",
+    "request_format": "chat"
+  },
+  "GLM-5.2": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-17.example.com/v1/chat/completions",
+    "model_id": "zai-org/GLM-5.2",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_17_API_KEY",
+    "request_format": "chat"
+  },
+  "GLM-5.3-Flash": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-18.example.com/v1/chat/completions",
+    "model_id": "zai-org/GLM-5.3-Flash",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_18_API_KEY",
+    "request_format": "chat"
+  },
+  "Mistral-Small-3.2-24B-Instruct-2506": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-19.example.com/v1/chat/completions",
+    "model_id": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_19_API_KEY",
+    "request_format": "chat"
+  },
+  "Mistral-Large-3-675B-Base-2512": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-20.example.com/v1/completions",
+    "model_id": "mistralai/Mistral-Large-3-675B-Base-2512",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_20_API_KEY",
+    "request_format": "completion"
+  },
+  "Mistral-Small-4-119B-2603": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-21.example.com/v1/chat/completions",
+    "model_id": "mistralai/Mistral-Small-4-119B-2603",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_21_API_KEY",
+    "request_format": "chat"
+  },
+  "phi-4": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-22.example.com/v1/chat/completions",
+    "model_id": "microsoft/phi-4",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_22_API_KEY",
+    "request_format": "chat"
+  },
+  "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-23.example.com/v1/chat/completions",
+    "model_id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_23_API_KEY",
+    "request_format": "chat"
+  },
+  "NVIDIA-Nemotron-3-Nano-4B-BF16": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-24.example.com/v1/chat/completions",
+    "model_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_24_API_KEY",
+    "request_format": "chat"
+  },
+  "NVIDIA-Nemotron-3-Super-120B-A12B-BF16": {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://model-25.example.com/v1/chat/completions",
+    "model_id": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+    "api_key_env": "EDURECOVER_OPEN_MODEL_25_API_KEY",
+    "request_format": "chat"
+  }
+}
