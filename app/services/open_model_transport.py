@@ -1,8 +1,12 @@
-"""Explicit, opt-in AWS transport for the owner's selected model names.
+"""Explicit, opt-in model transports for the owner's selected model names.
 
 EDURECOVER_OPEN_MODEL_BINDINGS_JSON maps exact catalogue names to either:
   {"transport": "bedrock", "region": "...", "model_id": "..."}
   {"transport": "sagemaker", "region": "...", "endpoint_name": "..."}
+  {"transport": "openai_compatible", "endpoint_url": "https://.../v1/chat/completions",
+   "model_id": "...", "api_key_env": "PROVIDER_API_KEY", "request_format": "chat"}
+For a pretrained text-completion deployment, request_format is "completion"
+and endpoint_url ends with /completions rather than /chat/completions.
 SageMaker bindings may additionally specify a remote "model_id" when the
 container requires one. A SageMaker container MUST implement the OpenAI chat
 completions JSON contract; InvokeEndpoint itself does not define that format.
@@ -31,6 +35,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.open_model_catalog import MODEL_CATALOG, model_family
+from app.services.open_model_http import OpenModelHTTPError, post_json, validate_endpoint_url
 
 
 MAX_RESPONSE_BYTES = 256 * 1024
@@ -77,6 +82,9 @@ class _Binding:
     region: str
     model_id: str | None = None
     endpoint_name: str | None = None
+    endpoint_url: str | None = None
+    api_key_env: str | None = None
+    request_format: str = "chat"
 
 
 def _required_string(value: Any, limit: int) -> str:
@@ -133,6 +141,22 @@ def _bindings() -> dict[str, _Binding]:
                     _required_string(entry["model_id"], 2048)
                     if "model_id" in entry else None
                 )
+            elif transport == "openai_compatible":
+                if set(entry) != {"transport", "endpoint_url", "model_id", "api_key_env", "request_format"}:
+                    raise ValueError("Unexpected or missing field.")
+                model_id = _required_string(entry["model_id"], 2048)
+                key_env = _required_string(entry["api_key_env"], 128)
+                if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key_env):
+                    raise ValueError("Invalid credential reference.")
+                request_format = entry["request_format"]
+                if request_format not in {"chat", "completion"}:
+                    raise ValueError("Invalid request format.")
+                url = validate_endpoint_url(_required_string(entry["endpoint_url"], 2048))
+                if (not url.endswith("/completions")
+                        or (url.endswith("/chat/completions") != (request_format == "chat"))):
+                    raise ValueError("Endpoint and format do not match.")
+                result[key] = _Binding(transport, "", model_id, None, url, key_env, request_format)
+                continue
             else:
                 raise ValueError("Unknown transport.")
             region = _required_string(entry["region"], 64)
@@ -140,7 +164,7 @@ def _bindings() -> dict[str, _Binding]:
                 raise ValueError("Invalid region.")
             result[key] = _Binding(transport, region, model_id, endpoint)
         return result
-    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError, OpenModelHTTPError):
         raise _config_error() from None
 
 
@@ -155,11 +179,25 @@ def catalog_status() -> list[dict[str, Any]]:
     """Return availability flags, never deployment names or account information."""
     bindings = _bindings()
     enabled = _enabled()
-    return [
-        dict(entry, configured=entry["model_key"] in bindings,
-             enabled=enabled and entry["model_key"] in bindings)
-        for entry in MODEL_CATALOG
-    ]
+    rows = []
+    for entry in MODEL_CATALOG:
+        binding = bindings.get(entry["model_key"])
+        credentials_ready = binding is not None and (
+            binding.transport != "openai_compatible" or _http_token(binding) is not None
+        )
+        state = ("not_configured" if binding is None else
+                 "missing_credentials" if not credentials_ready else
+                 "disabled" if not enabled else "configured_not_verified")
+        rows.append(dict(entry, configured=bool(credentials_ready),
+                         enabled=enabled and bool(credentials_ready), readiness_state=state))
+    return rows
+
+
+def _http_token(binding: _Binding) -> str | None:
+    value = os.getenv(binding.api_key_env or "", "")
+    if not re.fullmatch(r"[A-Za-z0-9._~+/=-]{1,8192}", value):
+        return None
+    return value
 
 
 def _new_client(binding: _Binding) -> Any:
@@ -339,33 +377,82 @@ def _sagemaker_text(response: Any) -> str:
             raw.decode("utf-8"), object_pairs_hook=_object_without_duplicates,
             parse_constant=_reject_constant,
         )
-        if not isinstance(result, dict):
-            raise _response_error()
-        choices = result.get("choices")
-        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-            raise _response_error()
-        choice = choices[0]
-        if choice.get("finish_reason") != "stop":
-            raise _response_error("OPEN_MODEL_INCOMPLETE_RESPONSE")
-        if any(value.get("stop_reason") in {
-            "length", "max_tokens", "model_context_window_exceeded",
-            "tool_calls", "function_call",
-        } for value in (result, choice)):
-            raise _response_error("OPEN_MODEL_INCOMPLETE_RESPONSE")
-        message = choice.get("message")
-        if (not isinstance(message, dict) or message.get("role") != "assistant"
-                or message.get("tool_calls") or message.get("function_call")
-                or not isinstance(message.get("content"), str)
-                or not message["content"].strip()):
-            raise _response_error()
-        return message["content"].strip()
+        return _openai_text(result, "chat")
     except (ValueError, TypeError, UnicodeError, RecursionError):
         raise _response_error() from None
     finally:
         _close(body)
 
 
+def _openai_text(result: Any, request_format: str) -> str:
+    _check_serialized_size(result)
+    if not isinstance(result, dict):
+        raise _response_error()
+    choices = result.get("choices")
+    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+        raise _response_error()
+    choice = choices[0]
+    if choice.get("finish_reason") != "stop":
+        raise _response_error("OPEN_MODEL_INCOMPLETE_RESPONSE")
+    for value in (result, choice):
+        stop_reason = value.get("stop_reason")
+        if stop_reason is not None and not isinstance(stop_reason, (str, int)):
+            raise _response_error()
+        if stop_reason in {
+            "length", "max_tokens", "model_context_window_exceeded", "tool_calls", "function_call",
+        }:
+            raise _response_error("OPEN_MODEL_INCOMPLETE_RESPONSE")
+    if request_format == "completion":
+        text = choice.get("text")
+        if choice.get("message") or choice.get("tool_calls") or choice.get("function_call"):
+            raise _response_error()
+    else:
+        message = choice.get("message")
+        if (not isinstance(message, dict) or message.get("role") != "assistant"
+                or message.get("tool_calls") or message.get("function_call")):
+            raise _response_error()
+        text = message.get("content")
+    if not isinstance(text, str) or not text.strip():
+        raise _response_error()
+    return text.strip()
+
+
+def _invoke_http(binding: _Binding, instructions: str, prompt: str, max_tokens: int) -> str:
+    token = _http_token(binding)
+    if token is None:
+        raise OpenModelError("선택한 모델의 인증 키 설정을 확인해야 합니다.",
+                             "OPEN_MODEL_CREDENTIALS_UNAVAILABLE", 503)
+    payload = {"model": binding.model_id, "max_tokens": max_tokens, "stream": False}
+    if binding.request_format == "completion":
+        payload["prompt"] = instructions.rstrip() + "\n\n" + prompt
+    else:
+        payload["messages"] = [{"role": "system", "content": instructions},
+                               {"role": "user", "content": prompt}]
+    try:
+        return _openai_text(post_json(binding.endpoint_url, payload, token), binding.request_format)
+    except OpenModelHTTPError as exc:
+        codes = {
+            "OPEN_MODEL_ACCESS_DENIED": ("선택한 모델의 접근 권한을 확인해야 합니다.", 403),
+            "OPEN_MODEL_AUTHENTICATION_FAILED": ("선택한 모델의 인증 설정을 확인해야 합니다.", 403),
+            "OPEN_MODEL_QUOTA_EXCEEDED": ("선택한 모델의 사용 한도와 호출 간격을 확인해야 합니다.", 429),
+            "OPEN_MODEL_TIMEOUT": ("선택한 모델의 응답 대기 시간이 초과됐습니다.", 504),
+            "OPEN_MODEL_RESOURCE_NOT_FOUND": ("선택한 모델의 배포 연결을 찾지 못했습니다.", 502),
+            "OPEN_MODEL_REQUEST_REJECTED": ("모델 서버가 요청을 거부했습니다.", 400),
+            "OPEN_MODEL_INPUT_INVALID": ("모델에 전달할 요청 형식을 확인해야 합니다.", 400),
+            "OPEN_MODEL_INPUT_TOO_LARGE": ("모델 요청이 허용 크기를 초과했습니다.", 413),
+            "OPEN_MODEL_CONFIG_INVALID": ("모델 연결 설정을 확인해야 합니다.", 503),
+            "OPEN_MODEL_RESPONSE_TOO_LARGE": ("모델 응답이 허용 크기를 초과했습니다.", 502),
+            "OPEN_MODEL_RESPONSE_INVALID": ("모델 응답 형식을 확인해야 합니다.", 502),
+            "OPEN_MODEL_SERVICE_UNAVAILABLE": ("모델 서버에 연결하지 못했습니다.", 503),
+        }
+        code = exc.code if exc.code in codes else "OPEN_MODEL_SERVICE_UNAVAILABLE"
+        message, status = codes[code]
+        raise OpenModelError(message, code, status) from None
+
+
 def _invoke(binding: _Binding, instructions: str, prompt: str, max_tokens: int) -> str:
+    if binding.transport == "openai_compatible":
+        return _invoke_http(binding, instructions, prompt, max_tokens)
     client = _new_client(binding)
     try:
         if binding.transport == "bedrock":
@@ -420,7 +507,7 @@ async def call_model(
         raise OpenModelError("모델에 전달할 요청 내용이 올바르지 않습니다.", "OPEN_MODEL_INPUT_INVALID", 400) from None
     bindings = _bindings()
     if not _enabled():
-        raise OpenModelError("선택 모델의 AWS 호출 기능이 활성화되지 않았습니다.", "OPEN_MODEL_DISABLED", 503)
+        raise OpenModelError("선택 모델의 호출 기능이 활성화되지 않았습니다.", "OPEN_MODEL_DISABLED", 503)
     binding = bindings.get(model_key)
     if binding is None:
         raise OpenModelError(

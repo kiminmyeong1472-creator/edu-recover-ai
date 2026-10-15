@@ -1,4 +1,4 @@
-"""Offline contract tests. Every AWS runtime client is replaced by a fake."""
+"""Offline contract tests. Every AWS and HTTP runtime is replaced by a fake."""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ class CatalogTests(unittest.TestCase):
                          {entry["family"] for entry in AWS_ADDITIONAL_MODEL_CATALOG})
         with patch.dict(os.environ, environment(), clear=True):
             rows = transport.catalog_status()
-        self.assertEqual({"model_key", "family", "display_name", "configured", "enabled"}, set(rows[0]))
+        self.assertEqual({"model_key", "family", "display_name", "configured", "enabled", "readiness_state"}, set(rows[0]))
         selected = next(row for row in rows if row["model_key"] == MODEL)
         self.assertTrue(selected["configured"])
         self.assertTrue(selected["enabled"])
@@ -388,6 +388,194 @@ class InvocationTests(unittest.IsolatedAsyncioTestCase):
                     await transport.call_model(MODEL, "system", "prompt")
             self.assertTrue(body.closed)
             self.assertTrue(client.closed)
+
+
+HTTP = {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://inference.provider.com/v1/chat/completions",
+    "model_id": "explicit-checkpoint-id",
+    "api_key_env": "SELECTED_MODEL_API_KEY",
+    "request_format": "chat",
+}
+
+
+def http_environment(binding=None, enabled="true"):
+    return {**environment(HTTP if binding is None else binding, enabled),
+            "SELECTED_MODEL_API_KEY": "private-test-token"}
+
+
+class HTTPTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_all_25_exact_names_use_their_explicit_binding_without_aws(self):
+        entries = {
+            entry["model_key"]: {**HTTP, "model_id": "checkpoint-" + str(i),
+                                 "api_key_env": "MODEL_" + str(i) + "_KEY"}
+            for i, entry in enumerate(SOURCE_MODEL_CATALOG)
+        }
+        env = {"EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps(entries),
+               "EDURECOVER_OPEN_MODELS_ENABLED": "true"}
+        env.update({"MODEL_" + str(i) + "_KEY": "token-" + str(i) for i in range(25)})
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(transport, "post_json", return_value=sagemaker_output()) as post, \
+                patch.object(transport, "_new_client") as sdk:
+            rows = transport.catalog_status()
+            self.assertEqual(25, sum(row["enabled"] for row in rows))
+            for i, entry in enumerate(SOURCE_MODEL_CATALOG):
+                with self.subTest(model_key=entry["model_key"]):
+                    answer = await transport.call_model(entry["model_key"], "instruction", "question", max_tokens=64)
+                    self.assertEqual("검사된 응답", answer)
+                    post.assert_called_with(HTTP["endpoint_url"], {
+                        "model": "checkpoint-" + str(i), "max_tokens": 64, "stream": False,
+                        "messages": [{"role": "system", "content": "instruction"},
+                                     {"role": "user", "content": "question"}],
+                    }, "token-" + str(i))
+            self.assertEqual(25, post.call_count)
+            sdk.assert_not_called()
+        serialized = json.dumps(rows)
+        for private in ("token-", "provider.com", "checkpoint-", "MODEL_0_KEY"):
+            self.assertNotIn(private, serialized)
+
+    async def test_pretrained_base_uses_completion_contract_without_chat_template_guess(self):
+        key = "Mistral-Large-3-675B-Base-2512"
+        binding = {**HTTP, "request_format": "completion",
+                   "endpoint_url": "https://inference.provider.com/v1/completions",
+                   "model_id": "mistralai/" + key}
+        env = {**http_environment(), "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({key: binding})}
+        response = {"choices": [{"text": " 최종 결과 ", "finish_reason": "stop"}]}
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(transport, "post_json", return_value=response) as post, \
+                patch.object(transport, "_new_client") as sdk:
+            answer = await transport.call_model(key, "instructions", "prompt", max_tokens=100)
+        self.assertEqual("최종 결과", answer)
+        post.assert_called_once_with(binding["endpoint_url"], {
+            "model": binding["model_id"], "max_tokens": 100, "stream": False,
+            "prompt": "instructions\n\nprompt",
+        }, "private-test-token")
+        sdk.assert_not_called()
+
+    async def test_missing_or_invalid_credentials_never_call_http_or_aws(self):
+        for token in (None, "", "secret\r\nHeader: value", " leading-space", "x" * 8193):
+            env = http_environment()
+            if token is None:
+                env.pop("SELECTED_MODEL_API_KEY")
+            else:
+                env["SELECTED_MODEL_API_KEY"] = token
+            with self.subTest(token=str(token)[:30]), patch.dict(os.environ, env, clear=True), \
+                    patch.object(transport, "post_json") as post, \
+                    patch.object(transport, "_new_client") as sdk:
+                row = next(row for row in transport.catalog_status() if row["model_key"] == MODEL)
+                self.assertFalse(row["configured"])
+                self.assertFalse(row["enabled"])
+                self.assertEqual("missing_credentials", row["readiness_state"])
+                with self.assertRaises(transport.OpenModelError) as error:
+                    await transport.call_model(MODEL, "instructions", "prompt")
+                self.assertEqual("OPEN_MODEL_CREDENTIALS_UNAVAILABLE", error.exception.code)
+                post.assert_not_called()
+                sdk.assert_not_called()
+
+    async def test_disabled_feature_never_calls_http(self):
+        with patch.dict(os.environ, http_environment(enabled="false"), clear=True), \
+                patch.object(transport, "post_json") as post:
+            row = next(row for row in transport.catalog_status() if row["model_key"] == MODEL)
+            self.assertTrue(row["configured"])
+            self.assertFalse(row["enabled"])
+            self.assertEqual("disabled", row["readiness_state"])
+            with self.assertRaises(transport.OpenModelError) as error:
+                await transport.call_model(MODEL, "instructions", "prompt")
+            self.assertEqual("OPEN_MODEL_DISABLED", error.exception.code)
+            post.assert_not_called()
+
+    async def test_http_errors_use_only_stable_public_codes(self):
+        cases = {
+            "OPEN_MODEL_ACCESS_DENIED": 403,
+            "OPEN_MODEL_AUTHENTICATION_FAILED": 403,
+            "OPEN_MODEL_QUOTA_EXCEEDED": 429,
+            "OPEN_MODEL_TIMEOUT": 504,
+            "OPEN_MODEL_RESOURCE_NOT_FOUND": 502,
+            "OPEN_MODEL_REQUEST_REJECTED": 400,
+            "OPEN_MODEL_INPUT_INVALID": 400,
+            "OPEN_MODEL_INPUT_TOO_LARGE": 413,
+            "OPEN_MODEL_CONFIG_INVALID": 503,
+            "OPEN_MODEL_RESPONSE_TOO_LARGE": 502,
+            "OPEN_MODEL_RESPONSE_INVALID": 502,
+            "OPEN_MODEL_SERVICE_UNAVAILABLE": 503,
+            "PRIVATE_UNKNOWN_CODE": 503,
+        }
+        for code, expected_status in cases.items():
+            error = transport.OpenModelHTTPError(code)
+            with self.subTest(code=code), patch.dict(os.environ, http_environment(), clear=True), \
+                    patch.object(transport, "post_json", side_effect=error) as post:
+                with self.assertRaises(transport.OpenModelError) as result:
+                    await transport.call_model(MODEL, "instructions", "prompt")
+                expected_code = code if code != "PRIVATE_UNKNOWN_CODE" else "OPEN_MODEL_SERVICE_UNAVAILABLE"
+                self.assertEqual(expected_code, result.exception.code)
+                self.assertEqual(expected_status, result.exception.http_status)
+                self.assertNotIn("PRIVATE", str(result.exception))
+                self.assertNotIn("private-test-token", str(result.exception))
+                post.assert_called_once()
+
+    def test_http_binding_is_checked_offline_and_never_guesses_missing_fields(self):
+        invalid = [
+            {**HTTP, "api_key": "DO_NOT_USE_LITERAL_SECRET"},
+            {**HTTP, "api_key_env": "lower_case"},
+            {**HTTP, "api_key_env": "BAD-KEY"},
+            {**HTTP, "api_key_env": ""},
+            {**HTTP, "request_format": "auto"},
+            {**HTTP, "request_format": []},
+            {**HTTP, "request_format": "completion"},
+            {**HTTP, "endpoint_url": "https://inference.provider.com/v1/completions"},
+            {**HTTP, "endpoint_url": "https://inference.provider.com/v1"},
+            {**HTTP, "endpoint_url": "http://inference.provider.com/v1/chat/completions"},
+            {**HTTP, "endpoint_url": "https://127.0.0.1/v1/chat/completions"},
+            {**HTTP, "endpoint_url": "https://inference.provider.com/v1/chat/completions?api_key=private"},
+            {**HTTP, "endpoint_url": "https://model-01.example.com/v1/chat/completions"},
+            {**HTTP, "model_id": None},
+        ]
+        invalid.extend({k: v for k, v in HTTP.items() if k != field} for field in HTTP)
+        for binding in invalid:
+            with self.subTest(binding=binding), patch.dict(os.environ, http_environment(binding), clear=True), \
+                    patch("socket.getaddrinfo") as dns, patch.object(transport, "post_json") as post:
+                with self.assertRaises(transport.OpenModelError) as error:
+                    transport.catalog_status()
+                self.assertEqual("OPEN_MODEL_CONFIG_INVALID", error.exception.code)
+                self.assertNotIn("DO_NOT_USE_LITERAL_SECRET", str(error.exception))
+                post.assert_not_called()
+                dns.assert_not_called()
+
+    def test_http_status_checks_do_not_resolve_dns_or_disclose_runtime_values(self):
+        with patch.dict(os.environ, http_environment(), clear=True), \
+                patch("socket.getaddrinfo") as dns, patch.object(transport, "post_json") as post:
+            row = next(row for row in transport.catalog_status() if row["model_key"] == MODEL)
+            self.assertEqual("configured_not_verified", row["readiness_state"])
+            dns.assert_not_called()
+            post.assert_not_called()
+
+    async def test_invalid_or_incomplete_http_responses_are_not_returned_as_answers(self):
+        tool = sagemaker_output()
+        tool["choices"][0]["message"]["tool_calls"] = [{"type": "function"}]
+        malformed_stop = sagemaker_output()
+        malformed_stop["choices"][0]["stop_reason"] = {"private": "not-a-reason"}
+        malformed_stop_list = sagemaker_output()
+        malformed_stop_list["stop_reason"] = []
+        cases = [None, {}, {"choices": []},
+                 {"choices": sagemaker_output()["choices"] * 2},
+                 sagemaker_output(finish="length"), tool, malformed_stop,
+                 malformed_stop_list, sagemaker_output(text=""),
+                 sagemaker_output(text=[{"type": "text", "text": "no"}]),
+                 sagemaker_output(text="x" * (transport.MAX_RESPONSE_BYTES + 1))]
+        for response in cases:
+            with self.subTest(response=str(response)[:80]), patch.dict(os.environ, http_environment(), clear=True), \
+                    patch.object(transport, "post_json", return_value=response):
+                with self.assertRaises(transport.OpenModelError):
+                    await transport.call_model(MODEL, "instructions", "prompt")
+
+    async def test_chat_final_answer_does_not_expose_reasoning_fields(self):
+        response = sagemaker_output("최종 답변")
+        response["choices"][0]["message"]["reasoning_content"] = "PRIVATE_REASONING"
+        with patch.dict(os.environ, http_environment(), clear=True), \
+                patch.object(transport, "post_json", return_value=response):
+            answer = await transport.call_model(MODEL, "instructions", "prompt")
+        self.assertEqual("최종 답변", answer)
+        self.assertNotIn("PRIVATE", answer)
 
 
 if __name__ == "__main__":

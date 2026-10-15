@@ -1,6 +1,8 @@
 """Owner authentication, UI escaping and no-inference catalogue contract."""
 import json
 import os
+import re
+import subprocess
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -8,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.services import open_model_api as api
+from app.services.open_model_catalog import SOURCE_MODEL_CATALOG
 from app.services.open_model_transport import OpenModelError
 from app.services.owner_basic_auth import owner_auth_router
 
@@ -15,6 +18,23 @@ from app.services.owner_basic_auth import owner_auth_router
 def payload(domain="education"):
     return {"model_key": "gpt-oss-20b", "domain": domain, "question": "자료를 설명해 주세요.",
             "sources": [{"source_id": "S1", "text": "시험용 원문"}], "explicit_authorization": True}
+
+
+SELECTED_MODEL_KEYS = (
+    "DeepSeek-V4-Pro", "DeepSeek-V4-Flash", "DeepSeek-R1", "DeepSeek-V4.1-Flash",
+    "Qwen3.6-27B", "Qwen3.6-35B-A3B", "Qwen3.5-397B-A17B", "Qwen3.8-27B",
+    "gpt-oss-20b", "gpt-oss-120b", "gemma-4-E2B-it", "gemma-4-E4B-it",
+    "gemma-4-12B-it", "gemma-4-26B-A4B-it", "gemma-4-31B-it",
+    "GLM-5.1", "GLM-5.2", "GLM-5.3-Flash", "Mistral-Small-3.2-24B-Instruct-2506",
+    "Mistral-Large-3-675B-Base-2512", "Mistral-Small-4-119B-2603", "phi-4",
+    "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16", "NVIDIA-Nemotron-3-Nano-4B-BF16",
+    "NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+)
+
+
+def direct_payload(**changes):
+    return dict({"model_key": "gpt-oss-20b", "prompt": "원하는 내용을 설명하십시오.",
+                 "explicit_authorization": True}, **changes)
 
 
 class OpenModelAPITests(unittest.TestCase):
@@ -48,6 +68,10 @@ class OpenModelAPITests(unittest.TestCase):
         self.assertTrue({"qwen", "deepseek", "gpt-oss", "gemma", "glm", "mistral", "phi", "nemotron"}
                         <= {m["family"] for m in data["models"]})
         self.assertTrue(all(not m["configured"] for m in data["models"]))
+        self.assertEqual({m["model_key"] for m in data["models"] if m["selection_group"] == "selected_25"},
+                         set(SELECTED_MODEL_KEYS))
+        self.assertTrue(all(m["selection_group"] == "aws_additional" for m in data["models"]
+                            if m["family"] == "nova"))
         self.assertEqual(data["readiness_basis"], "configuration_only_not_live_provider_success")
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertNotIn("endpoint_name", response.text)
@@ -58,12 +82,186 @@ class OpenModelAPITests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("교육·의료 AI 작업", response.text)
         self.assertIn("부작용·과잉진료", response.text)
-        for term in ('value="tutor"', 'value="questions"', 'value="source_review"',
+        for term in ('value="direct"', 'value="tutor"', 'value="questions"', 'value="source_review"',
                      "Qwen", "DeepSeek", "Amazon Nova", "새 튜터 대화", "문제·정답·해설"):
             self.assertIn(term, response.text)
         self.assertIn("node.textContent=text", response.text)
         self.assertNotIn("innerHTML", response.text)
         self.assertIn("frame-ancestors 'none'", response.headers["content-security-policy"])
+
+    def test_direct_ui_explains_selected_models_and_uses_plain_text_and_readiness_labels(self):
+        response = self.client.get("/owner/open-models", auth=self.auth)
+        for text in ("8개 계열·25개 모델", "모델에 직접 질문", "AWS 추가 후보", "인증 정보 필요",
+                     "configured_not_verified", "missing_credentials", "/owner/open-models/call",
+                     "addText(box,'p',result.answer)", "byId('sources').hidden=direct",
+                     "byId('add-source').hidden=direct"):
+            self.assertIn(text, response.text)
+
+    def test_task_changes_disable_irrelevant_fields_before_browser_validation(self):
+        # Execute the actual workspace script with a tiny DOM so this checks
+        # task changes and the request-completion path, not JavaScript spelling.
+        script = re.search(r"<script>(.*?)</script>", api._HTML, re.S).group(1)
+        harness = r"""
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const elements=new Map();
+function element(id){
+ if(!elements.has(id))elements.set(id,{value:'',disabled:false,children:[],dataset:{},
+  addEventListener(){},append(...children){this.children.push(...children)},
+  replaceChildren(){this.children=[]},querySelectorAll(selector){
+   if(id==='draft-form')return [...elements.values()];
+   if(id==='sources')return this.children.flatMap(child=>child.children).filter(child=>child.dataset.sourceId);
+   return [];
+  }});
+ return elements.get(id);
+}
+element('task').value='direct';element('domain').value='education';
+element('max-tokens').value='512';element('question-count').value='5';
+const context=vm.createContext({document:{getElementById:element,createElement:()=>element(Symbol())},
+ fetch:async()=>({ok:true,json:async()=>({models:[]})}),console});
+vm.runInContext(fs.readFileSync(0,'utf8'),context);
+function run(code){vm.runInContext(code,context)}
+assert.equal(element('max-tokens').disabled,false);
+assert.equal(element('question-count').disabled,true);
+assert.equal(element('sources').querySelectorAll('textarea')[0].disabled,true);
+element('max-tokens').value='0';element('task').value='questions';run('updateTask()');
+assert.equal(element('max-tokens').disabled,true,'invalid hidden max_tokens must not block questions');
+assert.equal(element('question-count').disabled,false);
+assert.equal(element('question-format').disabled,false);
+assert.equal(element('sources').querySelectorAll('textarea')[0].disabled,false);
+run('setBusy(true);setBusy(false)');
+assert.equal(element('max-tokens').disabled,true,'completion must preserve task-specific disabled state');
+element('question-count').value='0';element('task').value='direct';run('updateTask();setBusy(true);setBusy(false)');
+assert.equal(element('question-count').disabled,true,'invalid hidden question count must not block direct calls');
+assert.equal(element('question-format').disabled,true);
+assert.equal(element('max-tokens').disabled,false);
+element('task').value='source_review';run('updateTask()');
+assert.equal(element('domain').disabled,false);
+assert.equal(element('max-tokens').disabled,true);
+assert.equal(element('question-count').disabled,true);
+"""
+        result = subprocess.run(["node", "-e", harness], input=script,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_direct_call_accepts_all_25_exact_keys_and_unstructured_base_model_output(self):
+        self.assertEqual(tuple(row["model_key"] for row in SOURCE_MODEL_CATALOG), SELECTED_MODEL_KEYS)
+        families = ",".join(sorted({row["family"] for row in SOURCE_MODEL_CATALOG}))
+        answer = "자유 형식의 생성 초안입니다.\n<script>this is plain text</script>"
+        with patch.dict(os.environ, {"EDURECOVER_ALLOWED_PROVIDERS": families}):
+            for model_key in SELECTED_MODEL_KEYS:
+                with self.subTest(model_key=model_key), patch.object(api.transport, "call_model",
+                        new_callable=AsyncMock, return_value=answer) as invoke:
+                    response = self.client.post("/owner/open-models/call",
+                                                json=direct_payload(model_key=model_key), auth=self.auth)
+                    self.assertEqual(response.status_code, 200, response.text)
+                    self.assertEqual(response.json(), {
+                        "task": "direct", "model_key": model_key, "answer": answer,
+                        "review": {"state": "DRAFT", "official_source_check": "NOT_PERFORMED",
+                                   "independent_ai_check": "NOT_PERFORMED"},
+                    })
+                    self.assertEqual(response.headers["cache-control"], "no-store")
+                    invoke.assert_awaited_once_with(
+                        model_key, api._DIRECT_INSTRUCTIONS, direct_payload()["prompt"], max_tokens=512,
+                    )
+                    self.assertNotIn("Return only one JSON", invoke.await_args.args[1])
+
+    def test_direct_call_requires_owner_authentication_and_same_origin_cookie_post(self):
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock) as invoke:
+            response = self.client.post("/owner/open-models/call", json=direct_payload())
+            self.assertEqual(response.status_code, 401)
+            response = self.client.post("/owner/open-models/call", json=direct_payload(), auth=("owner-test", "wrong"))
+            self.assertEqual(response.status_code, 401)
+            response = self.client.post("/owner/login", data={"username": self.auth[0], "password": self.auth[1]},
+                                        headers={"Origin": "https://testserver"}, follow_redirects=False)
+            self.assertEqual(response.status_code, 303)
+            response = self.client.post("/owner/open-models/call", json=direct_payload(),
+                                        headers={"Origin": "https://foreign.example"})
+            self.assertEqual(response.status_code, 403)
+            invoke.assert_not_awaited()
+
+    def test_direct_call_checks_owner_policy_before_inference(self):
+        controls = ({"EDURECOVER_AI_HOLD": "true"}, {"EDURECOVER_ALLOWED_PROVIDERS": "qwen"},
+                    {"EDURECOVER_BLOCKED_PROVIDERS": "gpt-oss"},
+                    {"EDURECOVER_RESTRICTED_PROVIDERS": "gpt-oss"},
+                    {"EDURECOVER_CONTROL_MANIFEST_JSON": "not valid JSON"})
+        for control in controls:
+            with self.subTest(control=control), patch.dict(os.environ, control), patch.object(
+                    api.transport, "call_model", new_callable=AsyncMock) as invoke:
+                response = self.client.post("/owner/open-models/call", json=direct_payload(), auth=self.auth)
+                self.assertEqual(response.status_code, 423)
+                self.assertEqual(response.json()["detail"]["code"], "OPEN_MODEL_POLICY_HELD")
+                self.assertEqual(response.headers["cache-control"], "no-store")
+                invoke.assert_not_awaited()
+
+    def test_direct_call_validates_bounded_text_tokens_and_literal_authorization(self):
+        invalid = [
+            {"prompt": ""}, {"prompt": " \n\t "}, {"prompt": "x" * 16001}, {"prompt": 42},
+            {"model_key": "x" * 257}, {"model_key": 42}, {"max_tokens": 0}, {"max_tokens": 8193},
+            {"max_tokens": True}, {"max_tokens": 1.0}, {"max_tokens": "512"},
+            {"explicit_authorization": False}, {"explicit_authorization": 1},
+            {"explicit_authorization": "true"}, {"endpoint": "https://untrusted.example"},
+            {"api_key": "SYNTHETIC_PRIVATE_KEY"}, {"provider": "other"}, {"task": "direct"},
+        ]
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock) as invoke:
+            for change in invalid:
+                with self.subTest(change=list(change)):
+                    response = self.client.post("/owner/open-models/call",
+                                                json=direct_payload(**change), auth=self.auth)
+                    self.assertEqual(response.status_code, 422, response.text)
+                    self.assertEqual(response.headers["cache-control"], "no-store")
+            missing = direct_payload(); del missing["explicit_authorization"]
+            self.assertEqual(self.client.post("/owner/open-models/call", json=missing,
+                                             auth=self.auth).status_code, 422)
+            invoke.assert_not_awaited()
+
+    def test_direct_call_accepts_token_and_prompt_boundaries_without_truncation(self):
+        for max_tokens in (1, 8192):
+            with self.subTest(max_tokens=max_tokens), patch.object(api.transport, "call_model",
+                    new_callable=AsyncMock, return_value="답변") as invoke:
+                prompt = "가" * 16000
+                response = self.client.post("/owner/open-models/call",
+                                            json=direct_payload(prompt=prompt, max_tokens=max_tokens), auth=self.auth)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(invoke.await_args.args[2], prompt)
+                self.assertEqual(invoke.await_args.kwargs["max_tokens"], max_tokens)
+
+    def test_unknown_direct_model_is_rejected_without_echo_or_inference(self):
+        private_model = "SYNTHETIC_PRIVATE_UNKNOWN_MODEL"
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock) as invoke, patch.object(
+                api, "assert_provider_allowed") as policy:
+            response = self.client.post("/owner/open-models/call",
+                                        json=direct_payload(model_key=private_model), auth=self.auth)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["code"], "OPEN_MODEL_UNKNOWN")
+        self.assertNotIn(private_model, response.text)
+        policy.assert_not_called(); invoke.assert_not_awaited()
+
+    def test_direct_validation_and_unexpected_errors_do_not_echo_private_text(self):
+        private_text = "SYNTHETIC_PRIVATE_PROMPT_OR_KEY"
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock,
+                          side_effect=RuntimeError(private_text)) as invoke:
+            response = self.client.post("/owner/open-models/call",
+                                        json=direct_payload(prompt=private_text, api_key=private_text), auth=self.auth)
+            self.assertEqual(response.status_code, 422)
+            self.assertNotIn(private_text, response.text)
+            self.assertNotIn('"input"', response.text)
+            invoke.assert_not_awaited()
+            response = self.client.post("/owner/open-models/call",
+                                        json=direct_payload(prompt=private_text), auth=self.auth)
+            self.assertEqual(response.status_code, 502)
+            self.assertEqual(response.json()["detail"]["code"], "OPEN_MODEL_CALL_FAILED")
+            self.assertEqual(response.headers["cache-control"], "no-store")
+            self.assertNotIn(private_text, response.text)
+            invoke.assert_awaited_once()
+
+    def test_direct_configuration_error_is_bounded_and_has_no_fallback(self):
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock,
+                          side_effect=OpenModelError("연결 설정이 필요합니다.", "OPEN_MODEL_NOT_CONFIGURED", 503)) as invoke:
+            response = self.client.post("/owner/open-models/call", json=direct_payload(), auth=self.auth)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"]["code"], "OPEN_MODEL_NOT_CONFIGURED")
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        invoke.assert_awaited_once()
 
     def test_education_and_medical_requests_reach_same_draft_service(self):
         for domain in ("education", "medical"):

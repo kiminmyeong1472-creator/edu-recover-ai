@@ -260,7 +260,7 @@ async def owner_platform(_: None = Depends(require_owner)) -> HTMLResponse:
               '<a href="/owner/life/account-setup" style="display:inline-block;padding:12px 16px;border-radius:10px;'
               'border:1px solid #185bc4;color:#185bc4;text-decoration:none;font-weight:750">Life Recover 계정 만들기</a>'
               '<a href="/owner/secrets" style="display:inline-block;padding:12px 16px">영업비밀 · 백업 관리</a>'
-              '<a href="/owner/open-models" style="display:inline-block;padding:12px 16px">큐웬·딥시크·노바 수업과 출제</a>'
+              '<a href="/owner/open-models" style="display:inline-block;padding:12px 16px">선정 25개 모델 호출·수업·출제</a>'
               '</nav>',
             1,
         ),
