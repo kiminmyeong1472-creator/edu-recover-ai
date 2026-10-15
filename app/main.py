@@ -59,6 +59,7 @@ from app.platform_core.life_auth import router as life_auth_router, owner_router
 from app.liferecover_runtime import router as liferecover_router
 from app.domains.medical.hospital_os_api import router as hospital_os_router
 from app.domains.medical.hospital_access_api import router as hospital_access_router, owner_router as hospital_access_owner_router
+from app.services.open_model_api import router as open_model_router
 
 
 app = FastAPI(
@@ -93,6 +94,7 @@ app.include_router(liferecover_router)
 app.include_router(hospital_os_router)
 app.include_router(hospital_access_router)
 app.include_router(hospital_access_owner_router)
+app.include_router(open_model_router)
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +260,7 @@ async def owner_platform(_: None = Depends(require_owner)) -> HTMLResponse:
               '<a href="/owner/life/account-setup" style="display:inline-block;padding:12px 16px;border-radius:10px;'
               'border:1px solid #185bc4;color:#185bc4;text-decoration:none;font-weight:750">Life Recover 계정 만들기</a>'
               '<a href="/owner/secrets" style="display:inline-block;padding:12px 16px">영업비밀 · 백업 관리</a>'
+              '<a href="/owner/open-models" style="display:inline-block;padding:12px 16px">큐웬·딥시크·노바 수업과 출제</a>'
               '</nav>',
             1,
         ),
