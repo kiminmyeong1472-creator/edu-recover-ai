@@ -23,6 +23,7 @@ Nothing invokes AWS until call_model is called and the new feature is enabled.
 API references:
 https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
 https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_runtime_InvokeEndpoint.html
+https://openrouter.ai/docs/guides/features/zdr
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ MAX_RESPONSE_BYTES = 256 * 1024
 MAX_INPUT_BYTES = 256 * 1024
 CONNECT_TIMEOUT_SECONDS = 5
 READ_TIMEOUT_SECONDS = 120
+OPENROUTER_CHAT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
 
 class OpenModelError(RuntimeError):
@@ -428,6 +430,10 @@ def _invoke_http(binding: _Binding, instructions: str, prompt: str, max_tokens: 
     else:
         payload["messages"] = [{"role": "system", "content": instructions},
                                {"role": "user", "content": prompt}]
+    if binding.endpoint_url == OPENROUTER_CHAT_ENDPOINT:
+        # Apply to every request, independent of account defaults. No non-ZDR
+        # route is permitted if the selected model has no eligible endpoint.
+        payload["provider"] = {"zdr": True, "data_collection": "deny"}
     try:
         return _openai_text(post_json(binding.endpoint_url, payload, token), binding.request_format)
     except OpenModelHTTPError as exc:
