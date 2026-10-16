@@ -200,6 +200,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 <h1>교육·의료 AI 작업</h1>
 <p>선택한 8개 계열·25개 모델에 직접 질문하거나 튜터 대화, 문제 출제, 자료 검토를 진행할 수 있습니다. Qwen·DeepSeek·gpt-oss·Gemma·GLM·Mistral·Phi·NVIDIA Nemotron을 포함하며, Amazon Nova 등 AWS 추가 후보는 따로 표시합니다.</p>
 <p>GPT-6 Luna는 별도 Azure 서비스로 표시합니다. OpenRouter를 통해 Azure로만 요청하며, 제공자가 입력·응답을 저장하지 않는 조건(ZDR)을 충족하는 경로에만 요청하도록 제한합니다. 실제 호출에는 연결 설정과 소유자 사용 허용이 필요합니다.</p>
+<p>딥시크 직접 연결을 켜면 V4.1 Flash와 V4 Pro는 딥시크 공식 서버에 요청합니다. 이 두 직접 경로에는 무보관 조건을 요구하지 않으며, 딥시크의 보관·이용 정책이 적용됩니다. Railway 서버의 DEEPSEEK_API_KEY 인증 키가 필요합니다. OpenRouter 키는 대신 사용할 수 없습니다.</p>
 <section><form id="draft-form">
 <label for="task">할 일</label><select id="task"><option value="direct">모델에 직접 질문</option><option value="tutor">튜터 대화·개념 설명</option><option value="questions">교재 기반 문제 출제</option><option value="source_review">교육·의료 자료 검토</option></select>
 <div class="grid"><div id="domain-options"><label for="domain">분야</label><select id="domain"><option value="education">교육 설명자료</option><option value="medical">의료 근거 검토</option></select></div>
@@ -281,6 +282,8 @@ function permissionLabel(row){return permissionLabels[row.permission_state]||(ro
 function modelExplanation(row){
  if(!row)return '사용할 모델을 선택하십시오. 연결 준비가 끝나지 않은 모델도 선택하여 필요한 설정을 확인할 수 있습니다.';
  const lines=[row.display_name,'연결 상태: '+connectionLabel(row),'사용 권한: '+permissionLabel(row)];
+ if(row.route_label)lines.push('호출 경로: '+row.route_label);
+ if(row.required_api_key_env&&row.readiness_state==='missing_credentials')lines.push('서버에 필요한 인증 키 설정 이름: '+row.required_api_key_env);
  if(row.readiness_state==='missing_credentials')lines.push('해당 모델 서버의 인증 키가 필요합니다.');
  else if(!row.configured)lines.push('모델 서버 주소와 서버에서 사용하는 모델 이름의 연결 설정이 필요합니다.');
  else if(!row.enabled)lines.push('모델 호출 기능을 켜는 설정이 필요합니다.');
