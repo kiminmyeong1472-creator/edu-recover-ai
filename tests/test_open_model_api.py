@@ -10,7 +10,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.services import open_model_api as api
-from app.services.open_model_catalog import SOURCE_MODEL_CATALOG
+from app.services.open_model_catalog import (
+    AWS_ADDITIONAL_MODEL_CATALOG, CLOUD_SERVICE_MODEL_CATALOG, MODEL_CATALOG,
+    SOURCE_MODEL_CATALOG, model_family,
+)
 from app.services.open_model_transport import OpenModelError
 from app.services.owner_basic_auth import owner_auth_router
 
@@ -64,7 +67,7 @@ class OpenModelAPITests(unittest.TestCase):
             response = self.client.get("/owner/open-models/catalog", auth=self.auth)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertGreaterEqual(len(data["models"]), 25)
+        self.assertEqual(len(data["models"]), 30)
         self.assertTrue({"qwen", "deepseek", "gpt-oss", "gemma", "glm", "mistral", "phi", "nemotron"}
                         <= {m["family"] for m in data["models"]})
         self.assertTrue(all(not m["configured"] for m in data["models"]))
@@ -72,6 +75,13 @@ class OpenModelAPITests(unittest.TestCase):
                          set(SELECTED_MODEL_KEYS))
         self.assertTrue(all(m["selection_group"] == "aws_additional" for m in data["models"]
                             if m["family"] == "nova"))
+        self.assertEqual({m["model_key"] for m in data["models"] if m["selection_group"] == "aws_additional"},
+                         {"Qwen3-32B", "DeepSeek-V3.2", "Amazon-Nova-2-Lite", "Amazon-Nova-Pro"})
+        cloud = [m for m in data["models"] if m["selection_group"] == "cloud_service"]
+        self.assertEqual(len(cloud), 1)
+        self.assertEqual(cloud[0]["model_key"], "GPT-6-Luna")
+        self.assertEqual(cloud[0]["family"], "openai")
+        self.assertFalse(cloud[0]["permitted"])
         self.assertEqual(data["readiness_basis"], "configuration_only_not_live_provider_success")
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertNotIn("endpoint_name", response.text)
@@ -92,6 +102,7 @@ class OpenModelAPITests(unittest.TestCase):
     def test_direct_ui_explains_selected_models_and_uses_plain_text_and_readiness_labels(self):
         response = self.client.get("/owner/open-models", auth=self.auth)
         for text in ("8개 계열·25개 모델", "모델에 직접 질문", "AWS 추가 후보", "인증 정보 필요",
+                     "GPT-6 Luna", "Azure 서비스", "OpenRouter", "저장하지 않는 조건(ZDR)",
                      "configured_not_verified", "missing_credentials", "/owner/open-models/call",
                      "addText(box,'p',result.answer)", "byId('sources').hidden=direct",
                      "byId('add-source').hidden=direct"):
@@ -148,7 +159,11 @@ assert.equal(element('question-count').disabled,true);
         # No configured fixture endpoint or inference provider is contacted.
         rows = [dict(row, configured=False, enabled=False, permitted=False,
                      readiness_state="not_configured", permission_state="OWNER_PERMISSION_REQUIRED",
-                     selection_group="selected_25") for row in SOURCE_MODEL_CATALOG]
+                     selection_group=group)
+                for group, entries in (("selected_25", SOURCE_MODEL_CATALOG),
+                                       ("aws_additional", AWS_ADDITIONAL_MODEL_CATALOG),
+                                       ("cloud_service", CLOUD_SERVICE_MODEL_CATALOG))
+                for row in entries]
         special = {
             "gpt-oss-20b": dict(configured=True, enabled=True, permitted=True,
                                 readiness_state="configured_not_verified", permission_state="ALLOWED"),
@@ -191,10 +206,17 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
 (async()=>{
  vm.runInContext(fs.readFileSync(0,'utf8'),context);await new Promise(resolve=>setImmediate(resolve));
  const options=element('model').children.flatMap(node=>node.tag==='optgroup'?node.children:[]);
- assert.equal(options.length,25);
+ assert.equal(options.length,30);
  assert.ok(options.every(option=>option.disabled===false),'all registered options remain selectable, including held models');
+ const cloudGroup=element('model').children.find(node=>node.tag==='optgroup'&&node.label==='OpenAI · Azure 서비스');
+ assert.ok(cloudGroup);assert.equal(cloudGroup.children.length,1);
+ assert.equal(cloudGroup.children[0].value,'GPT-6-Luna');
+ const awsOptions=element('model').children.filter(node=>node.tag==='optgroup'&&node.label.endsWith(' · AWS 추가 후보')).flatMap(node=>node.children);
+ assert.equal(awsOptions.length,4);
  assert.equal(element('generate').disabled,true,'a ready model elsewhere must not enable the placeholder selection');
  await submit();assert.equal(requests.length,0,'programmatic placeholder submission must not call any model');
+ choose('GPT-6-Luna');assert.equal(element('generate').disabled,true);
+ await submit();assert.equal(requests.length,0,'unconfigured Azure service must not be called');
  choose('DeepSeek-V4-Pro');assert.equal(element('model').value,'DeepSeek-V4-Pro');
  assert.equal(element('generate').disabled,true);
  assert.match(element('model-readiness').textContent,/연결 상태: 연결 설정 필요/);
@@ -219,10 +241,10 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
  element('generate').disabled=false;await submit();assert.equal(requests.length,1,'changing the button alone cannot bypass the selected model guard');
  choose('unknown');await submit();assert.equal(requests.length,1,'an unknown selected value is not callable');
  assert.equal(element('generate').disabled,true);
- // Even if no row is ready, all 25 entries remain available for inspection.
+ // Even if no row is ready, the original 29 and Azure service remain selectable.
  for(const row of catalogRows){row.configured=false;row.enabled=false;row.permitted=false;row.readiness_state='not_configured'}
  await run('loadModels()');
- assert.equal(element('model').children.flatMap(node=>node.tag==='optgroup'?node.children:[]).length,25);
+ assert.equal(element('model').children.flatMap(node=>node.tag==='optgroup'?node.children:[]).length,30);
  choose('gpt-oss-20b');assert.equal(element('model').value,'gpt-oss-20b');assert.equal(element('generate').disabled,true);
  await submit();assert.equal(requests.length,1);
 })().catch(error=>{console.error(error);process.exitCode=1});
@@ -273,6 +295,52 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
                         model_key, api._DIRECT_INSTRUCTIONS, direct_payload()["prompt"], max_tokens=512,
                     )
                     self.assertNotIn("Return only one JSON", invoke.await_args.args[1])
+
+    def test_azure_service_preserves_original_29_names_and_has_separate_openai_family(self):
+        self.assertEqual(tuple(row["model_key"] for row in SOURCE_MODEL_CATALOG), SELECTED_MODEL_KEYS)
+        aws_keys = ("Qwen3-32B", "DeepSeek-V3.2", "Amazon-Nova-2-Lite", "Amazon-Nova-Pro")
+        self.assertEqual(tuple(row["model_key"] for row in AWS_ADDITIONAL_MODEL_CATALOG), aws_keys)
+        self.assertEqual(tuple(row["model_key"] for row in MODEL_CATALOG[:29]), SELECTED_MODEL_KEYS + aws_keys)
+        self.assertEqual(len(MODEL_CATALOG), 30)
+        self.assertEqual(len({row["model_key"] for row in MODEL_CATALOG}), 30)
+        self.assertEqual(CLOUD_SERVICE_MODEL_CATALOG, (
+            {"model_key": "GPT-6-Luna", "family": "openai", "display_name": "GPT-6 Luna · Azure 경유"},
+        ))
+        self.assertEqual(model_family("GPT-6-Luna"), "openai")
+        self.assertEqual(model_family("gpt-oss-20b"), "gpt-oss")
+        self.assertEqual(model_family("gpt-oss-120b"), "gpt-oss")
+
+    def test_azure_service_uses_existing_openai_owner_permission_before_inference(self):
+        controls = (
+            ({"EDURECOVER_ALLOWED_PROVIDERS": "openai,gpt-oss"}, "ALLOWED", 200),
+            ({"EDURECOVER_ALLOWED_PROVIDERS": "gpt-oss"}, "OWNER_PERMISSION_REQUIRED", 423),
+            ({"EDURECOVER_ALLOWED_PROVIDERS": "openai,gpt-oss", "EDURECOVER_AI_HOLD": "true"}, "HOLD", 423),
+            ({"EDURECOVER_ALLOWED_PROVIDERS": "openai,gpt-oss", "EDURECOVER_BLOCKED_PROVIDERS": "openai"}, "BLOCKED", 423),
+            ({"EDURECOVER_ALLOWED_PROVIDERS": "openai,gpt-oss", "EDURECOVER_RESTRICTED_PROVIDERS": "openai"}, "RESTRICTED_VERIFY_ONLY", 423),
+        )
+        for control, permission, expected in controls:
+            with self.subTest(permission=permission), patch.dict(os.environ, {
+                "EDURECOVER_BLOCKED_PROVIDERS": "", "EDURECOVER_RESTRICTED_PROVIDERS": "", **control,
+            }), patch.object(api.transport, "call_model", new_callable=AsyncMock, return_value="Luna 시험 답변") as invoke:
+                catalog = self.client.get("/owner/open-models/catalog", auth=self.auth).json()["models"]
+                luna = next(row for row in catalog if row["model_key"] == "GPT-6-Luna")
+                self.assertEqual(luna["selection_group"], "cloud_service")
+                self.assertEqual(luna["permission_state"], permission)
+                self.assertEqual(luna["permitted"], expected == 200)
+                response = self.client.post("/owner/open-models/call",
+                                            json=direct_payload(model_key="GPT-6-Luna"), auth=self.auth)
+                self.assertEqual(response.status_code, expected)
+                if expected == 200:
+                    invoke.assert_awaited_once_with("GPT-6-Luna", api._DIRECT_INSTRUCTIONS,
+                                                   direct_payload()["prompt"], max_tokens=512)
+                    self.assertEqual(response.json()["model_key"], "GPT-6-Luna")
+                    self.assertEqual(response.json()["review"]["state"], "DRAFT")
+                else:
+                    self.assertEqual(response.json()["detail"]["code"], "OPEN_MODEL_POLICY_HELD")
+                    invoke.assert_not_awaited()
+                if permission in {"BLOCKED", "RESTRICTED_VERIFY_ONLY"}:
+                    original = next(row for row in catalog if row["model_key"] == "gpt-oss-20b")
+                    self.assertEqual(original["permission_state"], "ALLOWED")
 
     def test_direct_call_requires_owner_authentication_and_same_origin_cookie_post(self):
         with patch.object(api.transport, "call_model", new_callable=AsyncMock) as invoke:

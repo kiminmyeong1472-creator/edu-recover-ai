@@ -13,7 +13,8 @@ from unittest.mock import patch
 
 from app.services import open_model_transport as transport
 from app.services.open_model_catalog import (
-    AWS_ADDITIONAL_MODEL_CATALOG, MODEL_CATALOG, SOURCE_MODEL_CATALOG, model_family,
+    AWS_ADDITIONAL_MODEL_CATALOG, CLOUD_SERVICE_MODEL_CATALOG, MODEL_CATALOG,
+    SOURCE_MODEL_CATALOG, model_family,
 )
 
 
@@ -21,6 +22,14 @@ MODEL = "Qwen3.6-27B"
 BEDROCK = {"transport": "bedrock", "region": "ap-northeast-2", "model_id": "owner-supplied-id"}
 SAGEMAKER = {
     "transport": "sagemaker", "region": "ap-northeast-2", "endpoint_name": "owner-endpoint",
+}
+LUNA_KEY = "GPT-6-Luna"
+LUNA_BINDING = {
+    "transport": "openai_compatible",
+    "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
+    "model_id": "openai/gpt-6-luna",
+    "api_key_env": "OPENROUTER_API_KEY",
+    "request_format": "chat",
 }
 
 
@@ -73,8 +82,12 @@ class CatalogTests(unittest.TestCase):
     def test_source_names_families_and_public_flags_only(self):
         self.assertEqual(25, len(SOURCE_MODEL_CATALOG))
         self.assertEqual(4, len(AWS_ADDITIONAL_MODEL_CATALOG))
-        self.assertEqual(29, len(MODEL_CATALOG))
-        self.assertEqual(29, len({entry["model_key"] for entry in MODEL_CATALOG}))
+        self.assertEqual(1, len(CLOUD_SERVICE_MODEL_CATALOG))
+        self.assertEqual(LUNA_KEY, CLOUD_SERVICE_MODEL_CATALOG[0]["model_key"])
+        self.assertEqual("openai", CLOUD_SERVICE_MODEL_CATALOG[0]["family"])
+        self.assertEqual(30, len(MODEL_CATALOG))
+        self.assertEqual(30, len({entry["model_key"] for entry in MODEL_CATALOG}))
+        self.assertEqual("openai", model_family(LUNA_KEY))
         self.assertEqual({"deepseek", "qwen", "gpt-oss", "gemma", "glm", "mistral", "phi", "nemotron"},
                          {entry["family"] for entry in SOURCE_MODEL_CATALOG})
         self.assertEqual({"qwen", "deepseek", "nova"},
@@ -130,6 +143,70 @@ class CatalogTests(unittest.TestCase):
             with self.subTest(value=value), patch.dict(os.environ, environment(enabled=value), clear=True):
                 with self.assertRaises(transport.OpenModelError):
                     transport.catalog_status()
+
+    def test_luna_preset_is_not_added_by_default_or_when_disabled(self):
+        for flag in (None, "false"):
+            env = {"OPENROUTER_API_KEY": "private-preset-token"}
+            if flag is not None:
+                env["EDURECOVER_GPT6_LUNA_AZURE_ENABLED"] = flag
+            with self.subTest(flag=flag), patch.dict(os.environ, env, clear=True), \
+                    patch.object(transport, "post_json") as post, \
+                    patch.object(transport, "_new_client") as sdk:
+                self.assertNotIn(LUNA_KEY, transport._bindings())
+                row = next(row for row in transport.catalog_status() if row["model_key"] == LUNA_KEY)
+                self.assertEqual("not_configured", row["readiness_state"])
+                post.assert_not_called()
+                sdk.assert_not_called()
+
+    def test_luna_preset_flag_refuses_truthy_or_malformed_values(self):
+        for flag in ("", "1", "yes", "enable", "null"):
+            with self.subTest(flag=flag), patch.dict(os.environ, {
+                "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": flag,
+            }, clear=True), patch.object(transport, "post_json") as post, \
+                    patch.object(transport, "_new_client") as sdk:
+                with self.assertRaises(transport.OpenModelError) as error:
+                    transport.catalog_status()
+                self.assertEqual("OPEN_MODEL_CONFIG_INVALID", error.exception.code)
+                post.assert_not_called()
+                sdk.assert_not_called()
+
+    def test_luna_preset_and_json_binding_cannot_compete_even_if_identical(self):
+        with patch.dict(os.environ, {
+            "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "true",
+            "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({LUNA_KEY: LUNA_BINDING}),
+        }, clear=True):
+            with self.assertRaises(transport.OpenModelError) as error:
+                transport.catalog_status()
+        self.assertEqual("OPEN_MODEL_CONFIG_INVALID", error.exception.code)
+
+    def test_exact_explicit_luna_json_binding_is_allowed_without_automatic_preset(self):
+        with patch.dict(os.environ, {
+            "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({LUNA_KEY: LUNA_BINDING}),
+        }, clear=True):
+            binding = transport._bindings()[LUNA_KEY]
+        self.assertEqual("openai/gpt-6-luna", binding.model_id)
+        self.assertEqual("OPENROUTER_API_KEY", binding.api_key_env)
+        self.assertEqual("https://openrouter.ai/api/v1/chat/completions", binding.endpoint_url)
+
+    def test_luna_preset_preserves_existing_deepseek_and_hides_connection_details(self):
+        deepseek = {**LUNA_BINDING, "model_id": "deepseek/deepseek-v4.1-flash"}
+        env = {
+            "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "true",
+            "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+            "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({"DeepSeek-V4.1-Flash": deepseek}),
+            "OPENROUTER_API_KEY": "private-preset-token",
+        }
+        with patch.dict(os.environ, env, clear=True), patch.object(transport, "post_json") as post, \
+                patch.object(transport, "_new_client") as sdk:
+            bindings = transport._bindings()
+            rows = transport.catalog_status()
+        self.assertEqual({"DeepSeek-V4.1-Flash", LUNA_KEY}, set(bindings))
+        self.assertEqual("deepseek/deepseek-v4.1-flash", bindings["DeepSeek-V4.1-Flash"].model_id)
+        self.assertEqual(2, sum(row["enabled"] for row in rows))
+        for private in ("private-preset-token", "openrouter.ai", "OPENROUTER_API_KEY", "openai/gpt-6-luna"):
+            self.assertNotIn(private, json.dumps(rows))
+        post.assert_not_called()
+        sdk.assert_not_called()
 
     def test_family_bindings_require_explicit_ids_and_regions_without_public_leakage(self):
         env = {"EDURECOVER_OPEN_MODELS_ENABLED": "true"}
@@ -402,6 +479,112 @@ HTTP = {
 def http_environment(binding=None, enabled="true"):
     return {**environment(HTTP if binding is None else binding, enabled),
             "SELECTED_MODEL_API_KEY": "private-test-token"}
+
+
+class LunaAzureTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_preset_routes_luna_only_to_azure_without_relaxing_zdr(self):
+        for strict_zdr in ("true", "false"):
+            with self.subTest(strict_zdr=strict_zdr), patch.dict(os.environ, {
+                "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "true",
+                "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+                "EDURECOVER_REQUIRE_ZDR": strict_zdr,
+                "OPENROUTER_API_KEY": "private-preset-token",
+            }, clear=True), patch.object(transport, "post_json", return_value=sagemaker_output()) as post, \
+                    patch.object(transport, "_new_client") as sdk:
+                answer = await transport.call_model(LUNA_KEY, "instruction", "question", max_tokens=64)
+            self.assertEqual("검사된 응답", answer)
+            post.assert_called_once_with("https://openrouter.ai/api/v1/chat/completions", {
+                "model": "openai/gpt-6-luna", "max_tokens": 64, "stream": False,
+                "messages": [{"role": "system", "content": "instruction"},
+                             {"role": "user", "content": "question"}],
+                "provider": {"zdr": True, "data_collection": "deny",
+                             "only": ["azure"], "allow_fallbacks": False},
+            }, "private-preset-token")
+            sdk.assert_not_called()
+
+    async def test_explicit_json_luna_binding_also_enforces_azure_and_zdr(self):
+        with patch.dict(os.environ, {
+            "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({LUNA_KEY: LUNA_BINDING}),
+            "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+            "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "false",
+            "OPENROUTER_API_KEY": "private-json-token",
+        }, clear=True), patch.object(transport, "post_json", return_value=sagemaker_output()) as post:
+            await transport.call_model(LUNA_KEY, "instruction", "question")
+        post.assert_called_once()
+        self.assertEqual({"zdr": True, "data_collection": "deny", "only": ["azure"],
+                          "allow_fallbacks": False}, post.call_args.args[1]["provider"])
+
+    async def test_preset_does_not_change_deepseek_routing(self):
+        deepseek = {**LUNA_BINDING, "model_id": "deepseek/deepseek-v4.1-flash"}
+        with patch.dict(os.environ, {
+            "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "true",
+            "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+            "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({"DeepSeek-V4.1-Flash": deepseek}),
+            "OPENROUTER_API_KEY": "private-shared-token",
+        }, clear=True), patch.object(transport, "post_json", return_value=sagemaker_output()) as post:
+            await transport.call_model("DeepSeek-V4.1-Flash", "instruction", "question")
+        post.assert_called_once()
+        self.assertEqual("deepseek/deepseek-v4.1-flash", post.call_args.args[1]["model"])
+        self.assertEqual({"zdr": True, "data_collection": "deny"}, post.call_args.args[1]["provider"])
+
+    async def test_tampered_luna_configuration_is_rejected_before_any_network_attempt(self):
+        invalid = [
+            BEDROCK, SAGEMAKER,
+            {**LUNA_BINDING, "transport": "sagemaker"},
+            {**LUNA_BINDING, "model_id": "openai/gpt-6"},
+            {**LUNA_BINDING, "endpoint_url": "https://api.openai.com/v1/chat/completions"},
+            {**LUNA_BINDING, "endpoint_url": "https://openrouter.ai.other-provider.com/api/v1/chat/completions"},
+            {**LUNA_BINDING, "endpoint_url": "https://openrouter.ai/other/chat/completions"},
+            {**LUNA_BINDING, "request_format": "completion"},
+            {**LUNA_BINDING, "api_key_env": "OPENAI_API_KEY"},
+            {**LUNA_BINDING, "api_key_env": "private-forbidden-value"},
+            {**LUNA_BINDING, "provider": {"only": ["openai"], "zdr": False}},
+        ]
+        for binding in invalid:
+            with self.subTest(binding=binding), patch.dict(os.environ, {
+                "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({LUNA_KEY: binding}),
+                "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+                "OPENROUTER_API_KEY": "private-preset-token",
+                "OPENAI_API_KEY": "private-other-token",
+            }, clear=True), patch.object(transport, "post_json") as post, \
+                    patch.object(transport, "_new_client") as sdk:
+                with self.assertRaises(transport.OpenModelError) as error:
+                    await transport.call_model(LUNA_KEY, "instruction", "private-question")
+            self.assertEqual("OPEN_MODEL_CONFIG_INVALID", error.exception.code)
+            for private in ("private-", "openrouter.ai", "api.openai.com", "OPENAI_API_KEY"):
+                self.assertNotIn(private, str(error.exception))
+            post.assert_not_called()
+            sdk.assert_not_called()
+
+    async def test_luna_no_eligible_azure_endpoint_fails_once_without_privacy_off_retry(self):
+        with patch.dict(os.environ, {
+            "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "true",
+            "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+            "OPENROUTER_API_KEY": "private-preset-token",
+        }, clear=True), patch.object(transport, "post_json", side_effect=transport.OpenModelHTTPError(
+                "OPEN_MODEL_RESOURCE_NOT_FOUND")) as post, patch.object(transport, "_new_client") as sdk:
+            with self.assertRaises(transport.OpenModelError) as error:
+                await transport.call_model(LUNA_KEY, "instruction", "question")
+        self.assertEqual("OPEN_MODEL_RESOURCE_NOT_FOUND", error.exception.code)
+        post.assert_called_once()
+        self.assertEqual({"zdr": True, "data_collection": "deny", "only": ["azure"],
+                          "allow_fallbacks": False}, post.call_args.args[1]["provider"])
+        sdk.assert_not_called()
+
+    async def test_luna_without_credentials_or_feature_enable_never_calls_a_provider(self):
+        for token, feature in ((None, "true"), ("private-preset-token", "false")):
+            env = {"EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "true",
+                   "EDURECOVER_OPEN_MODELS_ENABLED": feature}
+            if token is not None:
+                env["OPENROUTER_API_KEY"] = token
+            with self.subTest(token=bool(token), feature=feature), patch.dict(os.environ, env, clear=True), \
+                    patch.object(transport, "post_json") as post, patch.object(transport, "_new_client") as sdk:
+                with self.assertRaises(transport.OpenModelError) as error:
+                    await transport.call_model(LUNA_KEY, "instruction", "question")
+            self.assertEqual("OPEN_MODEL_CREDENTIALS_UNAVAILABLE" if token is None else "OPEN_MODEL_DISABLED",
+                             error.exception.code)
+            post.assert_not_called()
+            sdk.assert_not_called()
 
 
 class HTTPTransportTests(unittest.IsolatedAsyncioTestCase):
