@@ -405,6 +405,44 @@ def http_environment(binding=None, enabled="true"):
 
 
 class HTTPTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_openrouter_always_requires_zdr_and_keeps_the_exact_selected_model(self):
+        key = "DeepSeek-V4.1-Flash"
+        binding = {**HTTP, "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
+                   "model_id": "deepseek/deepseek-v4.1-flash"}
+        env = {**http_environment(), "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({key: binding})}
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(transport, "post_json", return_value=sagemaker_output()) as post, \
+                patch.object(transport, "_new_client") as sdk:
+            answer = await transport.call_model(key, "instruction", "question", max_tokens=64)
+        self.assertEqual("검사된 응답", answer)
+        post.assert_called_once_with(binding["endpoint_url"], {
+            "model": "deepseek/deepseek-v4.1-flash", "max_tokens": 64, "stream": False,
+            "messages": [{"role": "system", "content": "instruction"},
+                         {"role": "user", "content": "question"}],
+            "provider": {"zdr": True, "data_collection": "deny"},
+        }, "private-test-token")
+        sdk.assert_not_called()
+
+    async def test_openrouter_zdr_failure_does_not_retry_without_privacy_controls(self):
+        binding = {**HTTP, "endpoint_url": "https://openrouter.ai/api/v1/chat/completions"}
+        with patch.dict(os.environ, http_environment(binding), clear=True), \
+                patch.object(transport, "post_json", side_effect=transport.OpenModelHTTPError(
+                    "OPEN_MODEL_RESOURCE_NOT_FOUND")) as post:
+            with self.assertRaises(transport.OpenModelError):
+                await transport.call_model(MODEL, "instruction", "question")
+        post.assert_called_once()
+        self.assertEqual({"zdr": True, "data_collection": "deny"}, post.call_args.args[1]["provider"])
+
+    async def test_openrouter_policy_matches_only_the_exact_official_endpoint(self):
+        for endpoint in ("https://openrouter.ai.other-provider.com/api/v1/chat/completions",
+                         "https://other-provider.com/openrouter.ai/api/v1/chat/completions",
+                         "https://openrouter.ai/other/chat/completions"):
+            with self.subTest(endpoint=endpoint), \
+                    patch.dict(os.environ, http_environment({**HTTP, "endpoint_url": endpoint}), clear=True), \
+                    patch.object(transport, "post_json", return_value=sagemaker_output()) as post:
+                await transport.call_model(MODEL, "instruction", "question")
+            self.assertNotIn("provider", post.call_args.args[1])
+
     async def test_all_25_exact_names_use_their_explicit_binding_without_aws(self):
         entries = {
             entry["model_key"]: {**HTTP, "model_id": "checkpoint-" + str(i),
