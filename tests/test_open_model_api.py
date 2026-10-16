@@ -143,6 +143,115 @@ assert.equal(element('question-count').disabled,true);
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_model_selection_allows_inspection_but_sends_only_the_selected_ready_model(self):
+        # Run the real script with browser events and a mocked same-origin fetch.
+        # No configured fixture endpoint or inference provider is contacted.
+        rows = [dict(row, configured=False, enabled=False, permitted=False,
+                     readiness_state="not_configured", permission_state="OWNER_PERMISSION_REQUIRED",
+                     selection_group="selected_25") for row in SOURCE_MODEL_CATALOG]
+        special = {
+            "gpt-oss-20b": dict(configured=True, enabled=True, permitted=True,
+                                readiness_state="configured_not_verified", permission_state="ALLOWED"),
+            "Qwen3.6-27B": dict(readiness_state="missing_credentials", permitted=True,
+                                 permission_state="ALLOWED"),
+            "phi-4": dict(configured=True, readiness_state="disabled", permitted=True,
+                          permission_state="ALLOWED"),
+            "DeepSeek-R1": dict(configured=True, enabled=True,
+                                 readiness_state="configured_not_verified", permission_state="HOLD"),
+        }
+        for row in rows:
+            row.update(special.get(row["model_key"], {}))
+        script = re.search(r"<script>(.*?)</script>", api._HTML, re.S).group(1)
+        harness = r"""
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const catalogRows=__ROWS__,elements=new Map(),requests=[];
+function element(id,tag=''){
+ if(!elements.has(id))elements.set(id,{value:'',disabled:false,children:[],dataset:{},tag,events:{},
+  addEventListener(type,handler){this.events[type]=handler},append(...children){this.children.push(...children)},
+  replaceChildren(){this.children=[]},querySelectorAll(selector){
+   if(id==='draft-form')return [...elements.values()].filter(node=>['input','select','textarea','button'].includes(node.tag));
+   if(id==='sources')return this.children.flatMap(child=>child.children).filter(child=>child.dataset.sourceId);
+   return [];
+  }});
+ return elements.get(id);
+}
+for(const id of ['task','domain','model','question-format'])element(id,'select');
+for(const id of ['max-tokens','question-count'])element(id,'input');
+for(const id of ['generate','add-source','new-conversation'])element(id,'button');
+element('question','textarea');element('task').value='direct';element('domain').value='education';
+element('max-tokens').value='512';element('question-count').value='5';element('question').value='시험용 질문';
+const context=vm.createContext({document:{getElementById:element,createElement:tag=>element(Symbol(),tag)},
+ fetch:async(url,options)=>{
+  if(url==='/owner/open-models/catalog')return {ok:true,json:async()=>({models:catalogRows})};
+  requests.push({url,options});return {ok:true,json:async()=>({task:'direct',model_key:JSON.parse(options.body).model_key,answer:'시험용 답변'})};
+ },console});
+function run(code){return vm.runInContext(code,context)}
+function choose(key){element('model').value=key;element('model').events.change()}
+async function submit(){await element('draft-form').events.submit({preventDefault(){}})}
+(async()=>{
+ vm.runInContext(fs.readFileSync(0,'utf8'),context);await new Promise(resolve=>setImmediate(resolve));
+ const options=element('model').children.flatMap(node=>node.tag==='optgroup'?node.children:[]);
+ assert.equal(options.length,25);
+ assert.ok(options.every(option=>option.disabled===false),'all registered options remain selectable, including held models');
+ assert.equal(element('generate').disabled,true,'a ready model elsewhere must not enable the placeholder selection');
+ await submit();assert.equal(requests.length,0,'programmatic placeholder submission must not call any model');
+ choose('DeepSeek-V4-Pro');assert.equal(element('model').value,'DeepSeek-V4-Pro');
+ assert.equal(element('generate').disabled,true);
+ assert.match(element('model-readiness').textContent,/연결 상태: 연결 설정 필요/);
+ assert.match(element('model-readiness').textContent,/사용 권한: 소유자 사용 허용 필요/);
+ run('setBusy(true);setBusy(false)');assert.equal(element('model').disabled,false);
+ assert.equal(element('generate').disabled,true,'busy completion must check the selected model, not any ready row');
+ await submit();assert.equal(requests.length,0,'unconfigured selection must never be sent');
+ choose('Qwen3.6-27B');assert.match(element('model-readiness').textContent,/인증 정보 필요/);
+ assert.match(element('model-readiness').textContent,/사용 권한: 소유자 사용 허용/);
+ await submit();assert.equal(requests.length,0,'missing credentials must prevent sending');
+ choose('DeepSeek-R1');assert.match(element('model-readiness').textContent,/소유자가 전체 AI 호출을 중지함/);
+ assert.match(element('model-readiness').textContent,/실제 응답 미확인/);
+ await submit();assert.equal(requests.length,0,'owner-held selection must prevent sending');
+ choose('phi-4');assert.match(element('model-readiness').textContent,/호출 기능 꺼짐/);
+ await submit();assert.equal(requests.length,0,'disabled feature must prevent sending');
+ choose('gpt-oss-20b');assert.equal(element('generate').disabled,false);
+ assert.match(element('model-readiness').textContent,/아직 확인하지 않았습니다/);
+ await submit();assert.equal(requests.length,1);assert.equal(requests[0].url,'/owner/open-models/call');
+ assert.equal(JSON.parse(requests[0].options.body).model_key,'gpt-oss-20b');
+ assert.equal(element('generate').disabled,false,'completed request restores the ready selected model');
+ choose('DeepSeek-V4-Pro');assert.equal(element('generate').disabled,true);
+ element('generate').disabled=false;await submit();assert.equal(requests.length,1,'changing the button alone cannot bypass the selected model guard');
+ choose('unknown');await submit();assert.equal(requests.length,1,'an unknown selected value is not callable');
+ assert.equal(element('generate').disabled,true);
+ // Even if no row is ready, all 25 entries remain available for inspection.
+ for(const row of catalogRows){row.configured=false;row.enabled=false;row.permitted=false;row.readiness_state='not_configured'}
+ await run('loadModels()');
+ assert.equal(element('model').children.flatMap(node=>node.tag==='optgroup'?node.children:[]).length,25);
+ choose('gpt-oss-20b');assert.equal(element('model').value,'gpt-oss-20b');assert.equal(element('generate').disabled,true);
+ await submit();assert.equal(requests.length,1);
+})().catch(error=>{console.error(error);process.exitCode=1});
+""".replace("__ROWS__", json.dumps(rows, ensure_ascii=False))
+        result = subprocess.run(["node", "-e", harness], input=script,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_catalogue_reports_connection_and_owner_policy_states_independently(self):
+        cases = (
+            ({}, "ALLOWED", True),
+            ({"EDURECOVER_AI_HOLD": "true"}, "HOLD", False),
+            ({"EDURECOVER_ALLOWED_PROVIDERS": "qwen"}, "OWNER_PERMISSION_REQUIRED", False),
+            ({"EDURECOVER_BLOCKED_PROVIDERS": "gpt-oss"}, "BLOCKED", False),
+            ({"EDURECOVER_RESTRICTED_PROVIDERS": "gpt-oss"}, "RESTRICTED_VERIFY_ONLY", False),
+            ({"EDURECOVER_CONTROL_MANIFEST_JSON": "invalid"}, "CONTROL_CONFIG_INVALID", False),
+        )
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock) as invoke:
+            for control, expected_state, permitted in cases:
+                with self.subTest(state=expected_state), patch.dict(os.environ, control):
+                    response = self.client.get("/owner/open-models/catalog", auth=self.auth)
+                    self.assertEqual(response.status_code, 200)
+                    row = next(row for row in response.json()["models"] if row["model_key"] == "gpt-oss-20b")
+                    self.assertEqual(row["permission_state"], expected_state)
+                    self.assertEqual(row["permitted"], permitted)
+                    self.assertEqual(row["readiness_state"], "not_configured")
+                    self.assertFalse(row["configured"])
+            invoke.assert_not_awaited()
+
     def test_direct_call_accepts_all_25_exact_keys_and_unstructured_base_model_output(self):
         self.assertEqual(tuple(row["model_key"] for row in SOURCE_MODEL_CATALOG), SELECTED_MODEL_KEYS)
         families = ",".join(sorted({row["family"] for row in SOURCE_MODEL_CATALOG}))
