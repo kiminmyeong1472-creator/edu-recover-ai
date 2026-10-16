@@ -16,8 +16,15 @@ EDURECOVER_OPEN_<FAMILY>_MODEL_KEY, _MODEL_ID, and _REGION. All three variables
 must be set together, the key must belong to that family, and the same key must
 not also occur in JSON. These conveniences configure Bedrock Converse only.
 
-No endpoint, model identifier, region, provider, or fallback is inferred. The
-ordinary boto3 credential chain is used without reading/returning credentials.
+EDURECOVER_GPT6_LUNA_AZURE_ENABLED=true explicitly opts into the fixed
+GPT-6-Luna preset: OpenRouter chat, openai/gpt-6-luna, OPENROUTER_API_KEY,
+Azure only, no provider fallbacks, and ZDR with data collection denied. It is
+disabled by default and must not duplicate a JSON binding for the same name.
+Any explicit JSON binding for GPT-6-Luna must match that fixed preset exactly.
+
+Other than this explicitly enabled fixed preset, no endpoint, model identifier,
+region, provider, or fallback is inferred. The ordinary boto3 credential chain
+is used without reading/returning credentials.
 Nothing invokes AWS until call_model is called and the new feature is enabled.
 
 API references:
@@ -44,6 +51,15 @@ MAX_INPUT_BYTES = 256 * 1024
 CONNECT_TIMEOUT_SECONDS = 5
 READ_TIMEOUT_SECONDS = 120
 OPENROUTER_CHAT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+GPT6_LUNA_MODEL_KEY = "GPT-6-Luna"
+GPT6_LUNA_MODEL_ID = "openai/gpt-6-luna"
+_GPT6_LUNA_AZURE_BINDING = {
+    "transport": "openai_compatible",
+    "endpoint_url": OPENROUTER_CHAT_ENDPOINT,
+    "model_id": GPT6_LUNA_MODEL_ID,
+    "api_key_env": "OPENROUTER_API_KEY",
+    "request_format": "chat",
+}
 
 
 class OpenModelError(RuntimeError):
@@ -107,6 +123,13 @@ def _bindings() -> dict[str, _Binding]:
         )
         if not isinstance(source, dict):
             raise ValueError("Expected object.")
+        luna_enabled = os.getenv("EDURECOVER_GPT6_LUNA_AZURE_ENABLED", "false").strip().lower()
+        if luna_enabled not in {"true", "false"}:
+            raise ValueError("Invalid Luna preset flag.")
+        if luna_enabled == "true":
+            if GPT6_LUNA_MODEL_KEY in source:
+                raise ValueError("Conflicting Luna preset binding.")
+            source[GPT6_LUNA_MODEL_KEY] = dict(_GPT6_LUNA_AZURE_BINDING)
         for family in ("qwen", "deepseek", "nova"):
             prefix = "EDURECOVER_OPEN_" + family.upper()
             fields = [prefix + suffix for suffix in ("_MODEL_KEY", "_MODEL_ID", "_REGION")]
@@ -126,6 +149,8 @@ def _bindings() -> dict[str, _Binding]:
             model_family(key)
             if not isinstance(entry, dict):
                 raise ValueError("Expected binding object.")
+            if key == GPT6_LUNA_MODEL_KEY and entry != _GPT6_LUNA_AZURE_BINDING:
+                raise ValueError("Luna requires the fixed Azure-only OpenRouter binding.")
             transport = entry.get("transport")
             if transport == "bedrock":
                 if set(entry) != {"transport", "region", "model_id"}:
@@ -434,6 +459,8 @@ def _invoke_http(binding: _Binding, instructions: str, prompt: str, max_tokens: 
         # Apply to every request, independent of account defaults. No non-ZDR
         # route is permitted if the selected model has no eligible endpoint.
         payload["provider"] = {"zdr": True, "data_collection": "deny"}
+        if binding.model_id == GPT6_LUNA_MODEL_ID:
+            payload["provider"].update({"only": ["azure"], "allow_fallbacks": False})
     try:
         return _openai_text(post_json(binding.endpoint_url, payload, token), binding.request_format)
     except OpenModelHTTPError as exc:

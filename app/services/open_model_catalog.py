@@ -1,4 +1,4 @@
-"""Owner-selected names and separately identified AWS integration candidates.
+"""Owner-selected names and separately identified cloud service candidates.
 
 This catalogue records a previous selection. It is not a claim that AWS hosts
 these names, that a particular account can invoke them, or that a licence has
@@ -48,7 +48,13 @@ AWS_ADDITIONAL_MODEL_CATALOG: tuple[dict[str, str], ...] = (
     {"model_key": "Amazon-Nova-2-Lite", "family": "nova", "display_name": "Amazon Nova 2 Lite"},
     {"model_key": "Amazon-Nova-Pro", "family": "nova", "display_name": "Amazon Nova Pro"},
 )
-MODEL_CATALOG = SOURCE_MODEL_CATALOG + AWS_ADDITIONAL_MODEL_CATALOG
+# This hosted service is separate from the owner's 25 open-weight selections
+# and the historical AWS candidates. The openai family preserves the existing
+# owner's provider allow/hold controls; it is not the gpt-oss family.
+CLOUD_SERVICE_MODEL_CATALOG: tuple[dict[str, str], ...] = (
+    {"model_key": "GPT-6-Luna", "family": "openai", "display_name": "GPT-6 Luna · Azure 경유"},
+)
+MODEL_CATALOG = SOURCE_MODEL_CATALOG + AWS_ADDITIONAL_MODEL_CATALOG + CLOUD_SERVICE_MODEL_CATALOG
 _MODEL_FAMILIES = {entry["model_key"]: entry["family"] for entry in MODEL_CATALOG}
 
 

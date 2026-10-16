@@ -11,7 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_v
 
 from app.services import open_model_transport as transport
 from app.services.control_plane import ProviderHeld, assert_provider_allowed, evaluate_provider
-from app.services.open_model_catalog import AWS_ADDITIONAL_MODEL_CATALOG, model_family
+from app.services.open_model_catalog import (
+    AWS_ADDITIONAL_MODEL_CATALOG, CLOUD_SERVICE_MODEL_CATALOG, model_family,
+)
 from app.services.open_model_drafts import DraftRequest, generate_draft
 from app.services.open_model_transport import OpenModelError, catalog_status
 from app.services.owner_basic_auth import require_owner
@@ -20,6 +22,7 @@ from app.services.owner_basic_auth import require_owner
 _HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "same-origin",
             "X-Content-Type-Options": "nosniff"}
 _AWS_ADDITIONAL_KEYS = {row["model_key"] for row in AWS_ADDITIONAL_MODEL_CATALOG}
+_CLOUD_SERVICE_KEYS = {row["model_key"] for row in CLOUD_SERVICE_MODEL_CATALOG}
 
 
 class DirectCallRequest(BaseModel):
@@ -93,6 +96,7 @@ def open_model_catalog() -> JSONResponse:
         models = catalog_status()
         for model in models:
             model["selection_group"] = (
+                "cloud_service" if model["model_key"] in _CLOUD_SERVICE_KEYS else
                 "aws_additional" if model["model_key"] in _AWS_ADDITIONAL_KEYS else "selected_25"
             )
             try:
@@ -195,6 +199,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 <header><strong>EduRecover</strong><a href="/owner">관리 화면</a></header>
 <h1>교육·의료 AI 작업</h1>
 <p>선택한 8개 계열·25개 모델에 직접 질문하거나 튜터 대화, 문제 출제, 자료 검토를 진행할 수 있습니다. Qwen·DeepSeek·gpt-oss·Gemma·GLM·Mistral·Phi·NVIDIA Nemotron을 포함하며, Amazon Nova 등 AWS 추가 후보는 따로 표시합니다.</p>
+<p>GPT-6 Luna는 별도 Azure 서비스로 표시합니다. OpenRouter를 통해 Azure로만 요청하며, 제공자가 입력·응답을 저장하지 않는 조건(ZDR)을 충족하는 경로에만 요청하도록 제한합니다. 실제 호출에는 연결 설정과 소유자 사용 허용이 필요합니다.</p>
 <section><form id="draft-form">
 <label for="task">할 일</label><select id="task"><option value="direct">모델에 직접 질문</option><option value="tutor">튜터 대화·개념 설명</option><option value="questions">교재 기반 문제 출제</option><option value="source_review">교육·의료 자료 검토</option></select>
 <div class="grid"><div id="domain-options"><label for="domain">분야</label><select id="domain"><option value="education">교육 설명자료</option><option value="medical">의료 근거 검토</option></select></div>
@@ -267,7 +272,7 @@ function updateTask(){
  byId('task-notice').textContent=direct?'질문하기를 실행하면 입력한 질문만 선택한 모델 하나에 전송합니다. 답변은 생성 초안이며 공식 출처 대조와 독립 AI 검증을 수행하지 않습니다.':'선택한 모델 하나에 입력한 내용만 전송합니다. 튜터는 자료 없이 질문할 수 있으며, 출처가 필요한 설명에는 자료를 함께 넣을 수 있습니다. 문제 출제와 자료 검토에는 원문이 필요합니다.';
  byId('result').hidden=true;clearHistory();
 }
-const familyNames={deepseek:'DeepSeek · 딥시크',qwen:'Qwen · 큐웬',nova:'Amazon Nova · 아마존 노바','gpt-oss':'gpt-oss',gemma:'젬마',glm:'GLM',mistral:'미스트랄',phi:'Phi',nemotron:'네모트론'};
+const familyNames={deepseek:'DeepSeek · 딥시크',qwen:'Qwen · 큐웬',nova:'Amazon Nova · 아마존 노바','gpt-oss':'gpt-oss',gemma:'젬마',glm:'GLM',mistral:'미스트랄',phi:'Phi',nemotron:'네모트론',openai:'OpenAI'};
 const readinessLabels={not_configured:'연결 설정 필요',missing_credentials:'인증 정보 필요',disabled:'호출 기능 꺼짐',configured_not_verified:'호출 설정됨 · 실제 응답 미확인'};
 const permissionLabels={ALLOWED:'소유자 사용 허용',HOLD:'소유자가 전체 AI 호출을 중지함',OWNER_PERMISSION_REQUIRED:'소유자 사용 허용 필요',BLOCKED:'소유자가 이 모델 계열의 호출을 차단함',RESTRICTED_VERIFY_ONLY:'검증 전용 허용 · 질문 생성 보류',CONTROL_CONFIG_INVALID:'소유자 사용 제어 설정 확인 필요'};
 function modelReady(row){return !!row&&row.configured===true&&row.enabled===true&&row.permitted===true&&(!row.readiness_state||row.readiness_state==='configured_not_verified');}
@@ -297,8 +302,8 @@ async function loadModels(){
   const first=document.createElement('option');first.value='';first.textContent='사용할 모델을 선택할 수 있습니다.';select.append(first);
   const groups={};let usableModels=0;
   for(const row of data.models){
-   const additional=row.selection_group==='aws_additional',groupKey=row.family+(additional?'-aws':'');
-   let group=groups[groupKey];if(!group){group=document.createElement('optgroup');group.label=(familyNames[row.family]||row.family)+(additional?' · AWS 추가 후보':'');groups[groupKey]=group;select.append(group);}
+   const additional=row.selection_group==='aws_additional',cloud=row.selection_group==='cloud_service',groupKey=row.family+(additional?'-aws':cloud?'-cloud':'');
+   let group=groups[groupKey];if(!group){group=document.createElement('optgroup');group.label=(familyNames[row.family]||row.family)+(additional?' · AWS 추가 후보':cloud?' · Azure 서비스':'');groups[groupKey]=group;select.append(group);}
    const option=document.createElement('option');option.value=row.model_key;
    modelRows.set(row.model_key,row);const ready=modelReady(row);
    option.textContent=row.display_name+' · '+connectionLabel(row)+(row.permitted===true?'':' · '+permissionLabel(row));group.append(option);if(ready)usableModels++;
