@@ -587,6 +587,78 @@ class LunaAzureTransportTests(unittest.IsolatedAsyncioTestCase):
             sdk.assert_not_called()
 
 
+class DeepSeekDirectTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_direct_presets_migrate_deepseek_only_and_keep_luna_strict(self):
+        legacy = {**LUNA_BINDING, "model_id": "deepseek/legacy"}
+        env = {
+            "EDURECOVER_DEEPSEEK_DIRECT_ENABLED": "true",
+            "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "true",
+            "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+            "DEEPSEEK_API_KEY": "direct-private-token", "OPENROUTER_API_KEY": "luna-private-token",
+            "EDURECOVER_OPEN_MODEL_BINDINGS_JSON": json.dumps({
+                "DeepSeek-V4.1-Flash": legacy,
+                "DeepSeek-R1": {**legacy, "endpoint_url": "https://OPENROUTER.AI/other/chat/completions"},
+                MODEL: BEDROCK,
+            }),
+            "EDURECOVER_OPEN_DEEPSEEK_MODEL_KEY": "DeepSeek-R1",
+            "EDURECOVER_OPEN_DEEPSEEK_MODEL_ID": "former-bedrock-id",
+            "EDURECOVER_OPEN_DEEPSEEK_REGION": "ap-northeast-2",
+        }
+        with patch.dict(os.environ, env, clear=True), patch.object(
+            transport, "post_json", return_value=sagemaker_output()
+        ) as post:
+            bindings = transport._bindings()
+            self.assertNotIn("DeepSeek-R1", bindings)
+            self.assertEqual("bedrock", bindings[MODEL].transport)
+            for key, model_id in (("DeepSeek-V4.1-Flash", "deepseek-flash"),
+                                  ("DeepSeek-V4-Pro", "deepseek-v4-pro")):
+                await transport.call_model(key, "instruction", "question", max_tokens=64)
+                self.assertEqual("https://api.deepseek.com/chat/completions", post.call_args.args[0])
+                self.assertEqual(model_id, post.call_args.args[1]["model"])
+                self.assertNotIn("provider", post.call_args.args[1])
+                self.assertEqual("direct-private-token", post.call_args.args[2])
+            await transport.call_model(LUNA_KEY, "instruction", "question")
+            self.assertEqual({"zdr": True, "data_collection": "deny", "only": ["azure"],
+                              "allow_fallbacks": False}, post.call_args.args[1]["provider"])
+            self.assertEqual(3, post.call_count)
+
+    async def test_missing_direct_key_is_visible_and_never_uses_openrouter_key(self):
+        with patch.dict(os.environ, {
+            "EDURECOVER_DEEPSEEK_DIRECT_ENABLED": "true", "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+            "OPENROUTER_API_KEY": "unrelated-private-token",
+        }, clear=True), patch.object(transport, "post_json") as post:
+            rows = {row["model_key"]: row for row in transport.catalog_status()}
+            for key in ("DeepSeek-V4.1-Flash", "DeepSeek-V4-Pro"):
+                self.assertEqual("missing_credentials", rows[key]["readiness_state"])
+                self.assertFalse(rows[key]["enabled"])
+                self.assertEqual("DEEPSEEK_API_KEY", rows[key]["required_api_key_env"])
+            with self.assertRaises(transport.OpenModelError) as error:
+                await transport.call_model("DeepSeek-V4.1-Flash", "instruction", "question")
+            self.assertEqual("OPEN_MODEL_CREDENTIALS_UNAVAILABLE", error.exception.code)
+            post.assert_not_called()
+
+    async def test_direct_failure_does_not_retry_or_fallback(self):
+        with patch.dict(os.environ, {
+            "EDURECOVER_DEEPSEEK_DIRECT_ENABLED": "true", "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+            "DEEPSEEK_API_KEY": "direct-private-token", "OPENROUTER_API_KEY": "unrelated-private-token",
+        }, clear=True), patch.object(transport, "post_json", side_effect=transport.OpenModelHTTPError(
+            "OPEN_MODEL_QUOTA_EXCEEDED"
+        )) as post:
+            with self.assertRaises(transport.OpenModelError) as error:
+                await transport.call_model("DeepSeek-V4.1-Flash", "instruction", "question")
+            self.assertEqual("OPEN_MODEL_QUOTA_EXCEEDED", error.exception.code)
+            post.assert_called_once()
+            self.assertEqual("https://api.deepseek.com/chat/completions", post.call_args.args[0])
+
+    async def test_invalid_direct_flag_fails_before_any_network(self):
+        with patch.dict(os.environ, {"EDURECOVER_DEEPSEEK_DIRECT_ENABLED": "treu"}, clear=True), \
+                patch.object(transport, "post_json") as post:
+            with self.assertRaises(transport.OpenModelError) as error:
+                transport.catalog_status()
+            self.assertEqual("OPEN_MODEL_CONFIG_INVALID", error.exception.code)
+            post.assert_not_called()
+
+
 class HTTPTransportTests(unittest.IsolatedAsyncioTestCase):
     async def test_openrouter_always_requires_zdr_and_keeps_the_exact_selected_model(self):
         key = "DeepSeek-V4.1-Flash"

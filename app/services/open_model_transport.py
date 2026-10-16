@@ -41,6 +41,7 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.services.open_model_catalog import MODEL_CATALOG, model_family
 from app.services.open_model_http import OpenModelHTTPError, post_json, validate_endpoint_url
@@ -59,6 +60,17 @@ _GPT6_LUNA_AZURE_BINDING = {
     "model_id": GPT6_LUNA_MODEL_ID,
     "api_key_env": "OPENROUTER_API_KEY",
     "request_format": "chat",
+}
+DEEPSEEK_CHAT_ENDPOINT = "https://api.deepseek.com/chat/completions"
+_DEEPSEEK_DIRECT_BINDINGS = {
+    key: {
+        "transport": "openai_compatible", "endpoint_url": DEEPSEEK_CHAT_ENDPOINT,
+        "model_id": model_id, "api_key_env": "DEEPSEEK_API_KEY", "request_format": "chat",
+    }
+    for key, model_id in (
+        ("DeepSeek-V4.1-Flash", "deepseek-flash"),
+        ("DeepSeek-V4-Pro", "deepseek-v4-pro"),
+    )
 }
 
 
@@ -123,6 +135,19 @@ def _bindings() -> dict[str, _Binding]:
         )
         if not isinstance(source, dict):
             raise ValueError("Expected object.")
+        deepseek_direct = os.getenv("EDURECOVER_DEEPSEEK_DIRECT_ENABLED", "false").strip().lower()
+        if deepseek_direct not in {"true", "false"}:
+            raise ValueError("Invalid DeepSeek direct flag.")
+        if deepseek_direct == "true":
+            # Migrate only DeepSeek entries: no old OpenRouter route remains as
+            # an automatic fallback, and unrelated model bindings are preserved.
+            source = {
+                key: entry for key, entry in source.items()
+                if not (model_family(key) == "deepseek" and isinstance(entry, dict)
+                        and (urlsplit(entry.get("endpoint_url", "")).hostname or "").lower()
+                        in {"openrouter.ai", "www.openrouter.ai"})
+            }
+            source.update({key: dict(entry) for key, entry in _DEEPSEEK_DIRECT_BINDINGS.items()})
         luna_enabled = os.getenv("EDURECOVER_GPT6_LUNA_AZURE_ENABLED", "false").strip().lower()
         if luna_enabled not in {"true", "false"}:
             raise ValueError("Invalid Luna preset flag.")
@@ -131,6 +156,10 @@ def _bindings() -> dict[str, _Binding]:
                 raise ValueError("Conflicting Luna preset binding.")
             source[GPT6_LUNA_MODEL_KEY] = dict(_GPT6_LUNA_AZURE_BINDING)
         for family in ("qwen", "deepseek", "nova"):
+            if family == "deepseek" and deepseek_direct == "true":
+                # The explicit direct preset takes precedence over the former
+                # one-model Bedrock convenience settings for this family.
+                continue
             prefix = "EDURECOVER_OPEN_" + family.upper()
             fields = [prefix + suffix for suffix in ("_MODEL_KEY", "_MODEL_ID", "_REGION")]
             if not any(field in os.environ for field in fields):
@@ -215,8 +244,18 @@ def catalog_status() -> list[dict[str, Any]]:
         state = ("not_configured" if binding is None else
                  "missing_credentials" if not credentials_ready else
                  "disabled" if not enabled else "configured_not_verified")
-        rows.append(dict(entry, configured=bool(credentials_ready),
-                         enabled=enabled and bool(credentials_ready), readiness_state=state))
+        row = dict(entry, configured=bool(credentials_ready),
+                   enabled=enabled and bool(credentials_ready), readiness_state=state)
+        preset = _DEEPSEEK_DIRECT_BINDINGS.get(entry["model_key"])
+        if preset is not None and binding is not None and (
+            binding.transport == "openai_compatible"
+            and binding.endpoint_url == preset["endpoint_url"]
+            and binding.model_id == preset["model_id"]
+            and binding.api_key_env == preset["api_key_env"]
+        ):
+            row.update(route_label="DeepSeek 직접 API · OpenRouter 미사용",
+                       required_api_key_env="DEEPSEEK_API_KEY")
+        rows.append(row)
     return rows
 
 
