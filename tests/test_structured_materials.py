@@ -1,6 +1,8 @@
 """Condition changes, withheld publication, and independent assessment boundaries."""
 
 import base64
+import hashlib
+import json
 import os
 import tempfile
 import unittest
@@ -18,7 +20,8 @@ from app.classroom_tutor import (
 )
 from app.services.structured_materials import (
     example_bundle, publication_issues, affected_assets, bundle_lesson,
-    issue_teacher_review_receipts, scenario_manifest_digest, Representation,
+    issue_teacher_review_receipts, scenario_manifest_digest, bundle_digest,
+    Representation, SceneVisual,
 )
 
 
@@ -27,6 +30,112 @@ def reviewed_example():
 
 
 class StructuredMaterialTests(unittest.TestCase):
+    def test_absent_visual_preserves_legacy_serialization_and_review_receipts(self):
+        draft = example_bundle()
+        prior_keys = {"asset_id", "kind", "scenario_id", "condition_revision_id",
+                      "generation_id", "depends_on", "content", "choices",
+                      "media_asset_id", "media_sha256", "media_type"}
+        self.assertTrue(all(set(asset) == prior_keys for asset in draft.model_dump()["representations"]))
+        self.assertNotIn("visual", draft.representations[0].model_dump())
+        self.assertNotIn("visual", json.loads(draft.model_dump_json())["representations"][0])
+        explicit_null = Representation.model_validate({**draft.representations[0].model_dump(), "visual": None})
+        self.assertEqual(explicit_null.model_dump(), draft.representations[0].model_dump())
+        # These fingerprints were captured before adding the optional field.
+        self.assertEqual(bundle_digest(draft), "699f2fb323b780ee79eb821f6e490172f5d6c9c6520441181e5c87193cd1b20c")
+        self.assertEqual(scenario_manifest_digest(draft, "linear"),
+                         "6ee3711b7914ddb97ca27c975ee3582c48aa42508f663033b835bdf215637d2e")
+        reviewed = issue_teacher_review_receipts(draft)
+        self.assertEqual(bundle_digest(reviewed), "5c13b710b52e4b624f04a05bd70a68a8b10060fc00d9e432004a2beba686e7bb")
+        lesson = bundle_lesson(reviewed)
+        self.assertTrue(all("scene_visual" not in step for step in lesson))
+        serialized = json.dumps(lesson, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        self.assertEqual(hashlib.sha256(serialized.encode()).hexdigest(),
+                         "472dcebc5867980df3a20eed8a9309bbf890c26f08a8f9ef4982dfa0e4cd9cee")
+
+    def test_scene_visual_kinds_round_trip_and_compile_as_plain_data(self):
+        visuals = [
+            {"kind": "DIAGRAM", "nodes": [{"id": "a", "label": "기초"}, {"id": "b", "label": "결론"}],
+             "edges": [{"from_id": "a", "to_id": "b", "label": "조건을 확인"}]},
+            {"kind": "TABLE", "columns": ["조건", "결과"], "rows": [["기준", "불성립"], ["변경", "성립"]]},
+            {"kind": "STEPS", "steps": ["기초 개념 확인", "성립 조건 비교", "새 문제 적용"]},
+        ]
+        for visual in visuals:
+            with self.subTest(kind=visual["kind"]):
+                parsed = SceneVisual.model_validate(visual)
+                self.assertEqual(parsed.model_dump(), visual)
+                self.assertEqual(SceneVisual.model_validate_json(parsed.model_dump_json()), parsed)
+                draft = example_bundle()
+                scene = draft.representations[0]
+                text = scene.content
+                scene.visual = parsed
+                self.assertNotEqual(bundle_digest(draft), bundle_digest(example_bundle()))
+                reviewed = issue_teacher_review_receipts(draft)
+                step = next(x for x in bundle_lesson(reviewed) if x["segment_id"] == scene.asset_id)
+                self.assertEqual(step["scene_visual"], visual)
+                self.assertEqual(step["text"], text)
+
+    def test_visual_rejects_markup_fields_mixed_kinds_and_unknown_asset_kind(self):
+        bad_visuals = [
+            {"kind": "HTML", "html": "<b>test</b>"},
+            {"kind": "STEPS", "steps": ["확인"], "html": "<script>run()</script>"},
+            {"kind": "STEPS", "steps": ["확인"], "nodes": None},
+            {"kind": "TABLE", "columns": ["A", "B"], "rows": [["1", "2"]], "steps": ["확인"]},
+            {"kind": "DIAGRAM", "nodes": [{"id": "a", "label": "A", "url": "https://example.com"}], "edges": []},
+            {"kind": "DIAGRAM", "nodes": [{"id": "a", "label": "A"}],
+             "edges": [{"from_id": "a", "to_id": "a", "label": "확인", "svg": "<svg/>"}]},
+        ]
+        for visual in bad_visuals:
+            with self.subTest(visual=visual), self.assertRaises(ValueError):
+                SceneVisual.model_validate(visual)
+        visual = {"kind": "STEPS", "steps": ["문자 데이터"]}
+        for asset in example_bundle().representations:
+            if asset.kind != "SCENE":
+                with self.subTest(asset_kind=asset.kind), self.assertRaisesRegex(ValueError, "only supported for SCENE"):
+                    Representation.model_validate({**asset.model_dump(), "visual": visual})
+        # Tags may remain inert text for the renderer; no raw-markup field exists.
+        label = '<img src=x onerror="run()"><script>run()</script>'
+        self.assertEqual(SceneVisual(kind="STEPS", steps=[label]).model_dump()["steps"], [label])
+
+    def test_visual_requires_bounded_fields_and_valid_diagram_references(self):
+        invalid = [
+            {"kind": "DIAGRAM", "nodes": [], "edges": []},
+            {"kind": "DIAGRAM", "nodes": [{"id": "a", "label": "A"}]},
+            {"kind": "DIAGRAM", "nodes": [{"id": "a", "label": "A"}, {"id": "a", "label": "B"}], "edges": []},
+            {"kind": "DIAGRAM", "nodes": [{"id": "a", "label": "A"}],
+             "edges": [{"from_id": "a", "to_id": "missing", "label": "연결"}]},
+            {"kind": "DIAGRAM", "nodes": [{"id": "a" * 101, "label": "A"}], "edges": []},
+            {"kind": "DIAGRAM", "nodes": [{"id": "a", "label": "A" * 1001}], "edges": []},
+            {"kind": "DIAGRAM", "nodes": [{"id": str(i), "label": "A"} for i in range(13)], "edges": []},
+            {"kind": "DIAGRAM", "nodes": [{"id": "a", "label": "A"}],
+             "edges": [{"from_id": "a", "to_id": "a", "label": "연결"}] * 21},
+            {"kind": "TABLE", "columns": ["A"], "rows": [["1"]]},
+            {"kind": "TABLE", "columns": ["A"] * 7, "rows": [["1"] * 7]},
+            {"kind": "TABLE", "columns": ["A", "B"], "rows": []},
+            {"kind": "TABLE", "columns": ["A", "B"], "rows": [["1", "2"]] * 13},
+            {"kind": "TABLE", "columns": ["A", "B"], "rows": [["1", "2", "3"]]},
+            {"kind": "TABLE", "columns": ["A", "B"], "rows": [["1" * 3001, "2"]]},
+            {"kind": "STEPS", "steps": []},
+            {"kind": "STEPS", "steps": ["확인"] * 11},
+            {"kind": "STEPS", "steps": ["확인" * 1501]},
+        ]
+        for visual in invalid:
+            with self.subTest(visual_kind=visual["kind"]), self.assertRaises(ValueError):
+                SceneVisual.model_validate(visual)
+
+    def test_visual_changes_invalidate_review_and_report_affected_assets(self):
+        draft = example_bundle()
+        draft.representations[0].visual = SceneVisual(kind="STEPS", steps=["검토된 단계"])
+        previous = issue_teacher_review_receipts(draft)
+        updated = previous.model_copy(deep=True)
+        updated.representations[0].visual.steps[0] = "수정된 단계"
+        self.assertNotEqual(bundle_digest(previous), bundle_digest(updated))
+        self.assertIn("STALE_VALIDATION_MANIFEST:linear:l0", publication_issues(updated))
+        self.assertEqual(affected_assets(previous, updated), ["linear-scene"])
+        with self.assertRaises(ValueError):
+            bundle_lesson(updated)
+        with self.assertRaisesRegex(ValueError, "Stale passed review"):
+            issue_teacher_review_receipts(updated)
+
     def test_example_is_a_draft_and_false_counterexample_can_pass(self):
         self.assertTrue(publication_issues(example_bundle()))
         bundle = reviewed_example()
@@ -303,3 +412,4 @@ class MaterialPublicationApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -43,7 +43,7 @@ from pydantic import BaseModel, Field
 from app.services.owner_basic_auth import require_owner, _credentials, _matches, _valid_session, _COOKIE, _same_origin
 from app.services.structured_materials import (
     StructuredMaterialBundle, affected_assets, bundle_digest, bundle_lesson, publication_issues, example_bundle,
-    issue_teacher_review_receipts,
+    issue_teacher_review_receipts, SceneVisual,
 )
 from app.services.learning_path import (
     LearningPath, example_learning_path, learning_map, path_digest, path_lesson,
@@ -62,6 +62,9 @@ from app.services.ranked_candidate_ui import candidate_workbench_html
 from app.services.ranked_candidate_generator import (
     CandidateGenerationRequest, CandidateGenerationError, generate_candidates,
 )
+
+from app.services.audiovisual_drafts import AudioVisualDraftRequest, generate_audiovisual_draft
+from app.services.open_model_transport import OpenModelError
 
 APP_VERSION = "0.2.0"
 STATE_DIR = Path(os.environ.get("EDURECOVER_CLASSROOM_STATE_DIR", ".edurecover_classroom_state"))
@@ -359,6 +362,7 @@ class Segment(BaseModel):
     kind: Literal["EXPLAIN", "VIDEO", "SOCRATIC", "RETEST", "MAP", "DEMONSTRATE", "COMPARE", "PRACTICE"]
     title: str
     text: str = ""
+    scene_visual: SceneVisual | None = None
     media_url: Optional[str] = None
     media_type: Optional[Literal["image/png", "image/jpeg", "audio/mpeg", "audio/wav", "video/mp4", "video/webm"]] = None
     pause_at_sec: Optional[float] = None
@@ -772,13 +776,26 @@ def publish_legacy_lesson(session_id: str, req: LessonPublication, teacher_token
     return {"ok": True, "lesson_digest": digest}
 
 
-@classroom_tutor_router.put("/api/sessions/{session_id}/structured-materials")
-def save_material_draft(session_id: str, req: StructuredMaterialBundle, teacher_token: str):
+def _audiovisual_context(conn: sqlite3.Connection, row: sqlite3.Row) -> str:
+    state = json_load(row["state_json"])
+    draft = conn.execute("SELECT digest FROM material_revisions WHERE session_id=? AND revision_id=?",
+                         (row["session_id"], state.get("draft_material_revision"))).fetchone()
+    value = {"lesson": row["lesson_json"], "draft_revision": state.get("draft_material_revision"),
+             "draft_digest": draft["digest"] if draft else None,
+             "learning_path_mode": state.get("learning_path_mode"),
+             "learning_path_revision": state.get("draft_learning_path_revision")}
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def _save_material_draft(session_id: str, req: StructuredMaterialBundle, teacher_token: str,
+                         expected_context: str | None = None, generation_receipt: dict | None = None):
     digest = bundle_digest(req)
     with db() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = get_session_or_404(conn, session_id)
         require_teacher(row, teacher_token)
+        if expected_context is not None and _audiovisual_context(conn, row) != expected_context:
+            raise HTTPException(409, "생성 중 수업자료가 바뀌었습니다. 현재 자료를 다시 확인하십시오.")
         state = json_load(row["state_json"])
         if state.get("learning_path_mode"):
             raise HTTPException(409, "학습경로 수업은 학습경로 편집 화면에서 수정해 주세요.")
@@ -813,9 +830,44 @@ def save_material_draft(session_id: str, req: StructuredMaterialBundle, teacher_
         conn.execute("UPDATE sessions SET state_json=?,updated_at=? WHERE session_id=?",
                      (json.dumps(state, ensure_ascii=False), now_iso(), session_id))
         emit(conn, session_id, "MATERIAL_DRAFT_SAVED", {"revision_id": req.revision_id,
-             "affected_assets": changed, "previous_release_withdrawn": True})
+             "affected_assets": changed, "previous_release_withdrawn": True,
+             **({"generation_receipt": generation_receipt} if generation_receipt else {})})
     return {"revision_id": req.revision_id, "digest": digest, "affected_assets": changed,
             "publication_issues": publication_issues(req), "student_release": "BLOCKED"}
+
+
+@classroom_tutor_router.put("/api/sessions/{session_id}/structured-materials")
+def save_material_draft(session_id: str, req: StructuredMaterialBundle, teacher_token: str):
+    return _save_material_draft(session_id, req, teacher_token)
+
+
+@classroom_tutor_router.get("/api/sessions/{session_id}/audiovisual-context")
+def audiovisual_generation_context(session_id: str, teacher_token: str, _: None = Depends(require_owner)):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+        return {"context_digest": _audiovisual_context(conn, row)}
+
+
+@classroom_tutor_router.post("/api/sessions/{session_id}/structured-materials/generate")
+async def generate_material_draft(session_id: str, req: AudioVisualDraftRequest, teacher_token: str,
+                                  _: None = Depends(require_owner)):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+        if json_load(row["state_json"]).get("learning_path_mode"):
+            raise HTTPException(409, "새 구조화 수업에서 시청각 초안을 생성하십시오.")
+        context = _audiovisual_context(conn, row)
+        if context != req.expected_digest:
+            raise HTTPException(409, "수업자료가 바뀌었습니다. 현재 자료를 다시 확인하십시오.")
+    try:
+        bundle, receipt = await generate_audiovisual_draft(req)
+    except OpenModelError as exc:
+        raise HTTPException(exc.http_status, {"code": exc.code, "message": str(exc)}) from None
+    saved = _save_material_draft(session_id, bundle, teacher_token, expected_context=context,
+                                 generation_receipt=receipt)
+    return {**saved, "bundle": bundle.model_dump(), "receipt": receipt,
+            "human_review_required": True, "student_release": "BLOCKED"}
 
 
 @classroom_tutor_router.get("/api/sessions/{session_id}/structured-materials")
@@ -2057,13 +2109,34 @@ function teacherMediaUrl(raw,sessionId,teacherToken){
    }
  }catch(e){}return raw;
 }
+function sceneVisual(v){
+ if(!v)return '';
+ if(v.kind==='STEPS')return `<ol class='scene-steps'>${(v.steps||[]).slice(0,10).map(t=>`<li>${esc(t)}</li>`).join('')}</ol>`;
+ if(v.kind==='TABLE')return `<div style='overflow:auto'><table style='width:100%;text-align:left'><thead><tr>${(v.columns||[]).slice(0,6).map(t=>`<th>${esc(t)}</th>`).join('')}</tr></thead><tbody>${(v.rows||[]).slice(0,12).map(r=>`<tr>${r.slice(0,6).map(t=>`<td>${esc(t)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+ if(v.kind!=='DIAGRAM')return '';
+ const nodes=(v.nodes||[]).slice(0,12),edges=(v.edges||[]).slice(0,20),cols=nodes.length>6?3:2;
+ const height=Math.max(210,Math.ceil(nodes.length/cols)*190+20),width=cols*300;
+ const pos=new Map(nodes.map((n,i)=>[n.id,{x:10+(i%cols)*300,y:10+Math.floor(i/cols)*190}]));
+ let svg=`<svg viewBox='0 0 ${width} ${height}' role='img' aria-label='수업 개념 관계도' style='width:100%;background:#fff;border-radius:12px'>`;
+ for(const e of edges){const a=pos.get(e.from_id),b=pos.get(e.to_id);if(!a||!b)continue;
+  const x1=a.x+140,y1=a.y+80,x2=b.x+140,y2=b.y+80,angle=Math.atan2(y2-y1,x2-x1);
+  const distance=Math.min(140/Math.max(.0001,Math.abs(Math.cos(angle))),80/Math.max(.0001,Math.abs(Math.sin(angle))))+6;
+  const endX=x2-Math.cos(angle)*distance,endY=y2-Math.sin(angle)*distance;
+  svg+=`<path d='M${x1} ${y1} L${endX} ${endY} M${endX-12*Math.cos(angle-.5)} ${endY-12*Math.sin(angle-.5)} L${endX} ${endY} L${endX-12*Math.cos(angle+.5)} ${endY-12*Math.sin(angle+.5)}' fill='none' stroke='#64748b' stroke-width='3'/>`;}
+ for(const n of nodes){const a=pos.get(n.id),chars=Array.from(n.label||''),lines=[];for(let i=0;i<chars.length;i+=18)lines.push(chars.slice(i,i+18).join(''));
+  svg+=`<rect x='${a.x}' y='${a.y}' width='280' height='160' rx='12' fill='#e0f2fe' stroke='#0369a1'/>`;
+  lines.forEach((t,i)=>{svg+=`<text x='${a.x+12}' y='${a.y+24+i*19}' fill='#0f172a' font-size='14'>${esc(t)}</text>`;});}
+ svg+='</svg>';
+ const byId=new Map(nodes.map(n=>[n.id,n.label]));
+ return svg+`<ul>${edges.map(e=>`<li>${esc(byId.get(e.from_id)||'')} → ${esc(byId.get(e.to_id)||'')}${e.label?' · '+esc(e.label):''}</li>`).join('')}</ul>`;
+}
 function materialStructure(x,expanded=false){
- let out='';
+ let out=sceneVisual(x.scene_visual);
  if(x.learning_map)out+=`<div style='display:flex;gap:12px;flex-wrap:wrap'>${x.learning_map.map(c=>`<div class='card'><small>${esc(({BASIC:'기초',CONDITION:'성립조건',INFERENCE:'추론',ADVANCED:'심화'})[c.stage]||c.stage)}</small><p>${esc(c.label)}</p></div>`).join('<span aria-hidden="true">→</span>')}</div>`;
  if(x.conditions)out+=`<p>${Object.entries(x.conditions).map(([k,v])=>`<span class='badge'>${esc(k)}: ${esc(v)}</span>`).join(' ')}</p>`;
  if(x.logic_links)out+=x.logic_links.map(l=>`<details class='card' ${expanded?'open':''}><summary>${esc(l.premise)} → ${esc(l.conclusion)}</summary><p>적용조건: ${esc(l.condition_keys.join(', '))}</p><p>규칙: ${esc(l.rule)}</p></details>`).join('');
  if(x.comparison){let c=x.comparison;out+=`<table style='width:100%;text-align:left'><thead><tr><th>조건</th><th>기준</th><th>변경</th></tr></thead><tbody>${Object.keys(c.baseline).map(k=>`<tr style='color:${c.changed_keys.includes(k)?'var(--warn)':'inherit'}'><td>${esc(k)}</td><td>${esc(c.baseline[k])}</td><td>${esc(c.altered[k])}</td></tr>`).join('')}</tbody></table>`;}
- if(x.kind==='DEMONSTRATE'&&['x','x³'].includes(x.conditions?.['함수'])){
+ if(!x.scene_visual&&x.kind==='DEMONSTRATE'&&['x','x³'].includes(x.conditions?.['함수'])){
   const cube=x.conditions['함수']==='x³',path=Array.from({length:101},(_,i)=>{const v=(i-50)/50;return `${i?'L':'M'}${30+i*3},${190-150*(cube?Math.abs(v)**3:Math.abs(v))}`;}).join(' ');
   out+=`<svg viewBox='0 0 360 215' role='img' aria-label='${cube?'절댓값 x 세제곱':'절댓값 x'} 그래프' style='max-width:500px;width:100%;background:white;border-radius:12px'><path d='M20 190H345 M180 10V205' stroke='#64748b'/><path d='${path}' fill='none' stroke='#0369a1' stroke-width='4'/><text x='190' y='210' font-size='14'>0</text></svg>`;
  }
@@ -2432,6 +2505,18 @@ async function publishLesson(){try{
 MATERIAL_EDITOR_HTML = """
 <section class='card'><h2>조건을 비교하는 구조화 교수자료</h2>
 <p class='muted'>전체 학습지도, 성립조건, 그림·음성 설명, 연습문항을 함께 검토합니다. 초안은 학생에게 제공되지 않습니다.</p>
+<div class='card'><h3>교재에서 시청각 수업자료 만들기</h3>
+<p class='muted'>교재 내용으로 개념도·비교표·풀이 단계와 음성 원고를 만듭니다. 생성 결과는 검토 대기 초안이며, 교사가 확인한 뒤 공개합니다. 관리자 계정으로 이용합니다.</p>
+<label>교재 내용<textarea id='avSource' rows='5' maxlength='20000' placeholder='사용할 권한이 있는 교재 내용을 입력하십시오.'></textarea></label>
+<label>학습목표<input id='avTarget' maxlength='1000' placeholder='학생이 스스로 이해하고 풀어야 할 내용'></label>
+<label>과목<input id='avSubject' maxlength='100' value='수학'></label>
+<label>학교급<select id='avSchool'><option value='ELEMENTARY'>초등학교</option><option value='MIDDLE'>중학교</option><option value='HIGH'>고등학교</option></select></label>
+<label>학년<input id='avGrade' type='number' min='1' max='6' value='1'></label>
+<label>사용할 모델<select id='avModel' onchange='refreshAudiovisualModel()'><option value=''>모델 목록을 불러오는 중</option></select></label>
+<button class='btn' onclick='loadAudiovisualModels()'>모델 연결 상태 새로 확인</button><p id='avModelStatus' class='muted' role='status'></p>
+<label><input id='avAuthorize' type='checkbox'>선택한 모델에 위 교재 내용을 보내 초안 생성을 요청합니다.</label>
+<button class='btn primary' id='avGenerate' onclick='generateAudiovisualMaterial()' disabled>시청각 초안 생성</button>
+<p id='avGenerationStatus' role='status'></p></div>
 <button class='btn' onclick='loadMaterialExample()'>절댓값·미분가능성 예시 불러오기</button>
 <div id='materialPreview'></div>
 <div class='card'><b>조건별 시청각 자료</b><p class='muted'>등록할 조건 장면을 고르고 이미지·음성·영상 파일을 넣습니다. 자료를 실제로 재생해 확인한 뒤 수업을 확정해 주세요.</p>
@@ -2448,9 +2533,15 @@ MATERIAL_EDITOR_SCRIPT = r"""
 let materialSession=null,materialPreviewedSignature='';
 function materialPreview(b){
  q('#materialPreview').innerHTML=materialStructure({learning_map:b.concepts,logic_links:b.links})+
- b.scenarios.map(s=>{const assets=b.representations.filter(x=>x.scenario_id===s.scenario_id);return `<article class='card'><h3>${esc(s.label)}</h3>${materialStructure({kind:'DEMONSTRATE',conditions:s.conditions})}${assets.map(a=>`<p><b>${esc(({SCENE:'설명 장면',AUDIO:'음성 원고',QUESTION:'연습문항',ANSWER:'정답',IMAGE:'그림',VIDEO:'영상',UPLOADED_AUDIO:'음성 파일',CAPTION:'자막'})[a.kind]||a.kind)}</b> ${esc(a.content)}</p>`).join('')}</article>`;}).join('')+
- `<div class='card'><b>논리 연결 검증 기록</b>${b.validations.map(v=>`<p>${esc(v.scenario_id)} / ${esc(v.link_id)}: ${esc(v.evidence)} <span class='muted'>${esc(v.status)}</span></p>`).join('')}</div>`+
+ b.scenarios.map(s=>{const assets=b.representations.filter(x=>x.scenario_id===s.scenario_id);return `<article class='card'><h3>${esc(s.label)}</h3>${materialStructure({kind:'DEMONSTRATE',conditions:s.conditions})}${assets.map(a=>`<p><b>${esc(({SCENE:'설명 장면',AUDIO:'음성 원고',QUESTION:'연습문항',ANSWER:'정답',IMAGE:'그림',VIDEO:'영상',UPLOADED_AUDIO:'음성 파일',CAPTION:'자막'})[a.kind]||a.kind)}</b> ${esc(a.content)}</p>${a.visual?sceneVisual(a.visual):''}${a.kind==='AUDIO'?`<button class='btn' data-preview-audio='${esc(a.asset_id)}'>음성 원고 듣기</button>`:''}`).join('')}</article>`;}).join('')+
+ `<div class='card'><b>논리 연결 검토</b><p class='muted'>각 조건에서 추론이 성립하는지와 그 근거를 확인·수정합니다. 모델의 판정은 검토 전 제안입니다.</p>${b.validations.map((v,i)=>`<div class='card'><p>${esc(b.scenarios.find(s=>s.scenario_id===v.scenario_id)?.label||v.scenario_id)} · ${esc(b.links.find(l=>l.link_id===v.link_id)?.conclusion||v.link_id)}</p><label>교사 판정<select data-validation-index='${i}'><option value='UNDETERMINED' ${v.proposition_result==='UNDETERMINED'?'selected':''}>아직 판단하지 못함</option><option value='TRUE' ${v.proposition_result==='TRUE'?'selected':''}>이 조건에서 성립함</option><option value='FALSE' ${v.proposition_result==='FALSE'?'selected':''}>이 조건에서 성립하지 않음</option></select></label><label>판정 근거<textarea rows='2' maxlength='5000' data-evidence-index='${i}'>${esc(v.evidence)}</textarea></label></div>`).join('')}</div>`+
  (b.independent_assessment?`<p><b>별도 독립문항</b> ${esc(b.independent_assessment.question)} / 정답 ${esc(b.independent_assessment.correct_answer)}</p>`:'');
+ q('#materialPreview').querySelectorAll('[data-preview-audio]').forEach(button=>button.addEventListener('click',()=>{const asset=b.representations.find(a=>a.asset_id===button.dataset.previewAudio);if(asset)speak(asset.content);}));
+ q('#materialPreview').querySelectorAll('[data-validation-index],[data-evidence-index]').forEach(input=>input.addEventListener('change',()=>{
+  const isJudgment=input.dataset.validationIndex!==undefined,index=Number(isJudgment?input.dataset.validationIndex:input.dataset.evidenceIndex),v=b.validations[index];
+  if(!v)return;if(isJudgment)v.proposition_result=input.value;else v.evidence=input.value;
+  v.status='PENDING';v.generation_id='';v.manifest_digest='';b.revision_id='review-draft-'+crypto.randomUUID();q('#materialJson').value=JSON.stringify(b,null,2);
+  q('#materialMessage').textContent='교사 판정·근거를 수정했습니다. 저장하거나 전체 검토를 마친 뒤 확정하십시오.';}));
  const scenarioSelect=q('#materialScenario'),current=scenarioSelect.value;
  scenarioSelect.innerHTML=b.scenarios.map(s=>`<option value="${esc(s.scenario_id)}">${esc(s.label)}</option>`).join('');
  if(b.scenarios.some(s=>s.scenario_id===current))scenarioSelect.value=current;
@@ -2528,7 +2619,7 @@ async function reviewAndPublishMaterial(){try{
  const base=`/tutor/api/sessions/${materialSession.session_id}/structured-materials`,query=`?teacher_token=${encodeURIComponent(materialSession.teacher_token)}`;
  const draft=await api(base+query,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(b)});q('#materialJson').value=JSON.stringify(b,null,2);
  await api(base+'/publish'+query,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revision_id:b.revision_id,expected_digest:draft.digest,teacher_verified_content:true})});
-  q('#materialMessage').innerHTML=`<p>교사가 확인한 자료 묶음의 구조와 세대가 검증되어 확정되었습니다. 내용의 정확성은 교사가 직접 확인한 범위입니다.</p><a class='btn primary' target='_blank' href='${esc(materialSession.board_url)}'>전자칠판 열기</a> <a class='btn' target='_blank' href='${esc(materialSession.teacher_url)}'>교사 콘솔</a> <a class='btn' target='_blank' href='${esc(materialSession.join_url)}'>학생 참가</a>`;
+  q('#materialMessage').innerHTML=`<p>교사가 확인한 자료 묶음의 구조와 세대가 검증되어 확정되었습니다. 내용의 정확성은 교사가 직접 확인한 범위입니다.</p><a class='btn primary' target='_blank' href='${esc(materialSession.board_url)}'>전자칠판 열기</a> <a class='btn' target='_blank' href='${esc(materialSession.robot_url||materialSession.board_url.replace('/board/','/robot/'))}'>로봇교사 몸통 화면</a> <a class='btn' target='_blank' href='${esc(materialSession.teacher_url)}'>교사 콘솔</a> <a class='btn' target='_blank' href='${esc(materialSession.join_url)}'>학생 참가</a>`;
  }catch(e){q('#materialMessage').textContent=e.message;}}
 async function populateResumeSessions(){try{
  const result=await api('/classroom/api/my-sessions');
@@ -2549,6 +2640,31 @@ async function resumeMaterialSession(){try{
  q('#materialMessage').textContent='저장된 교수자료를 다시 열었습니다. 내용과 자료를 검토한 뒤 새 버전으로 확정해 주세요.';
 }catch(e){q('#materialMessage').textContent='재개 실패: '+e.message;}}
 if(q('#resumeSession'))populateResumeSessions();
+
+let audiovisualModels=new Map(),audiovisualBusy=false;
+function refreshAudiovisualModel(){const row=audiovisualModels.get(q('#avModel').value),ready=row?.configured===true&&row?.enabled===true&&row?.permitted===true;
+ q('#avGenerate').disabled=audiovisualBusy||!ready;q('#avModelStatus').textContent=ready?'연결 설정과 사용 권한이 준비돼 있습니다. 실제 응답은 생성 요청 후 확인합니다.':'선택한 모델의 연결 설정과 사용 권한을 확인해야 합니다.';}
+async function loadAudiovisualModels(){try{const data=await api('/owner/open-models/catalog');audiovisualModels=new Map((data.models||[]).map(x=>[x.model_key,x]));const previous=q('#avModel').value;
+ q('#avModel').innerHTML='<option value="">사용할 모델을 선택하십시오.</option>'+(data.models||[]).map(x=>`<option value='${esc(x.model_key)}'>${esc(x.display_name)}${x.configured&&x.enabled&&x.permitted?'':' · 설정 또는 권한 확인 필요'}</option>`).join('');
+ q('#avModel').value=audiovisualModels.has(previous)?previous:'';refreshAudiovisualModel();}catch(e){audiovisualModels=new Map();q('#avGenerate').disabled=true;q('#avModelStatus').textContent='관리자 로그인과 모델 연결 상태를 확인하십시오.';}}
+async function generateAudiovisualMaterial(){if(audiovisualBusy)return;const button=q('#avGenerate');let locked=[],generated=false;try{
+ const source=q('#avSource').value.trim(),target=q('#avTarget').value.trim(),model=q('#avModel').value;
+ if(!source||!target)throw new Error('교재 내용과 학습목표를 입력하십시오.');
+ if(!q('#avAuthorize').checked)throw new Error('선택한 모델로 교재 내용을 전송하는 항목을 확인하십시오.');
+ const row=audiovisualModels.get(model);if(!row?.configured||!row?.enabled||!row?.permitted)throw new Error('선택한 모델의 연결 설정과 사용 권한을 확인하십시오.');
+ const subject=q('#avSubject').value,school_level=q('#avSchool').value,grade=q('#avGrade').value;
+ audiovisualBusy=true;locked=Array.from(button.closest('section').querySelectorAll('input,textarea,select,button')).map(el=>({el,disabled:el.disabled}));locked.forEach(x=>{x.el.disabled=true;});
+ button.disabled=true;q('#avGenerationStatus').textContent='교재 내용을 시청각 수업자료 초안으로 만들고 있습니다.';
+ await ensureMaterialSession();const query=`?teacher_token=${encodeURIComponent(materialSession.teacher_token)}`,base=`/tutor/api/sessions/${materialSession.session_id}`;
+ const context=await api(base+'/audiovisual-context'+query);
+ const result=await api(base+'/structured-materials/generate'+query,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model_key:model,explicit_authorization:true,source_text:source,target,subject,school_level,grade,expected_digest:context.context_digest})});
+ q('#materialJson').value=JSON.stringify(result.bundle,null,2);materialPreview(result.bundle);materialPreviewedSignature='';q('#publishMaterial').disabled=false;
+ q('#avGenerationStatus').textContent='시청각 초안을 생성·저장했습니다. 아래 그림·음성 원고·문항과 정답을 검토해야 합니다. 학생에게는 아직 공개되지 않았습니다.';
+ q('#materialMessage').textContent=`검토 항목 ${result.publication_issues.length}개. 논리 검증 근거와 판정을 확인한 뒤 수업을 확정하십시오.`;
+ generated=true;
+ }catch(e){q('#avGenerationStatus').textContent='초안 생성 실패: '+e.message;}finally{locked.forEach(x=>{x.el.disabled=x.disabled;});audiovisualBusy=false;if(generated)q('#publishMaterial').disabled=false;refreshAudiovisualModel();}}
+if(q('#avModel'))loadAudiovisualModels();
+
 """
 
 HOME_HTML = HOME_HTML.replace("</main><script>", MATERIAL_EDITOR_HTML + "</main><script>", 1).replace(
