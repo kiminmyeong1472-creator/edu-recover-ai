@@ -36,6 +36,8 @@ https://openrouter.ai/docs/guides/features/zdr
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import os
 import re
@@ -47,10 +49,12 @@ from app.services.open_model_catalog import MODEL_CATALOG, model_family
 from app.services.open_model_http import OpenModelHTTPError, post_json, validate_endpoint_url
 
 
-MAX_RESPONSE_BYTES = 256 * 1024
-MAX_INPUT_BYTES = 256 * 1024
+MAX_RESPONSE_BYTES = 32 * 1024 * 1024
+MAX_INPUT_BYTES = 4 * 1024 * 1024
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_IMAGES = 4
 CONNECT_TIMEOUT_SECONDS = 5
-READ_TIMEOUT_SECONDS = 120
+READ_TIMEOUT_SECONDS = 600
 OPENROUTER_CHAT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 GPT6_LUNA_MODEL_KEY = "GPT-6-Luna"
 GPT6_LUNA_MODEL_ID = "openai/gpt-6-luna"
@@ -90,6 +94,13 @@ def _config_error() -> OpenModelError:
 
 
 def _response_error(code: str = "OPEN_MODEL_RESPONSE_INVALID") -> OpenModelError:
+    if code == "OPEN_MODEL_OUTPUT_LIMIT_REACHED":
+        return OpenModelError(
+            "모델 제공자의 답변 길이 또는 문맥 한도에 도달해 답변이 중단됐습니다. "
+            "답변 길이를 직접 지정했다면 제한을 해제하거나 요청을 나누어야 합니다.", code, 502,
+        )
+    if code == "OPEN_MODEL_INCOMPLETE_RESPONSE":
+        return OpenModelError("모델이 답변을 정상적으로 끝내지 못했습니다.", code, 502)
     return OpenModelError("모델 응답을 사용할 수 없습니다.", code, 502)
 
 
@@ -115,6 +126,53 @@ class _Binding:
     endpoint_url: str | None = None
     api_key_env: str | None = None
     request_format: str = "chat"
+
+
+def _supports_images(binding: _Binding) -> bool:
+    """Only the documented DeepSeek Flash vision route accepts raw images."""
+    if binding.transport != "openai_compatible" or binding.request_format != "chat":
+        return False
+    if (binding.endpoint_url == DEEPSEEK_CHAT_ENDPOINT
+            and binding.api_key_env == "DEEPSEEK_API_KEY"
+            and binding.model_id == _DEEPSEEK_DIRECT_BINDINGS["DeepSeek-V4.1-Flash"]["model_id"]):
+        return True
+    return False
+
+
+def _validated_images(images: Any) -> list[dict[str, str]]:
+    """Accept bounded canonical base64 only; never fetch a URL or local path."""
+    if images is None:
+        return []
+    invalid = OpenModelError(
+        "사진 첨부 형식을 확인해야 합니다. JPG·PNG·WEBP 사진을 사용할 수 있습니다.",
+        "OPEN_MODEL_IMAGE_INVALID", 400,
+    )
+    if not isinstance(images, list) or len(images) > MAX_IMAGES:
+        raise invalid
+    result = []
+    for image in images:
+        if not isinstance(image, dict) or set(image) != {"mime_type", "data"}:
+            raise invalid
+        mime, data = image["mime_type"], image["data"]
+        if (not isinstance(mime, str) or mime not in {"image/jpeg", "image/png", "image/webp"}
+                or not isinstance(data, str) or not data
+                or len(data) > 4 * ((MAX_IMAGE_BYTES + 2) // 3)):
+            raise invalid
+        try:
+            raw = base64.b64decode(data, validate=True)
+        except (ValueError, binascii.Error):
+            raise invalid from None
+        if (not raw or len(raw) > MAX_IMAGE_BYTES
+                or base64.b64encode(raw).decode("ascii") != data):
+            raise invalid
+        if not (
+            (mime == "image/jpeg" and raw.startswith(b"\xff\xd8\xff") and raw.endswith(b"\xff\xd9"))
+            or (mime == "image/png" and raw.startswith(b"\x89PNG\r\n\x1a\n"))
+            or (mime == "image/webp" and raw.startswith(b"RIFF") and raw[8:12] == b"WEBP")
+        ):
+            raise invalid
+        result.append({"mime_type": mime, "data": data})
+    return result
 
 
 def _required_string(value: Any, limit: int) -> str:
@@ -246,6 +304,8 @@ def catalog_status() -> list[dict[str, Any]]:
                  "disabled" if not enabled else "configured_not_verified")
         row = dict(entry, configured=bool(credentials_ready),
                    enabled=enabled and bool(credentials_ready), readiness_state=state)
+        if binding is not None and _supports_images(binding):
+            row["supports_images"] = True
         preset = _DEEPSEEK_DIRECT_BINDINGS.get(entry["model_key"])
         if preset is not None and binding is not None and (
             binding.transport == "openai_compatible"
@@ -395,6 +455,8 @@ def _bedrock_text(response: Any) -> str:
     if not isinstance(response, dict):
         raise _response_error()
     _check_serialized_size(response)
+    if response.get("stopReason") in {"max_tokens", "model_context_window_exceeded"}:
+        raise _response_error("OPEN_MODEL_OUTPUT_LIMIT_REACHED")
     if response.get("stopReason") not in {"end_turn", "stop_sequence"}:
         raise _response_error("OPEN_MODEL_INCOMPLETE_RESPONSE")
     output = response.get("output")
@@ -458,15 +520,18 @@ def _openai_text(result: Any, request_format: str) -> str:
     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
         raise _response_error()
     choice = choices[0]
+    finish_reason = choice.get("finish_reason")
+    if isinstance(finish_reason, str) and finish_reason in {"length", "max_tokens", "model_context_window_exceeded"}:
+        raise _response_error("OPEN_MODEL_OUTPUT_LIMIT_REACHED")
     if choice.get("finish_reason") != "stop":
         raise _response_error("OPEN_MODEL_INCOMPLETE_RESPONSE")
     for value in (result, choice):
         stop_reason = value.get("stop_reason")
         if stop_reason is not None and not isinstance(stop_reason, (str, int)):
             raise _response_error()
-        if stop_reason in {
-            "length", "max_tokens", "model_context_window_exceeded", "tool_calls", "function_call",
-        }:
+        if stop_reason in {"length", "max_tokens", "model_context_window_exceeded"}:
+            raise _response_error("OPEN_MODEL_OUTPUT_LIMIT_REACHED")
+        if stop_reason in {"tool_calls", "function_call"}:
             raise _response_error("OPEN_MODEL_INCOMPLETE_RESPONSE")
     if request_format == "completion":
         text = choice.get("text")
@@ -483,17 +548,29 @@ def _openai_text(result: Any, request_format: str) -> str:
     return text.strip()
 
 
-def _invoke_http(binding: _Binding, instructions: str, prompt: str, max_tokens: int) -> str:
+def _invoke_http(
+    binding: _Binding, instructions: str, prompt: str, max_tokens: int | None,
+    images: list[dict[str, str]] | None = None,
+) -> str:
     token = _http_token(binding)
     if token is None:
         raise OpenModelError("선택한 모델의 인증 키 설정을 확인해야 합니다.",
                              "OPEN_MODEL_CREDENTIALS_UNAVAILABLE", 503)
-    payload = {"model": binding.model_id, "max_tokens": max_tokens, "stream": False}
+    payload: dict[str, Any] = {"model": binding.model_id, "stream": False}
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     if binding.request_format == "completion":
         payload["prompt"] = instructions.rstrip() + "\n\n" + prompt
     else:
+        user_content: Any = prompt
+        if images:
+            user_content = [{"type": "text", "text": prompt}] + [
+                {"type": "image_url", "image_url": {
+                    "url": "data:" + image["mime_type"] + ";base64," + image["data"],
+                }} for image in images
+            ]
         payload["messages"] = [{"role": "system", "content": instructions},
-                               {"role": "user", "content": prompt}]
+                               {"role": "user", "content": user_content}]
     if binding.endpoint_url == OPENROUTER_CHAT_ENDPOINT:
         # Apply to every request, independent of account defaults. No non-ZDR
         # route is permitted if the selected model has no eligible endpoint.
@@ -506,6 +583,7 @@ def _invoke_http(binding: _Binding, instructions: str, prompt: str, max_tokens: 
         codes = {
             "OPEN_MODEL_ACCESS_DENIED": ("선택한 모델의 접근 권한을 확인해야 합니다.", 403),
             "OPEN_MODEL_AUTHENTICATION_FAILED": ("선택한 모델의 인증 설정을 확인해야 합니다.", 403),
+            "OPEN_MODEL_INSUFFICIENT_BALANCE": ("모델 제공자가 잔액 부족으로 요청을 거부했습니다. 해당 제공자의 잔액과 결제 반영 상태를 확인하십시오.", 402),
             "OPEN_MODEL_QUOTA_EXCEEDED": ("선택한 모델의 사용 한도와 호출 간격을 확인해야 합니다.", 429),
             "OPEN_MODEL_TIMEOUT": ("선택한 모델의 응답 대기 시간이 초과됐습니다.", 504),
             "OPEN_MODEL_RESOURCE_NOT_FOUND": ("선택한 모델의 배포 연결을 찾지 못했습니다.", 502),
@@ -522,27 +600,33 @@ def _invoke_http(binding: _Binding, instructions: str, prompt: str, max_tokens: 
         raise OpenModelError(message, code, status) from None
 
 
-def _invoke(binding: _Binding, instructions: str, prompt: str, max_tokens: int) -> str:
+def _invoke(
+    binding: _Binding, instructions: str, prompt: str, max_tokens: int | None,
+    images: list[dict[str, str]] | None = None,
+) -> str:
     if binding.transport == "openai_compatible":
-        return _invoke_http(binding, instructions, prompt, max_tokens)
+        return _invoke_http(binding, instructions, prompt, max_tokens, images)
     client = _new_client(binding)
     try:
         if binding.transport == "bedrock":
-            response = client.converse(
-                modelId=binding.model_id,
-                system=[{"text": instructions}],
-                messages=[{"role": "user", "content": [{"text": prompt}]}],
-                inferenceConfig={"maxTokens": max_tokens},
-            )
+            request: dict[str, Any] = {
+                "modelId": binding.model_id,
+                "system": [{"text": instructions}],
+                "messages": [{"role": "user", "content": [{"text": prompt}]}],
+            }
+            if max_tokens is not None:
+                request["inferenceConfig"] = {"maxTokens": max_tokens}
+            response = client.converse(**request)
             return _bedrock_text(response)
         payload: dict[str, Any] = {
             "messages": [
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": prompt},
             ],
-            "max_tokens": max_tokens,
             "stream": False,
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         if binding.model_id is not None:
             payload["model"] = binding.model_id
         response = client.invoke_endpoint(
@@ -561,7 +645,8 @@ def _invoke(binding: _Binding, instructions: str, prompt: str, max_tokens: int) 
 
 
 async def call_model(
-    model_key: str, instructions: str, prompt: str, *, max_tokens: int = 2048,
+    model_key: str, instructions: str, prompt: str, *, max_tokens: int | None = 2048,
+    images: list[dict[str, str]] | None = None,
 ) -> str:
     """Make exactly one configured inference attempt, with no automatic fallback."""
     try:
@@ -570,7 +655,7 @@ async def call_model(
         raise OpenModelError("등록되지 않은 모델 이름입니다.", "OPEN_MODEL_UNKNOWN", 400) from None
     if (not isinstance(instructions, str) or not instructions.strip()
             or not isinstance(prompt, str) or not prompt.strip()
-            or type(max_tokens) is not int or not 1 <= max_tokens <= 32768):
+            or (max_tokens is not None and (type(max_tokens) is not int or max_tokens < 1))):
         raise OpenModelError("모델에 전달할 요청 내용이 올바르지 않습니다.", "OPEN_MODEL_INPUT_INVALID", 400)
     try:
         if len((instructions + prompt).encode("utf-8")) > MAX_INPUT_BYTES:
@@ -585,4 +670,10 @@ async def call_model(
         raise OpenModelError(
             "선택한 모델의 배포 연결이 설정되지 않았습니다.", "OPEN_MODEL_NOT_CONFIGURED", 503,
         )
-    return await asyncio.to_thread(_invoke, binding, instructions, prompt, max_tokens)
+    validated_images = _validated_images(images)
+    if validated_images and not _supports_images(binding):
+        raise OpenModelError(
+            "선택한 모델의 사진 입력 지원이 확인되지 않았습니다. 사진을 지원하는 모델을 선택해야 합니다.",
+            "OPEN_MODEL_IMAGE_UNSUPPORTED", 400,
+        )
+    return await asyncio.to_thread(_invoke, binding, instructions, prompt, max_tokens, validated_images)

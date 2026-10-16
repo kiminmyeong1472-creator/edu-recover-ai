@@ -418,7 +418,7 @@ class InvocationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(client.closed)
 
     async def test_redacted_reasoning_cannot_bypass_response_size_cap(self):
-        # Raw bytes are under 256 KiB, but the JSON/base64 response exceeds it.
+        # Raw bytes are below the cap, but the JSON/base64 response exceeds it.
         output = bedrock_output("최종 답변")
         output["output"]["message"]["content"].insert(0, {
             "reasoningContent": {"redactedContent": b"x" * (transport.MAX_RESPONSE_BYTES * 3 // 4)},
@@ -869,6 +869,194 @@ class HTTPTransportTests(unittest.IsolatedAsyncioTestCase):
             answer = await transport.call_model(MODEL, "instructions", "prompt")
         self.assertEqual("최종 답변", answer)
         self.assertNotIn("PRIVATE", answer)
+
+
+class UnboundedOutputTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_http_none_omits_app_token_and_thinking_fields(self):
+        with patch.dict(os.environ, {
+            "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+            "EDURECOVER_DEEPSEEK_DIRECT_ENABLED": "true",
+            "DEEPSEEK_API_KEY": "direct-private-token",
+        }, clear=True), patch.object(transport, "post_json", return_value=sagemaker_output()) as post:
+            for key in ("DeepSeek-V4.1-Flash", "DeepSeek-V4-Pro"):
+                await transport.call_model(key, "instructions", "write code", max_tokens=None)
+                payload = post.call_args.args[1]
+                self.assertNotIn("max_tokens", payload)
+                self.assertNotIn("max_completion_tokens", payload)
+                self.assertNotIn("thinking", payload)
+                self.assertNotIn("reasoning_effort", payload)
+                self.assertFalse(payload["stream"])
+        self.assertEqual(2, post.call_count)
+
+    async def test_explicit_large_output_budget_reaches_provider_unchanged(self):
+        with patch.dict(os.environ, http_environment(), clear=True), patch.object(
+            transport, "post_json", return_value=sagemaker_output()
+        ) as post:
+            await transport.call_model(MODEL, "instructions", "write code", max_tokens=131072)
+        self.assertEqual(131072, post.call_args.args[1]["max_tokens"])
+
+    async def test_legacy_default_is_retained_for_structured_callers(self):
+        with patch.dict(os.environ, http_environment(), clear=True), patch.object(
+            transport, "post_json", return_value=sagemaker_output()
+        ) as post:
+            await transport.call_model(MODEL, "instructions", "write code")
+        self.assertEqual(2048, post.call_args.args[1]["max_tokens"])
+
+    async def test_bedrock_none_omits_inference_limit(self):
+        client = FakeClient(bedrock_output())
+        with patch.dict(os.environ, environment(), clear=True), patch.object(
+            transport, "_new_client", return_value=client
+        ):
+            await transport.call_model(MODEL, "instructions", "write code", max_tokens=None)
+        self.assertNotIn("inferenceConfig", client.calls[0][1])
+        self.assertTrue(client.closed)
+
+    async def test_sagemaker_none_omits_token_limit(self):
+        body = io.BytesIO(json.dumps(sagemaker_output()).encode())
+        client = FakeClient({"Body": body})
+        with patch.dict(os.environ, environment(SAGEMAKER), clear=True), patch.object(
+            transport, "_new_client", return_value=client
+        ):
+            await transport.call_model(MODEL, "instructions", "write code", max_tokens=None)
+        self.assertNotIn("max_tokens", json.loads(client.calls[0][1]["Body"]))
+        self.assertTrue(body.closed)
+        self.assertTrue(client.closed)
+
+    async def test_long_complete_code_is_not_rejected_at_former_response_limit(self):
+        answer = "print('long complete code')\n" * 12000
+        self.assertGreater(len(answer.encode()), 256 * 1024)
+        with patch.dict(os.environ, http_environment(), clear=True), patch.object(
+            transport, "post_json", return_value=sagemaker_output(answer)
+        ):
+            actual = await transport.call_model(MODEL, "instructions", "write code", max_tokens=None)
+        self.assertEqual(answer.strip(), actual)
+
+    def test_output_limit_failures_are_distinct_from_other_incomplete_answers(self):
+        for reason in ("length", "max_tokens", "model_context_window_exceeded"):
+            outputs = [sagemaker_output("PRIVATE_TRUNCATED_CODE", finish=reason)]
+            root_stop = sagemaker_output("PRIVATE_TRUNCATED_CODE")
+            root_stop["stop_reason"] = reason
+            outputs.append(root_stop)
+            choice_stop = sagemaker_output("PRIVATE_TRUNCATED_CODE")
+            choice_stop["choices"][0]["stop_reason"] = reason
+            outputs.append(choice_stop)
+            for response in outputs:
+                with self.subTest(reason=reason, response=response), self.assertRaises(
+                    transport.OpenModelError
+                ) as error:
+                    transport._openai_text(response, "chat")
+                self.assertEqual("OPEN_MODEL_OUTPUT_LIMIT_REACHED", error.exception.code)
+                self.assertIn("한도", str(error.exception))
+                self.assertNotIn("PRIVATE", str(error.exception))
+        with self.assertRaises(transport.OpenModelError) as error:
+            transport._openai_text(sagemaker_output(finish="content_filter"), "chat")
+        self.assertEqual("OPEN_MODEL_INCOMPLETE_RESPONSE", error.exception.code)
+        self.assertNotIn("한도", str(error.exception))
+        with self.assertRaises(transport.OpenModelError) as error:
+            transport._bedrock_text(bedrock_output(stop="max_tokens"))
+        self.assertEqual("OPEN_MODEL_OUTPUT_LIMIT_REACHED", error.exception.code)
+
+
+class ImageTransportTests(unittest.IsolatedAsyncioTestCase):
+    # A real 1x1 PNG, carried inline. No network or filesystem image fetch occurs.
+    IMAGE = {
+        "mime_type": "image/png",
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+    }
+    ENV = {
+        "EDURECOVER_OPEN_MODELS_ENABLED": "true",
+        "EDURECOVER_DEEPSEEK_DIRECT_ENABLED": "true",
+        "DEEPSEEK_API_KEY": "direct-private-token",
+    }
+
+    async def test_exact_flash_direct_route_sends_documented_image_content(self):
+        with patch.dict(os.environ, self.ENV, clear=True), patch.object(
+            transport, "post_json", return_value=sagemaker_output("사진 답변")
+        ) as post:
+            answer = await transport.call_model(
+                "DeepSeek-V4.1-Flash", "instructions", "사진을 설명해 주십시오.",
+                max_tokens=None, images=[self.IMAGE],
+            )
+            rows = {row["model_key"]: row for row in transport.catalog_status()}
+        self.assertEqual("사진 답변", answer)
+        post.assert_called_once()
+        endpoint, payload, token = post.call_args.args
+        self.assertEqual("https://api.deepseek.com/chat/completions", endpoint)
+        self.assertEqual("direct-private-token", token)
+        self.assertEqual("deepseek-flash", payload["model"])
+        self.assertEqual([
+            {"type": "text", "text": "사진을 설명해 주십시오."},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + self.IMAGE["data"]}},
+        ], payload["messages"][1]["content"])
+        self.assertNotIn("max_tokens", payload)
+        self.assertNotIn("thinking", payload)
+        self.assertNotIn("provider", payload)
+        self.assertTrue(rows["DeepSeek-V4.1-Flash"]["supports_images"])
+        self.assertFalse(rows["DeepSeek-V4-Pro"].get("supports_images", False))
+        self.assertNotIn(self.IMAGE["data"], json.dumps(rows))
+
+    async def test_unsupported_models_never_receive_raw_images(self):
+        cases = [
+            ("DeepSeek-V4-Pro", self.ENV),
+            (MODEL, environment()),
+            (MODEL, http_environment()),
+            (LUNA_KEY, {"EDURECOVER_OPEN_MODELS_ENABLED": "true",
+                        "EDURECOVER_GPT6_LUNA_AZURE_ENABLED": "true",
+                        "OPENROUTER_API_KEY": "private-luna-token"}),
+        ]
+        for key, env in cases:
+            with self.subTest(model=key), patch.dict(os.environ, env, clear=True), patch.object(
+                transport, "post_json"
+            ) as post, patch.object(transport, "_new_client") as sdk:
+                with self.assertRaises(transport.OpenModelError) as error:
+                    await transport.call_model(key, "instructions", "question", images=[self.IMAGE])
+                self.assertEqual("OPEN_MODEL_IMAGE_UNSUPPORTED", error.exception.code)
+                self.assertNotIn(self.IMAGE["data"], str(error.exception))
+                post.assert_not_called()
+                sdk.assert_not_called()
+
+    async def test_invalid_images_are_rejected_before_paid_call(self):
+        invalid_images = [
+            "https://private.example/image.png", self.IMAGE, [self.IMAGE] * 5,
+            [{**self.IMAGE, "url": "https://private.example/image.png"}],
+            [{"mime_type": "image/png", "data": "https://private.example/image.png"}],
+            [{"mime_type": "image/png", "data": "/etc/private-image.png"}],
+            [{"mime_type": [], "data": self.IMAGE["data"]}],
+            [{"mime_type": "image/gif", "data": self.IMAGE["data"]}],
+            [{"mime_type": "image/jpeg", "data": self.IMAGE["data"]}],
+            [{"mime_type": "image/png", "data": self.IMAGE["data"] + "\n"}],
+            [{"mime_type": "image/png", "data": "eA=="}],
+            [{"mime_type": "image/png", "data": b"not-a-string"}],
+        ]
+        for images in invalid_images:
+            with self.subTest(images=str(images)[:100]), patch.dict(os.environ, self.ENV, clear=True), patch.object(
+                transport, "post_json"
+            ) as post:
+                with self.assertRaises(transport.OpenModelError) as error:
+                    await transport.call_model("DeepSeek-V4.1-Flash", "instructions", "question", images=images)
+                self.assertEqual("OPEN_MODEL_IMAGE_INVALID", error.exception.code)
+                self.assertNotIn("private", str(error.exception))
+                post.assert_not_called()
+
+    async def test_image_size_limit_is_checked_before_provider_call(self):
+        with patch.dict(os.environ, self.ENV, clear=True), patch.object(
+            transport, "MAX_IMAGE_BYTES", 16
+        ), patch.object(transport, "post_json") as post:
+            with self.assertRaises(transport.OpenModelError) as error:
+                await transport.call_model(
+                    "DeepSeek-V4.1-Flash", "instructions", "question", images=[self.IMAGE],
+                )
+        self.assertEqual("OPEN_MODEL_IMAGE_INVALID", error.exception.code)
+        post.assert_not_called()
+
+    async def test_empty_images_preserve_text_contract(self):
+        with patch.dict(os.environ, self.ENV, clear=True), patch.object(
+            transport, "post_json", return_value=sagemaker_output()
+        ) as post:
+            await transport.call_model(
+                "DeepSeek-V4.1-Flash", "instructions", "question", images=[],
+            )
+        self.assertEqual("question", post.call_args.args[1]["messages"][1]["content"])
 
 
 if __name__ == "__main__":

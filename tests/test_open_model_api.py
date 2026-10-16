@@ -1,4 +1,5 @@
 """Owner authentication, UI escaping and no-inference catalogue contract."""
+import base64
 import json
 import os
 import re
@@ -10,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.services import open_model_api as api
+from app.services.open_model_attachments import AttachmentInput
 from app.services.open_model_catalog import (
     AWS_ADDITIONAL_MODEL_CATALOG, CLOUD_SERVICE_MODEL_CATALOG, MODEL_CATALOG,
     SOURCE_MODEL_CATALOG, model_family,
@@ -116,7 +118,8 @@ class OpenModelAPITests(unittest.TestCase):
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const elements=new Map();
 function element(id){
- if(!elements.has(id))elements.set(id,{value:'',disabled:false,children:[],dataset:{},
+ if(!elements.has(id))elements.set(id,{value:'',className:'',disabled:false,children:[],dataset:{},
+  setAttribute(name,value){this[name]=value},removeAttribute(name){delete this[name]},
   addEventListener(){},append(...children){this.children.push(...children)},
   replaceChildren(){this.children=[]},querySelectorAll(selector){
    if(id==='draft-form')return [...elements.values()];
@@ -126,28 +129,28 @@ function element(id){
  return elements.get(id);
 }
 element('task').value='direct';element('domain').value='education';
-element('max-tokens').value='512';element('question-count').value='5';
+element('question-count').value='5';
 const context=vm.createContext({document:{getElementById:element,createElement:()=>element(Symbol())},
  fetch:async()=>({ok:true,json:async()=>({models:[]})}),console});
 vm.runInContext(fs.readFileSync(0,'utf8'),context);
 function run(code){vm.runInContext(code,context)}
-assert.equal(element('max-tokens').disabled,false);
+assert.equal(element('attachments').disabled,false);
 assert.equal(element('question-count').disabled,true);
 assert.equal(element('sources').querySelectorAll('textarea')[0].disabled,true);
-element('max-tokens').value='0';element('task').value='questions';run('updateTask()');
-assert.equal(element('max-tokens').disabled,true,'invalid hidden max_tokens must not block questions');
+element('task').value='questions';run('updateTask()');
+assert.equal(element('attachments').disabled,true,'hidden uploads must not be sent with draft tasks');
 assert.equal(element('question-count').disabled,false);
 assert.equal(element('question-format').disabled,false);
 assert.equal(element('sources').querySelectorAll('textarea')[0].disabled,false);
 run('setBusy(true);setBusy(false)');
-assert.equal(element('max-tokens').disabled,true,'completion must preserve task-specific disabled state');
+assert.equal(element('attachments').disabled,true,'completion must preserve task-specific disabled state');
 element('question-count').value='0';element('task').value='direct';run('updateTask();setBusy(true);setBusy(false)');
 assert.equal(element('question-count').disabled,true,'invalid hidden question count must not block direct calls');
 assert.equal(element('question-format').disabled,true);
-assert.equal(element('max-tokens').disabled,false);
+assert.equal(element('attachments').disabled,false);
 element('task').value='source_review';run('updateTask()');
 assert.equal(element('domain').disabled,false);
-assert.equal(element('max-tokens').disabled,true);
+assert.equal(element('attachments').disabled,true);
 assert.equal(element('question-count').disabled,true);
 """
         result = subprocess.run(["node", "-e", harness], input=script,
@@ -181,7 +184,8 @@ assert.equal(element('question-count').disabled,true);
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const catalogRows=__ROWS__,elements=new Map(),requests=[];
 function element(id,tag=''){
- if(!elements.has(id))elements.set(id,{value:'',disabled:false,children:[],dataset:{},tag,events:{},
+ if(!elements.has(id))elements.set(id,{value:'',className:'',disabled:false,children:[],dataset:{},tag,events:{},
+  setAttribute(name,value){this[name]=value},removeAttribute(name){delete this[name]},
   addEventListener(type,handler){this.events[type]=handler},append(...children){this.children.push(...children)},
   replaceChildren(){this.children=[]},querySelectorAll(selector){
    if(id==='draft-form')return [...elements.values()].filter(node=>['input','select','textarea','button'].includes(node.tag));
@@ -191,10 +195,10 @@ function element(id,tag=''){
  return elements.get(id);
 }
 for(const id of ['task','domain','model','question-format'])element(id,'select');
-for(const id of ['max-tokens','question-count'])element(id,'input');
+for(const id of ['attachments','question-count'])element(id,'input');
 for(const id of ['generate','add-source','new-conversation'])element(id,'button');
 element('question','textarea');element('task').value='direct';element('domain').value='education';
-element('max-tokens').value='512';element('question-count').value='5';element('question').value='시험용 질문';
+element('question-count').value='5';element('question').value='시험용 질문';
 const context=vm.createContext({document:{getElementById:element,createElement:tag=>element(Symbol(),tag)},
  fetch:async(url,options)=>{
   if(url==='/owner/open-models/catalog')return {ok:true,json:async()=>({models:catalogRows})};
@@ -292,7 +296,7 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
                     })
                     self.assertEqual(response.headers["cache-control"], "no-store")
                     invoke.assert_awaited_once_with(
-                        model_key, api._DIRECT_INSTRUCTIONS, direct_payload()["prompt"], max_tokens=512,
+                        model_key, api._DIRECT_INSTRUCTIONS, direct_payload()["prompt"], max_tokens=None,
                     )
                     self.assertNotIn("Return only one JSON", invoke.await_args.args[1])
 
@@ -332,7 +336,7 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
                 self.assertEqual(response.status_code, expected)
                 if expected == 200:
                     invoke.assert_awaited_once_with("GPT-6-Luna", api._DIRECT_INSTRUCTIONS,
-                                                   direct_payload()["prompt"], max_tokens=512)
+                                                   direct_payload()["prompt"], max_tokens=None)
                     self.assertEqual(response.json()["model_key"], "GPT-6-Luna")
                     self.assertEqual(response.json()["review"]["state"], "DRAFT")
                 else:
@@ -372,8 +376,8 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
 
     def test_direct_call_validates_bounded_text_tokens_and_literal_authorization(self):
         invalid = [
-            {"prompt": ""}, {"prompt": " \n\t "}, {"prompt": "x" * 16001}, {"prompt": 42},
-            {"model_key": "x" * 257}, {"model_key": 42}, {"max_tokens": 0}, {"max_tokens": 8193},
+            {"prompt": ""}, {"prompt": " \n\t "}, {"prompt": 42},
+            {"model_key": "x" * 257}, {"model_key": 42}, {"max_tokens": 0},
             {"max_tokens": True}, {"max_tokens": 1.0}, {"max_tokens": "512"},
             {"explicit_authorization": False}, {"explicit_authorization": 1},
             {"explicit_authorization": "true"}, {"endpoint": "https://untrusted.example"},
@@ -392,15 +396,86 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
             invoke.assert_not_awaited()
 
     def test_direct_call_accepts_token_and_prompt_boundaries_without_truncation(self):
-        for max_tokens in (1, 8192):
+        for max_tokens in (1, 8192, 100_000, None):
             with self.subTest(max_tokens=max_tokens), patch.object(api.transport, "call_model",
                     new_callable=AsyncMock, return_value="답변") as invoke:
-                prompt = "가" * 16000
+                prompt = "가" * 20000
                 response = self.client.post("/owner/open-models/call",
                                             json=direct_payload(prompt=prompt, max_tokens=max_tokens), auth=self.auth)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(invoke.await_args.args[2], prompt)
                 self.assertEqual(invoke.await_args.kwargs["max_tokens"], max_tokens)
+
+    def test_direct_attachments_are_forwarded_as_sources_and_validated_images(self):
+        from tests.test_open_model_attachments import image_bytes
+        document = {"filename": "source.txt", "content_type": "text/plain",
+                    "data": base64.b64encode("참고 자료입니다.".encode()).decode("ascii")}
+        image = {"filename": "photo.png", "content_type": "image/png",
+                 "data": base64.b64encode(image_bytes()).decode("ascii")}
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock, return_value="초안") as invoke:
+            response = self.client.post("/owner/open-models/call", auth=self.auth,
+                                        json=direct_payload(attachments=[document, image]))
+        self.assertEqual(response.status_code, 200, response.text)
+        prompt = invoke.await_args.args[2]
+        self.assertTrue(prompt.startswith(direct_payload()["prompt"]))
+        self.assertIn("신뢰하지 않는 원문", prompt)
+        self.assertIn("source.txt", prompt)
+        self.assertIn("참고 자료입니다.", prompt)
+        self.assertEqual(invoke.await_args.kwargs,
+                         {"max_tokens": None, "images": [{"mime_type": "image/png", "data": image["data"]}]})
+        self.assertEqual(response.json()["answer"], "초안")
+        self.assertNotIn("참고 자료입니다.", response.text)
+
+    def test_invalid_attachments_never_invoke_models_or_echo_file_contents(self):
+        private = "SYNTHETIC_PRIVATE_FILE_DATA"
+        file = {"filename": "source.txt", "content_type": "text/plain", "data": private}
+        variants = ([file], [dict(file, filename="../secret.txt")], [file] * 5,
+                    [dict(file, content_type="image/png")], [dict(file, url="https://example.test")])
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock) as invoke:
+            for files in variants:
+                with self.subTest(files=len(files)):
+                    response = self.client.post("/owner/open-models/call", auth=self.auth,
+                                                json=direct_payload(attachments=files))
+                    self.assertEqual(response.status_code, 422, response.text)
+                    self.assertNotIn(private, response.text)
+                    self.assertNotIn("secret.txt", response.text)
+            invoke.assert_not_awaited()
+
+    def test_attachment_parsing_requires_owner_and_allowed_provider(self):
+        file = {"filename": "source.txt", "content_type": "text/plain", "data": "eA=="}
+        with patch.object(api, "prepare_attachments") as parse, patch.object(
+                api.transport, "call_model", new_callable=AsyncMock) as invoke:
+            response = self.client.post("/owner/open-models/call", json=direct_payload(attachments=[file]))
+            self.assertEqual(response.status_code, 401)
+            with patch.dict(os.environ, {"EDURECOVER_AI_HOLD": "true"}):
+                response = self.client.post("/owner/open-models/call", auth=self.auth,
+                                            json=direct_payload(attachments=[file]))
+            self.assertEqual(response.status_code, 423)
+            parse.assert_not_called()
+            invoke.assert_not_awaited()
+
+    def test_upload_body_bound_applies_with_and_without_content_length(self):
+        with patch.object(api, "MAX_REQUEST_BYTES", 256), patch.object(
+                api.transport, "call_model", new_callable=AsyncMock) as invoke:
+            large = json.dumps(direct_payload(prompt="x" * 300)).encode()
+            for content in (large, iter((large[:100], large[100:]))):
+                response = self.client.post("/owner/open-models/call", auth=self.auth, content=content,
+                                            headers={"Content-Type": "application/json"})
+                self.assertEqual(response.status_code, 413)
+                self.assertEqual(response.json()["detail"]["code"], "OPEN_MODEL_REQUEST_TOO_LARGE")
+                self.assertEqual(response.headers["cache-control"], "no-store")
+            invoke.assert_not_awaited()
+
+    def test_direct_call_logs_only_the_stable_error_code(self):
+        private = "SYNTHETIC_PRIVATE_UPSTREAM_RESPONSE"
+        error = OpenModelError(private, "OPEN_MODEL_INCOMPLETE_RESPONSE", 502)
+        with patch.object(api.transport, "call_model", new_callable=AsyncMock, side_effect=error), \
+                self.assertLogs(api._LOGGER, level="WARNING") as logs:
+            response = self.client.post("/owner/open-models/call", auth=self.auth, json=direct_payload())
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("code=OPEN_MODEL_INCOMPLETE_RESPONSE", logs.output[0])
+        self.assertNotIn(private, logs.output[0])
 
     def test_unknown_direct_model_is_rejected_without_echo_or_inference(self):
         private_model = "SYNTHETIC_PRIVATE_UNKNOWN_MODEL"
