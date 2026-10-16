@@ -10,9 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 
 class MaterialModel(BaseModel):
@@ -50,6 +50,61 @@ class ComparisonPair(MaterialModel):
     changed_keys: list[str] = Field(min_length=1, max_length=30)
 
 
+VisualId = Annotated[str, Field(min_length=1, max_length=100)]
+VisualLabel = Annotated[str, Field(min_length=1, max_length=1000)]
+VisualText = Annotated[str, Field(min_length=1, max_length=3000)]
+VisualRow = Annotated[list[VisualText], Field(min_length=2, max_length=6)]
+
+
+class SceneVisualNode(MaterialModel):
+    id: VisualId
+    label: str = Field(min_length=1, max_length=120)
+
+
+class SceneVisualEdge(MaterialModel):
+    from_id: VisualId
+    to_id: VisualId
+    label: VisualLabel
+
+
+class SceneVisual(MaterialModel):
+    """Bounded drawing data only; labels are plain text, never markup to execute."""
+
+    kind: Literal["DIAGRAM", "TABLE", "STEPS"]
+    nodes: list[SceneVisualNode] | None = Field(default=None, min_length=1, max_length=12)
+    edges: list[SceneVisualEdge] | None = Field(default=None, max_length=20)
+    columns: list[VisualLabel] | None = Field(default=None, min_length=2, max_length=6)
+    rows: list[VisualRow] | None = Field(default=None, min_length=1, max_length=12)
+    steps: list[VisualText] | None = Field(default=None, min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_visual_shape(self):
+        fields = {"DIAGRAM": {"nodes", "edges"}, "TABLE": {"columns", "rows"},
+                  "STEPS": {"steps"}}[self.kind]
+        supplied = self.model_fields_set - {"kind"}
+        if supplied - fields:
+            raise ValueError("Visual fields must match the selected kind")
+        if any(getattr(self, name) is None for name in fields):
+            raise ValueError("Visual fields required for the selected kind are missing")
+        if self.kind == "DIAGRAM":
+            ids = [node.id for node in self.nodes]
+            if len(ids) != len(set(ids)):
+                raise ValueError("Diagram node IDs must be unique")
+            known = set(ids)
+            if any(edge.from_id not in known or edge.to_id not in known for edge in self.edges):
+                raise ValueError("Diagram edges must reference existing nodes")
+        elif self.kind == "TABLE":
+            if any(len(row) != len(self.columns) for row in self.rows):
+                raise ValueError("Table rows must match the number of columns")
+        return self
+
+    @model_serializer(mode="wrap")
+    def serialize_visual(self, handler):
+        # Do not emit irrelevant null fields: the serialized form is also the
+        # exact representation reviewed by a teacher and included in its digest.
+        return {key: value for key, value in handler(self).items() if value is not None}
+
+
 class Representation(MaterialModel):
     asset_id: str = Field(min_length=1, max_length=100)
     kind: Literal["SCENE", "AUDIO", "QUESTION", "ANSWER", "IMAGE", "VIDEO", "UPLOADED_AUDIO", "CAPTION"]
@@ -64,6 +119,22 @@ class Representation(MaterialModel):
     media_asset_id: str | None = None
     media_sha256: str | None = None
     media_type: str | None = None
+    visual: SceneVisual | None = None
+
+    @model_validator(mode="after")
+    def validate_scene_visual(self):
+        if self.visual is not None and self.kind != "SCENE":
+            raise ValueError("Visual data is only supported for SCENE assets")
+        return self
+
+    @model_serializer(mode="wrap")
+    def serialize_representation(self, handler):
+        data = handler(self)
+        # Older released bundles had no visual field. Keep their exact prior
+        # serialization and review receipts when no visual has been supplied.
+        if self.visual is None:
+            data.pop("visual", None)
+        return data
 
 
 class LinkValidation(MaterialModel):
@@ -324,10 +395,13 @@ def bundle_lesson(bundle: StructuredMaterialBundle) -> list[dict]:
                       "generation_id": scenario.generation_id,
                       "manifest_digest": scenario_manifest_digest(bundle, scenario.scenario_id),
                       "conditions": scenario.conditions}
-        steps.append({**contextual, "segment_id": scene.asset_id, "kind": "DEMONSTRATE",
+        scene_step = {**contextual, "segment_id": scene.asset_id, "kind": "DEMONSTRATE",
                       "title": scenario.label, "text": scene.content, "audio_text": audio.content,
                       "logic_links": [x.model_dump() for x in bundle.links], "choices": [],
-                      "content_revision_id": f"{bundle.revision_id}:{scene.asset_id}", "hint_level": 1})
+                      "content_revision_id": f"{bundle.revision_id}:{scene.asset_id}", "hint_level": 1}
+        if scene.visual is not None:
+            scene_step["scene_visual"] = scene.visual.model_dump()
+        steps.append(scene_step)
         for asset in (x for x in bundle.representations if x.scenario_id == scenario.scenario_id
                       and x.kind in {"IMAGE", "VIDEO", "UPLOADED_AUDIO", "CAPTION"}):
             step = {**contextual, "segment_id": asset.asset_id, "kind": "DEMONSTRATE",
@@ -405,3 +479,4 @@ def example_bundle() -> StructuredMaterialBundle:
         independent_assessment=IndependentAssessment(question="h(x)=|x⁵+b x|가 0에서 미분가능하도록 하는 실수 b는?",
             choices=["b=0", "b=1", "모든 실수 b"], correct_answer="b=0", concept_key="ABS:DIFFERENTIABILITY",
                 content_revision_id="absolute-transfer-x5-v1"))
+
