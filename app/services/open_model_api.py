@@ -96,9 +96,12 @@ def open_model_catalog() -> JSONResponse:
                 "aws_additional" if model["model_key"] in _AWS_ADDITIONAL_KEYS else "selected_25"
             )
             try:
-                model["permitted"] = evaluate_provider(model["family"], "generate").allowed
+                decision = evaluate_provider(model["family"], "generate")
+                model["permitted"] = decision.allowed
+                model["permission_state"] = decision.state
             except RuntimeError:
                 model["permitted"] = False
+                model["permission_state"] = "CONTROL_CONFIG_INVALID"
     except OpenModelError as exc:
         raise HTTPException(status_code=exc.http_status,
                             detail={"code": exc.code, "message": str(exc)},
@@ -186,7 +189,7 @@ textarea{min-height:110px;resize:vertical}button{font:inherit;padding:11px 18px;
 button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cursor:default}
 .grid{display:grid;grid-template-columns:1fr 2fr;gap:16px}.notice{padding:10px;background:#edf3fc;border-radius:6px}
 .source{padding:10px 0;border-bottom:1px solid #e6ebf3}.source label{margin-top:4px}
-#status{white-space:pre-wrap}#result{overflow-wrap:anywhere}#result p{white-space:pre-wrap}
+#status,#model-readiness{white-space:pre-wrap}#result{overflow-wrap:anywhere}#result p{white-space:pre-wrap}
 .error{color:#a01919}li{margin:8px 0}a{color:#174d9e}@media(max-width:600px){.grid{grid-template-columns:1fr}section{padding:16px}h1{font-size:24px}}
 </style></head><body><main>
 <header><strong>EduRecover</strong><a href="/owner">관리 화면</a></header>
@@ -196,6 +199,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 <label for="task">할 일</label><select id="task"><option value="direct">모델에 직접 질문</option><option value="tutor">튜터 대화·개념 설명</option><option value="questions">교재 기반 문제 출제</option><option value="source_review">교육·의료 자료 검토</option></select>
 <div class="grid"><div id="domain-options"><label for="domain">분야</label><select id="domain"><option value="education">교육 설명자료</option><option value="medical">의료 근거 검토</option></select></div>
 <div><label for="model">사용할 모델</label><select id="model" required><option value="">모델을 선택할 수 있도록 연결 정보를 불러오는 중입니다.</option></select></div></div>
+<p class="notice" id="model-readiness" role="status" aria-live="polite">모델을 선택하면 연결 상태와 사용 허용 여부를 확인할 수 있습니다.</p>
 <div id="direct-options"><label for="max-tokens">최대 답변 길이 (토큰 수)</label><input id="max-tokens" type="number" value="512" min="1" max="8192"><small>토큰은 AI가 문장을 나누어 처리하는 단위입니다. 답변 길이를 늘리면 사용량이 커질 수 있습니다.</small></div>
 <div id="question-options" hidden><div class="grid"><div><label for="question-count">문항 수</label><input id="question-count" type="number" value="5" min="1" max="10"></div><div><label for="question-format">문제 형식</label><select id="question-format"><option value="short_answer">서답형</option><option value="multiple_choice">4지선다형</option></select></div></div></div>
 <label for="question" id="question-label">튜터에게 물어볼 내용</label>
@@ -208,7 +212,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 </form></section><section id="result" hidden aria-live="polite"></section>
 </main><script>
 const byId=id=>document.getElementById(id);
-let sourceCount=0, usableModels=0, busy=false, tutorHistory=[];
+let sourceCount=0, busy=false, tutorHistory=[], modelRows=new Map();
 function addSource(){
  if(sourceCount>=8)return;
  sourceCount++;
@@ -235,7 +239,8 @@ function saveTurn(question,answer){
 function setBusy(value){
  busy=value;
  for(const field of byId('draft-form').querySelectorAll('input,select,textarea,button'))field.disabled=value;
- if(!value){byId('generate').disabled=usableModels===0;byId('add-source').disabled=sourceCount>=8;}
+ if(!value)byId('add-source').disabled=sourceCount>=8;
+ refreshModelSelection();
  setTaskInputState();
 }
 function setTaskInputState(){
@@ -264,24 +269,43 @@ function updateTask(){
 }
 const familyNames={deepseek:'DeepSeek · 딥시크',qwen:'Qwen · 큐웬',nova:'Amazon Nova · 아마존 노바','gpt-oss':'gpt-oss',gemma:'젬마',glm:'GLM',mistral:'미스트랄',phi:'Phi',nemotron:'네모트론'};
 const readinessLabels={not_configured:'연결 설정 필요',missing_credentials:'인증 정보 필요',disabled:'호출 기능 꺼짐',configured_not_verified:'호출 설정됨 · 실제 응답 미확인'};
+const permissionLabels={ALLOWED:'소유자 사용 허용',HOLD:'소유자가 전체 AI 호출을 중지함',OWNER_PERMISSION_REQUIRED:'소유자 사용 허용 필요',BLOCKED:'소유자가 이 모델 계열의 호출을 차단함',RESTRICTED_VERIFY_ONLY:'검증 전용 허용 · 질문 생성 보류',CONTROL_CONFIG_INVALID:'소유자 사용 제어 설정 확인 필요'};
+function modelReady(row){return !!row&&row.configured===true&&row.enabled===true&&row.permitted===true&&(!row.readiness_state||row.readiness_state==='configured_not_verified');}
+function connectionLabel(row){return readinessLabels[row.readiness_state]||(row.configured?(row.enabled?'호출 설정됨 · 실제 응답 미확인':'호출 기능 꺼짐'):'연결 설정 필요');}
+function permissionLabel(row){return permissionLabels[row.permission_state]||(row.permitted===true?'소유자 사용 허용':'소유자 설정으로 사용 보류');}
+function modelExplanation(row){
+ if(!row)return '사용할 모델을 선택하십시오. 연결 준비가 끝나지 않은 모델도 선택하여 필요한 설정을 확인할 수 있습니다.';
+ const lines=[row.display_name,'연결 상태: '+connectionLabel(row),'사용 권한: '+permissionLabel(row)];
+ if(row.readiness_state==='missing_credentials')lines.push('해당 모델 서버의 인증 키가 필요합니다.');
+ else if(!row.configured)lines.push('모델 서버 주소와 서버에서 사용하는 모델 이름의 연결 설정이 필요합니다.');
+ else if(!row.enabled)lines.push('모델 호출 기능을 켜는 설정이 필요합니다.');
+ if(row.permitted!==true)lines.push('소유자의 모델 사용 허용 설정을 확인하십시오.');
+ if(modelReady(row))lines.push('질문하기를 실행하면 이 모델 하나에 요청합니다. 실제 응답 성공 여부는 아직 확인하지 않았습니다.');
+ else lines.push('상태 확인을 위한 선택은 가능하며, 필요한 설정이 끝나기 전에는 질문을 전송하지 않습니다.');
+ return lines.join('\\n');
+}
+function refreshModelSelection(){
+ const row=modelRows.get(byId('model').value);
+ byId('generate').disabled=busy||!modelReady(row);
+ byId('model-readiness').textContent=modelExplanation(row);
+}
 async function loadModels(){
  try{
   const response=await fetch('/owner/open-models/catalog',{credentials:'same-origin',cache:'no-store'});
   if(!response.ok)throw new Error('모델 연결 정보를 불러오지 못했습니다. 관리자 로그인과 연결 설정을 확인해야 합니다.');
-  const data=await response.json();const select=byId('model');select.replaceChildren();
+  const data=await response.json();const select=byId('model'),previous=select.value;select.replaceChildren();modelRows=new Map();
   const first=document.createElement('option');first.value='';first.textContent='사용할 모델을 선택할 수 있습니다.';select.append(first);
-  const groups={};usableModels=0;
+  const groups={};let usableModels=0;
   for(const row of data.models){
    const additional=row.selection_group==='aws_additional',groupKey=row.family+(additional?'-aws':'');
    let group=groups[groupKey];if(!group){group=document.createElement('optgroup');group.label=(familyNames[row.family]||row.family)+(additional?' · AWS 추가 후보':'');groups[groupKey]=group;select.append(group);}
    const option=document.createElement('option');option.value=row.model_key;
-   const ready=row.configured&&row.enabled&&row.permitted&&(!row.readiness_state||row.readiness_state==='configured_not_verified');option.disabled=!ready;
-   const readiness=row.permitted===false?'사용 보류':readinessLabels[row.readiness_state]||(ready?'호출 설정됨 · 실제 응답 미확인':'연결 설정 필요');
-   option.textContent=row.display_name+' · '+readiness;group.append(option);if(ready)usableModels++;
+   modelRows.set(row.model_key,row);const ready=modelReady(row);
+   option.textContent=row.display_name+' · '+connectionLabel(row)+(row.permitted===true?'':' · '+permissionLabel(row));group.append(option);if(ready)usableModels++;
   }
-  byId('generate').disabled=usableModels===0;
-  status(usableModels?'호출 설정이 있는 모델을 선택할 수 있습니다. 실제 연결 성공 여부는 요청 결과로 확인됩니다.':'모델 목록을 불러왔습니다. 실제 사용할 모델의 호출 연결 설정이 필요합니다.');
- }catch(error){status(error.message||'모델 목록을 불러오지 못했습니다.',true);}
+  select.value=modelRows.has(previous)?previous:'';refreshModelSelection();
+  status(usableModels?'모든 등록 모델을 선택하여 상태를 확인할 수 있습니다. 질문 전송은 선택한 모델의 연결 설정과 사용 권한이 준비된 경우에만 가능합니다.':'모든 등록 모델을 선택하여 필요한 설정을 확인할 수 있습니다. 아직 질문을 전송할 수 있는 모델은 없습니다.');
+ }catch(error){modelRows=new Map();refreshModelSelection();status(error.message||'모델 목록을 불러오지 못했습니다.',true);}
 }
 function addText(parent,tag,text){const node=document.createElement(tag);node.textContent=text;parent.append(node);return node;}
 function references(ids){return ids.length?' ['+ids.join(', ')+']':'';}
@@ -312,10 +336,13 @@ function renderResult(result){
  addText(box,'p','검토 상태: 생성 초안 · 공식 출처 대조 및 독립 AI 검증 미실시 · 사람의 검토 필요');
 }
 byId('add-source').addEventListener('click',addSource);
-byId('task').addEventListener('change',updateTask);byId('domain').addEventListener('change',updateTask);byId('model').addEventListener('change',clearHistory);
+byId('task').addEventListener('change',updateTask);byId('domain').addEventListener('change',updateTask);byId('model').addEventListener('change',()=>{clearHistory();refreshModelSelection();});
 byId('new-conversation').addEventListener('click',()=>{clearHistory();byId('result').hidden=true;byId('question').value='';status('새 튜터 대화를 시작할 수 있습니다.');});
 byId('draft-form').addEventListener('submit',async event=>{
- event.preventDefault();if(busy)return;setBusy(true);byId('result').hidden=true;
+ event.preventDefault();if(busy)return;
+ const selected=modelRows.get(byId('model').value);
+ if(!modelReady(selected)){refreshModelSelection();status(modelExplanation(selected),true);return;}
+ setBusy(true);byId('result').hidden=true;
  try{
   const task=byId('task').value,question=byId('question').value.trim();
   const sources=Array.from(byId('sources').querySelectorAll('textarea')).filter(x=>x.value.trim()).map(x=>({source_id:x.dataset.sourceId,text:x.value.trim()}));
