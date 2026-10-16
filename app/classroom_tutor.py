@@ -711,6 +711,7 @@ def create_session_record(req: SessionCreate, *, product_prefix: str, owner_teac
         "teacher_token": teacher_token,
         "join_token": join_token,
         "board_url": f"{product_prefix}/board/{session_id}?teacher_token={teacher_token}",
+        "robot_url": f"{product_prefix}/robot/{session_id}?teacher_token={teacher_token}",
         "teacher_url": f"{product_prefix}/teacher/{session_id}?teacher_token={teacher_token}",
         "join_url": f"{product_prefix}/join/{session_id}?token={join_token}",
     }
@@ -2013,6 +2014,34 @@ input,select,textarea{width:100%;background:#0f172a;color:white;border:1px solid
 @media(max-width:900px){.grid{grid-template-columns:1fr}.side{border-left:none;border-top:1px solid var(--line)}.top{position:static}}
 """
 
+BOARD_DISPLAY_CSS = """
+.display-focus .grid{grid-template-columns:minmax(0,1fr);min-height:calc(100dvh - 68px)}
+.display-focus .side{display:none}
+.display-focus .stage{width:100%;max-width:1800px;margin:0 auto;padding:clamp(16px,2vw,40px)}
+.display-focus .stage>.card{padding:clamp(20px,3vw,56px);border-radius:22px}
+.display-focus #title{font-size:clamp(32px,4.8vw,78px);line-height:1.22}
+.display-focus #text{font-size:clamp(24px,2.7vw,44px)!important;line-height:1.65;white-space:pre-wrap}
+.display-focus #structure{font-size:clamp(21px,2.1vw,34px);line-height:1.6}
+.display-focus #structure summary{font-weight:700}
+.display-focus #structure svg{max-width:min(100%,900px)!important;max-height:55dvh}
+.display-focus #structure table{border-collapse:collapse}
+.display-focus #structure th,.display-focus #structure td{padding:12px;border-bottom:1px solid var(--line)}
+.display-focus #media img,.display-focus #media video,.display-focus #media iframe{display:block;width:100%;max-height:68dvh!important;object-fit:contain;margin:auto}
+.display-focus #media audio{width:100%;min-height:64px}
+.display-focus canvas.board{height:70dvh}
+.display-focus #kind{font-size:clamp(15px,1.4vw,23px);margin-bottom:12px}
+.robot-screen .top{gap:12px;font-size:clamp(14px,1.4vw,22px)}
+.robot-screen #mode{display:none}
+.robot-screen .stage>.card{box-shadow:0 18px 50px #0004}
+@media(orientation:portrait){
+ .robot-screen #title{font-size:clamp(32px,6vw,70px)}
+ .robot-screen #text{font-size:clamp(24px,4vw,40px)!important}
+ .robot-screen #structure{font-size:clamp(21px,3.3vw,32px)}
+ .robot-screen .top{align-items:flex-start}
+}
+@media(prefers-reduced-motion:reduce){.display-focus *{scroll-behavior:auto}}
+"""
+
 COMMON_JS = r"""
 function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 async function api(url,opt={}){let r=await fetch(url,opt); if(!r.ok)throw new Error(await r.text()); return r.json();}
@@ -2028,11 +2057,11 @@ function teacherMediaUrl(raw,sessionId,teacherToken){
    }
  }catch(e){}return raw;
 }
-function materialStructure(x){
+function materialStructure(x,expanded=false){
  let out='';
  if(x.learning_map)out+=`<div style='display:flex;gap:12px;flex-wrap:wrap'>${x.learning_map.map(c=>`<div class='card'><small>${esc(({BASIC:'기초',CONDITION:'성립조건',INFERENCE:'추론',ADVANCED:'심화'})[c.stage]||c.stage)}</small><p>${esc(c.label)}</p></div>`).join('<span aria-hidden="true">→</span>')}</div>`;
  if(x.conditions)out+=`<p>${Object.entries(x.conditions).map(([k,v])=>`<span class='badge'>${esc(k)}: ${esc(v)}</span>`).join(' ')}</p>`;
- if(x.logic_links)out+=x.logic_links.map(l=>`<details class='card'><summary>${esc(l.premise)} → ${esc(l.conclusion)}</summary><p>적용조건: ${esc(l.condition_keys.join(', '))}</p><p>규칙: ${esc(l.rule)}</p></details>`).join('');
+ if(x.logic_links)out+=x.logic_links.map(l=>`<details class='card' ${expanded?'open':''}><summary>${esc(l.premise)} → ${esc(l.conclusion)}</summary><p>적용조건: ${esc(l.condition_keys.join(', '))}</p><p>규칙: ${esc(l.rule)}</p></details>`).join('');
  if(x.comparison){let c=x.comparison;out+=`<table style='width:100%;text-align:left'><thead><tr><th>조건</th><th>기준</th><th>변경</th></tr></thead><tbody>${Object.keys(c.baseline).map(k=>`<tr style='color:${c.changed_keys.includes(k)?'var(--warn)':'inherit'}'><td>${esc(k)}</td><td>${esc(c.baseline[k])}</td><td>${esc(c.altered[k])}</td></tr>`).join('')}</tbody></table>`;}
  if(x.kind==='DEMONSTRATE'&&['x','x³'].includes(x.conditions?.['함수'])){
   const cube=x.conditions['함수']==='x³',path=Array.from({length:101},(_,i)=>{const v=(i-50)/50;return `${i?'L':'M'}${30+i*3},${190-150*(cube?Math.abs(v)**3:Math.abs(v))}`;}).join(' ');
@@ -2081,9 +2110,13 @@ def board_html(
     session_id: str,
     teacher_token: str,
     product_prefix: str = "/tutor",
+    display_mode: Literal["BOARD", "ROBOT"] = "BOARD",
 ) -> str:
-    return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'><title>EduRecover Board</title><style>{COMMON_CSS}</style></head>
-<body><div class='top'><div><b>EduRecover 전자칠판</b> <span class='badge' id='conn'>연결중</span></div><div><span class='badge' id='mode'></span> <button class='btn' onclick='goFull()'>전체화면</button></div></div>
+    robot = display_mode == "ROBOT"
+    page_title = "EduRecover 로봇교사 몸통 화면" if robot else "EduRecover 전자칠판"
+    focus_button = "" if robot else "<button class='btn' id='focusDisplay' aria-pressed='false' onclick='toggleDisplayFocus()'>자료 크게 보기</button>"
+    html = f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{page_title}</title><style>{COMMON_CSS}{BOARD_DISPLAY_CSS}</style></head>
+<body class='{'display-focus robot-screen' if robot else ''}'><div class='top'><div><b>{page_title}</b> <span class='badge' id='conn' role='status'>연결중</span></div><div><span class='badge' id='mode'></span> {focus_button} <button class='btn' onclick='goFull()'>전체화면</button></div></div>
 <div class='grid'><main class='stage'><div class='card'><div class='muted' id='kind'></div><div class='big' id='title'>불러오는 중...</div><p id='text' style='font-size:clamp(18px,2.1vw,32px)'></p><div id='structure'></div><div id='media'></div><p id='playbackHelp' class='muted' role='status'></p><button class='btn' id='boardPlayFallback' style='display:none' onclick='resumeBoardPlayback()'>이 화면에서 자료 재생</button><div id='choices'></div></div><div class='card' id='whiteWrap' style='display:none'><canvas id='whiteboard' class='board'></canvas></div></main>
 <aside class='side'><div class='card'><b>교사 제어</b><div class='controls'><button class='primary' onclick="cmd('PLAY')">재생/TTS</button><button onclick="cmd('PAUSE')">일시정지</button><button onclick="cmd('PREV')">이전</button><button onclick="cmd('NEXT')">다음</button><button onclick='toggleBoard()'>판서 전환</button><button class='danger' onclick="cmd('STOP')">전체중지</button><button onclick='clearSharedBoard()'>판서 지우기</button></div></div>
 <div class='card'><b>학생 참가</b><div id='qr' style='margin-top:10px'></div><div class='muted' id='joinText'></div></div>
@@ -2091,6 +2124,7 @@ def board_html(
 <div class='card'><b>장치 capability</b><pre id='caps' style='white-space:pre-wrap'></pre></div></aside></div>
 <script src='https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'></script><script>{COMMON_JS}{BOARD_SYNC_JS}
 const SID={json.dumps(session_id)}, TT={json.dumps(teacher_token)}, PFX={json.dumps(product_prefix)};let S=null,lastEvent=0,videoPausedOnce=false,lastRenderKey="",lastPlayback="",lastPlayRevision=0;
+const DISPLAY_MODE={json.dumps(display_mode)};let displayFocus=DISPLAY_MODE==='ROBOT';
 let youtubePlayer=null,youtubeReady=false,youtubeEpoch=0,youtubePauseTimer=null,youtubeApiPromise=null;
 function resetYouTube(){{youtubeEpoch++;if(youtubePauseTimer)clearInterval(youtubePauseTimer);youtubePauseTimer=null;
  if(youtubePlayer){{try{{youtubePlayer.destroy();}}catch(e){{}}}}youtubePlayer=null;youtubeReady=false;}}
@@ -2130,10 +2164,10 @@ function setupYouTubePlayer(embed,x){{let epoch=++youtubeEpoch,url=new URL(embed
        playbackHelp('브라우저가 자동 재생을 제한했습니다. 전자칠판에서 영상 재생을 눌러 주세요.',true);}}}}}});
  }}).catch(()=>{{if(epoch!==youtubeEpoch)return;resetYouTube();q('#media').innerHTML='';
    playbackHelp('YouTube 영상 제어를 불러오지 못했습니다. 연결을 확인해 주세요.');}});}}
-async function refresh(){{try{{S=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}&display_only=true`);q('#conn').textContent='연결됨';q('#mode').textContent=S.launch_mode+' / '+S.connection_method;let visible=S.state.board_mode==='WHITEBOARD';if(q('#whiteWrap').style.display!==(visible?'block':'none')){{q('#whiteWrap').style.display=visible?'block':'none';if(visible)sharedBoard.size();}}render();await loadResults();}}catch(e){{S=null;lastRenderKey='';lastPlayback='';lastPlayRevision=0;resetYouTube();playbackHelp('');if('speechSynthesis' in window)speechSynthesis.cancel();q('#vid')?.pause();q('#media').innerHTML='';q('#structure').innerHTML='';q('#choices').innerHTML='';q('#title').textContent='자료 제공 대기';q('#text').textContent='교사 검증 또는 연결 상태를 확인해 주세요.';q('#conn').textContent='대기';}}}}
+async function refresh(){{try{{S=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}&display_only=true`);q('#conn').textContent='연결됨';q('#mode').textContent=S.launch_mode+' / '+S.connection_method;let visible=S.state.board_mode==='WHITEBOARD';if(q('#whiteWrap').style.display!==(visible?'block':'none')){{q('#whiteWrap').style.display=visible?'block':'none';if(visible)sharedBoard.size();}}render();await loadResults();}}catch(e){{S=null;lastRenderKey='';lastPlayback='';lastPlayRevision=0;resetYouTube();playbackHelp('');if('speechSynthesis' in window)speechSynthesis.cancel();q('#vid')?.pause();q('#media').innerHTML='';q('#structure').innerHTML='';q('#choices').innerHTML='';q('#whiteWrap').style.display='none';q('#title').textContent='자료 제공 대기';q('#text').textContent='교사 검증 또는 연결 상태를 확인해 주세요.';q('#conn').textContent='대기';}}}}
 function seg(){{return (S?.lesson||[]).find(x=>x.segment_id===S?.state?.current_segment_id)||null}}
-function render(){{let x=seg();if(!x)return;let key=x.segment_id+':'+(x.structured_bundle_revision||'');let changed=key!==lastRenderKey;
- if(changed){{resetYouTube();playbackHelp('');lastRenderKey=key;q('#structure').innerHTML=materialStructure(x);
+function render(){{let x=seg();if(!x)return;let key=[x.segment_id,S.lesson_digest||'',x.structured_bundle_revision||'',x.learning_path_revision||''].join(':');let changed=key!==lastRenderKey;
+  if(changed){{resetYouTube();playbackHelp('');lastRenderKey=key;q('#structure').innerHTML=materialStructure(x,displayFocus);
  q('#kind').textContent=x.kind+(x.misconception_path?' · 오답원인: '+x.misconception_path:'');
  q('#title').textContent=x.title;q('#text').textContent=x.text||'';let m=q('#media');m.innerHTML='';videoPausedOnce=false;
  if(x.media_url){{let yt=youtubeEmbed(x.media_url),url=esc(teacherMediaUrl(x.media_url,SID,TT));
@@ -2148,21 +2182,28 @@ let c=q('#choices');c.innerHTML='';if(['SOCRATIC','RETEST'].includes(x.kind)){{c
    lastPlayback=S.state.playback;lastPlayRevision=playRevision;applyPlayback();}}
 }}
 async function cmd(a){{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action:a}})}});refresh();}}
-async function loadResults(){{let x=seg();if(!x)return;if(x.independent_followup){{q('#results').textContent='독립 응답 중에는 다른 학생의 답을 표시하지 않습니다.';return;}}let r=await api(`/tutor/api/sessions/${{SID}}/results?teacher_token=${{encodeURIComponent(TT)}}&segment_id=${{encodeURIComponent(x.segment_id)}}`);let total=(r.totals[0]?.n)||0;if(!total){{q('#results').textContent='아직 응답 없음';return;}}q('#results').innerHTML=r.counts.map(z=>`<div style='margin:8px 0'><div>${{esc(z.answer)}} · ${{z.n}}명</div><div class='bar'><i style='width:${{Math.round(z.n/total*100)}}%'></i></div></div>`).join('');}}
+async function loadResults(){{if(DISPLAY_MODE==='ROBOT')return;let x=seg();if(!x)return;if(x.independent_followup){{q('#results').textContent='독립 응답 중에는 다른 학생의 답을 표시하지 않습니다.';return;}}let r=await api(`/tutor/api/sessions/${{SID}}/results?teacher_token=${{encodeURIComponent(TT)}}&segment_id=${{encodeURIComponent(x.segment_id)}}`);let total=(r.totals[0]?.n)||0;if(!total){{q('#results').textContent='아직 응답 없음';return;}}q('#results').innerHTML=r.counts.map(z=>`<div style='margin:8px 0'><div>${{esc(z.answer)}} · ${{z.n}}명</div><div class='bar'><i style='width:${{Math.round(z.n/total*100)}}%'></i></div></div>`).join('');}}
 function goFull(){{document.documentElement.requestFullscreen?.();}}
+function toggleDisplayFocus(){{displayFocus=!displayFocus;document.body.classList.toggle('display-focus',displayFocus);const button=q('#focusDisplay');if(button){{button.textContent=displayFocus?'교사 제어 보기':'자료 크게 보기';button.setAttribute('aria-pressed',String(displayFocus));}}const x=seg();if(x)q('#structure').innerHTML=materialStructure(x,displayFocus);sharedBoard.size();}}
 async function toggleBoard(){{await api(`/tutor/api/sessions/${{SID}}/command?teacher_token=${{encodeURIComponent(TT)}}`,{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{action:'SET_BOARD_MODE',board_mode:S?.state.board_mode==='WHITEBOARD'?'LESSON':'WHITEBOARD'}})}});refresh();}}
 async function clearSharedBoard(){{if(confirm('이 수업의 판서를 모두 지울까요?'))await sharedBoard.clear();}}
-q('#caps').textContent=JSON.stringify(capabilities(),null,2);
+if(DISPLAY_MODE!=='ROBOT')q('#caps').textContent=JSON.stringify(capabilities(),null,2);
 const joinUrl=`${{location.origin}}/tutor/join/${{SID}}?token=${{encodeURIComponent(SID)}}`; // fallback text replaced after session fetch
 async function makeQR(){{let s=await api(`/tutor/api/sessions/${{SID}}?teacher_token=${{encodeURIComponent(TT)}}`);let url=`${{location.origin}}${{PFX}}/join/${{SID}}?token=${{encodeURIComponent(s.join_token)}}`;q('#joinText').innerHTML=`참가 주소: <span class='muted'>${{esc(url)}}</span>`;try{{new QRCode(q('#qr'),{{text:url,width:190,height:190}});}}catch(e){{q('#qr').textContent='QR 라이브러리 로드 실패 — 위 주소 또는 참가코드를 사용하세요.';}}}}
 const sharedBoard=setupSharedBoard(q('#whiteboard'));
-makeQR();refresh();setInterval(refresh,1500);
+if(DISPLAY_MODE!=='ROBOT')makeQR();refresh();setInterval(refresh,1500);
 </script></body></html>"""
+    if robot:
+        # A display shares the same released current-step API as the board; it
+        # never fetches teacher results, future answers or an unreviewed draft.
+        html = re.sub(r"<aside class='side'>.*?</aside>", "", html, count=1, flags=re.S)
+        html = html.replace("<script src='https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'></script>", "")
+    return html
 
 
 def teacher_html(session_id: str, teacher_token: str) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>EduRecover Teacher</title><style>{COMMON_CSS}</style></head><body>
-<div class='top'><b>EduRecover 교사 콘솔</b><span class='badge'>{session_id}</span></div><main style='max-width:960px;margin:auto;padding:18px'><div class='card'><b>전자칠판 열기</b><p class='muted'>전자칠판 자체 브라우저/OPS에서는 아래 주소를 직접 열고, 캐스트/HDMI 환경에서는 이 화면을 전자칠판으로 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/tutor/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a></div>
+<div class='top'><b>EduRecover 교사 콘솔</b><span class='badge'>{session_id}</span></div><main style='max-width:960px;margin:auto;padding:18px'><div class='card'><b>전자칠판 열기</b><p class='muted'>전자칠판 자체 브라우저/OPS에서는 아래 주소를 직접 열고, 캐스트/HDMI 환경에서는 이 화면을 전자칠판으로 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/tutor/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a> <a class='btn' style='display:inline-block;text-decoration:none' target='_blank' href='/tutor/robot/{session_id}?teacher_token={teacher_token}'>로봇교사 몸통 화면 열기</a><p class='muted'>몸통에 장착한 화면에는 현재 수업자료만 크게 표시합니다. 교사 콘솔에서 자료와 음성 재생·중지를 조절합니다.</p></div>
 <div class='card'><b>수업자료 검토</b><p>문항·정답·설명을 확인한 뒤 학생에게 제공해 주세요.</p><button class='btn primary' onclick='publishLesson()'>검토한 수업자료 확정</button><div id='releaseStatus' role='status'></div></div><div class='card'><b>수업 단계</b><div id='segments'></div></div><div class='card'><b>실시간 응답</b><div id='res'></div></div>
 <div class='card'><b>강화학습 연결 상태</b><p class='muted'>학생상태와 AI튜터 학습자격은 별도 객체입니다. 응답은 즉시 모델 가중치에 반영되지 않으며, 교사검증·독립 후속문항·출처무결성 게이트를 통과해야 학습후보가 됩니다.</p><div id='training'>불러오는 중...</div><div id='review'></div></div></main><script>{COMMON_JS}
 const SID={json.dumps(session_id)},TT={json.dumps(teacher_token)};let S;
@@ -2198,7 +2239,7 @@ def teacher_product_html(session_id: str, teacher_token: str) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>EduRecover Classroom Board 교사 콘솔</title><style>{COMMON_CSS}</style></head><body>
 <div class='top'><div><b>EduRecover Classroom Board</b> <span class='badge'>교사 콘솔</span></div><span class='badge'>{session_id}</span></div>
 <main style='max-width:980px;margin:auto;padding:18px'>
-<div class='card'><h2 style='margin-top:0'>전자칠판 수업 운영</h2><p class='muted'>전자칠판 자체 브라우저나 OPS에서는 전자칠판 화면을 직접 열고, HDMI·USB-C·무선 캐스트 환경에서는 해당 화면을 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/classroom/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a> <a class='btn' style='display:inline-block;text-decoration:none' href='/classroom/learning-path/{session_id}?teacher_token={teacher_token}'>거시·미시 학습경로 편집</a> <a class='btn' style='display:inline-block;text-decoration:none' href='/classroom/candidates/{session_id}?teacher_token={teacher_token}'>대안 탐색·근거 검증</a></div>
+<div class='card'><h2 style='margin-top:0'>전자칠판 수업 운영</h2><p class='muted'>전자칠판 자체 브라우저나 OPS에서는 전자칠판 화면을 직접 열고, HDMI·USB-C·무선 캐스트 환경에서는 해당 화면을 미러링합니다.</p><a class='btn primary' style='display:inline-block;text-decoration:none' target='_blank' href='/classroom/board/{session_id}?teacher_token={teacher_token}'>전자칠판 화면 열기</a> <a class='btn' style='display:inline-block;text-decoration:none' target='_blank' href='/classroom/robot/{session_id}?teacher_token={teacher_token}'>로봇교사 몸통 화면 열기</a><p class='muted'>몸통에 장착한 화면에는 현재 수업자료만 크게 표시합니다. 아래 제어로 그림·영상·음성·판서를 함께 진행합니다.</p> <a class='btn' style='display:inline-block;text-decoration:none' href='/classroom/learning-path/{session_id}?teacher_token={teacher_token}'>거시·미시 학습경로 편집</a> <a class='btn' style='display:inline-block;text-decoration:none' href='/classroom/candidates/{session_id}?teacher_token={teacher_token}'>대안 탐색·근거 검증</a></div>
 <div class='grid' style='grid-template-columns:1fr 1fr;min-height:auto'>
 <div class='card'><b>수업자료 검토</b><p>문항·정답·설명을 확인한 뒤 학생에게 제공해 주세요.</p><button class='btn primary' onclick='publishLesson()'>검토한 수업자료 확정</button><div id='releaseStatus' role='status'></div></div><div class='card'><b>수업 단계</b><div id='segments' style='margin-top:10px'></div></div>
 <div class='card'><b>교사 전자칠판 제어</b><p>재생·단계 이동과 판서를 칠판 화면에 함께 반영합니다.</p><div class='controls'><button onclick="control('PLAY')">재생/TTS</button><button onclick="control('PAUSE')">일시정지</button><button onclick="control('PREV')">이전</button><button onclick="control('NEXT')">다음</button><button onclick="control('SET_BOARD_MODE','WHITEBOARD')">판서 표시</button><button onclick="control('SET_BOARD_MODE','LESSON')">수업 표시</button><button onclick="control('STOP')">중지</button><button onclick='clearTeacherBoard()'>판서 지우기</button></div><canvas id='whiteboard' class='board' aria-label='교사 판서 영역'></canvas></div>
@@ -2248,6 +2289,17 @@ def teacher(session_id: str, teacher_token: str):
     return HTMLResponse(teacher_html(session_id, teacher_token), headers=PRODUCT_HTML_HEADERS)
 
 
+@classroom_tutor_router.get("/robot/{session_id}", response_class=HTMLResponse)
+def robot_display(session_id: str, teacher_token: str):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+    return HTMLResponse(
+        board_html(session_id, teacher_token, display_mode="ROBOT"),
+        headers=BOARD_HTML_HEADERS,
+    )
+
+
 @classroom_tutor_router.get("/join/{session_id}", response_class=HTMLResponse)
 def join(session_id: str, token: str):
     with db() as conn:
@@ -2275,6 +2327,17 @@ def teacher_product_console(session_id: str, teacher_token: str):
         require_teacher(row, teacher_token)
     return HTMLResponse(
         teacher_product_html(session_id, teacher_token),
+        headers=BOARD_HTML_HEADERS,
+    )
+
+
+@teacher_classroom_router.get("/robot/{session_id}", response_class=HTMLResponse)
+def teacher_product_robot_display(session_id: str, teacher_token: str):
+    with db() as conn:
+        row = get_session_or_404(conn, session_id)
+        require_teacher(row, teacher_token)
+    return HTMLResponse(
+        board_html(session_id, teacher_token, product_prefix="/classroom", display_mode="ROBOT"),
         headers=BOARD_HTML_HEADERS,
     )
 
@@ -2676,6 +2739,7 @@ def classroom_my_sessions(teacher: str = Depends(require_classroom_user)):
                                 (teacher,)).fetchall()
     return {"sessions": [{"title": x["title"], "created_at": x["created_at"],
                           "board_url": f"/classroom/board/{x['session_id']}?teacher_token={x['teacher_token']}",
+                          "robot_url": f"/classroom/robot/{x['session_id']}?teacher_token={x['teacher_token']}",
                           "teacher_url": f"/classroom/teacher/{x['session_id']}?teacher_token={x['teacher_token']}"}
                          for x in rows]}
 
@@ -2689,7 +2753,7 @@ def classroom_sessions_page(teacher: str = Depends(require_classroom_user)):
 const root=document.querySelector('#list');root.textContent='';
 for(const s of d.sessions){let p=document.createElement('p'),name=document.createElement('strong');
 name.textContent=s.title+' · '+s.created_at;p.append(name);
-for(const [label,url] of [['교사 콘솔',s.teacher_url],['전자칠판',s.board_url]]){
+for(const [label,url] of [['교사 콘솔',s.teacher_url],['전자칠판',s.board_url],['로봇교사 몸통 화면',s.robot_url]]){
 let a=document.createElement('a');a.href=url;a.textContent=label;a.style.marginLeft='18px';p.append(a);}root.append(p);}
 if(!d.sessions.length)root.textContent='저장된 수업이 없습니다.';}).catch(()=>document.querySelector('#list').textContent='수업 목록을 불러오지 못했습니다.');</script></body></html>"""
     return HTMLResponse(html, headers=PRODUCT_HTML_HEADERS)
@@ -2725,3 +2789,4 @@ def teacher_product_home(teacher: str = Depends(require_classroom_user)):
         "<main style='max-width:980px;margin:auto;padding:18px'>" + account_link, 1,
     )
     return HTMLResponse(page, headers=PRODUCT_HTML_HEADERS)
+

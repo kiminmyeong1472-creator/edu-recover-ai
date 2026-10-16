@@ -58,6 +58,61 @@ class ClassroomTutorTests(unittest.TestCase):
                                 text=True, capture_output=True, timeout=10, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_robot_body_screen_shares_teacher_controlled_playback(self):
+        html = classroom_module.board_html("board-test", "teacher-token", display_mode="ROBOT")
+        self.assertIn("display-focus robot-screen", html)
+        self.assertIn("로봇교사 몸통 화면", html)
+        self.assertNotIn("<aside", html)
+        self.assertNotIn("id='results'", html)
+        self.assertNotIn("id='qr'", html)
+        self.assertNotIn("qrcode.min.js", html)
+        script = re.search(r"<script>(.*?)</script>", html, re.S)
+        self.assertIsNotNone(script)
+        harness = Path(__file__).with_name("classroom_board_playback_harness.js")
+        result = subprocess.run(["node", str(harness)], input=script.group(1),
+                                text=True, capture_output=True, timeout=10, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_board_and_robot_display_focus_and_withdrawal(self):
+        harness = Path(__file__).with_name("classroom_display_harness.js")
+        for mode in ("BOARD", "ROBOT"):
+            with self.subTest(display_mode=mode):
+                html = classroom_module.board_html("board-test", "teacher-token", display_mode=mode)
+                script = re.search(r"<script>(.*?)</script>", html, re.S)
+                result = subprocess.run(["node", str(harness), mode], input=script.group(1),
+                                        text=True, capture_output=True, timeout=10, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_robot_routes_keep_release_and_current_step_boundaries(self):
+        created = self.client.post("/classroom/api/sessions", headers=self.owner_headers,
+            json={"title": "몸통 화면 정보경계", "lesson": [
+                {"segment_id": "now", "kind": "DEMONSTRATE", "title": "현재 자료", "text": "현재 설명",
+                 "choices": ["맞음", "틀림"], "correct_answer": "맞음"},
+                {"segment_id": "future", "kind": "RETEST", "title": "미래 문항", "text": "아직 공개하지 않을 문제",
+                 "choices": ["가", "나"], "correct_answer": "나"},
+            ]}).json()
+        robot_url = created["robot_url"]
+        self.assertTrue(robot_url.startswith("/classroom/robot/"))
+        self.assertEqual(self.client.get(robot_url).status_code, 200)
+        self.assertEqual(self.client.get(robot_url.split("?")[0],
+            params={"teacher_token": "wrong"}).status_code, 403)
+        owner_url = robot_url.replace("/classroom/robot/", "/tutor/robot/")
+        self.assertEqual(self.client.get(owner_url).status_code, 200)
+        console = self.client.get(created["teacher_url"]).text
+        self.assertIn("/classroom/robot/", console)
+        base = f"/tutor/api/sessions/{created['session_id']}"
+        params = {"teacher_token": created["teacher_token"], "display_only": True}
+        self.assertEqual(self.client.get(base, params=params).status_code, 423)
+        self.publish_lesson(created)
+        display = self.client.get(base, params=params).json()
+        self.assertEqual([x["segment_id"] for x in display["lesson"]], ["now"])
+        self.assertNotIn("correct_answer", display["lesson"][0])
+        self.assertNotIn("join_token", display)
+        self.client.put(base + "/lesson", params={"teacher_token": created["teacher_token"]},
+            json={"lesson": [{"segment_id": "changed", "kind": "DEMONSTRATE",
+                              "title": "수정 초안", "text": "교사 재검토 대기"}]})
+        self.assertEqual(self.client.get(base, params=params).status_code, 423)
+
     def test_repeated_play_commands_advance_board_revision(self):
         created = self.client.post("/classroom/api/sessions", headers=self.owner_headers,
                                    json={"title": "재생 명령 반복 시험"}).json()
@@ -447,3 +502,4 @@ class ClassroomTutorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
