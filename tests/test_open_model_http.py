@@ -161,7 +161,7 @@ class DNSAndTLSValidationTests(unittest.TestCase):
         raw_socket.settimeout.assert_called_once_with(5)
         raw_socket.connect.assert_called_once_with(("1.1.1.1", 443))
         context.wrap_socket.assert_called_once_with(raw_socket, server_hostname=HOST)
-        tls_socket.settimeout.assert_called_once_with(120)
+        tls_socket.settimeout.assert_called_once_with(transport.READ_TIMEOUT_SECONDS)
         self.assertIs(connection.sock, tls_socket)
         resolve.assert_not_called()
 
@@ -221,6 +221,15 @@ class RequestTests(unittest.TestCase):
                 self.assertNotIn(TOKEN, str(error.exception))
                 resolve.assert_not_called()
 
+    def test_image_sized_requests_and_long_code_responses_pass_previous_small_cap(self):
+        answer = "x" * (300 * 1024)
+        response = FakeResponse(json.dumps({"answer": answer}).encode())
+        response.read1 = response.body.read
+        result, connection, _, _ = self.request(response, payload={"prompt": answer})
+        self.assertEqual(answer, result["answer"])
+        self.assertGreater(len(connection.requests[0][1]["body"]), 256 * 1024)
+        self.assertTrue(response.closed and connection.closed)
+
     def test_private_resolution_prevents_connection_creation(self):
         private = (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("169.254.169.254", 443))
         with patch.object(socket, "getaddrinfo", return_value=[private]), \
@@ -232,7 +241,7 @@ class RequestTests(unittest.TestCase):
     def test_http_errors_never_read_or_echo_error_body_and_never_retry(self):
         codes = {
             301: "REQUEST_REJECTED", 302: "REQUEST_REJECTED", 307: "REQUEST_REJECTED",
-            400: "REQUEST_REJECTED", 401: "AUTHENTICATION_FAILED", 403: "ACCESS_DENIED",
+            400: "REQUEST_REJECTED", 401: "AUTHENTICATION_FAILED", 402: "INSUFFICIENT_BALANCE", 403: "ACCESS_DENIED",
             404: "RESOURCE_NOT_FOUND", 408: "TIMEOUT", 413: "INPUT_TOO_LARGE",
             429: "QUOTA_EXCEEDED", 500: "SERVICE_UNAVAILABLE", 503: "SERVICE_UNAVAILABLE",
             504: "TIMEOUT",
@@ -328,7 +337,9 @@ class ResponseTests(unittest.TestCase):
         connection = FakeConnection(response)
         with patch.object(socket, "getaddrinfo", return_value=[PUBLIC]), \
                 patch.object(transport, "_PinnedHTTPSConnection", return_value=connection), \
-                patch.object(transport.time, "monotonic", side_effect=[10.0, 10.0, 131.0]):
+                patch.object(transport.time, "monotonic", side_effect=[
+                    10.0, 10.0, 11.0 + transport.RESPONSE_BODY_TIMEOUT_SECONDS,
+                ]):
             with self.assertRaises(transport.OpenModelHTTPError) as error:
                 transport.post_json(URL, {}, TOKEN)
         self.assertEqual("OPEN_MODEL_TIMEOUT", error.exception.code)

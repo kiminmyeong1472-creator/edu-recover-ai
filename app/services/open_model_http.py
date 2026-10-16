@@ -22,11 +22,11 @@ from typing import Any
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 
-MAX_INPUT_BYTES = 256 * 1024
-MAX_RESPONSE_BYTES = 256 * 1024
+MAX_INPUT_BYTES = 48 * 1024 * 1024
+MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 CONNECT_TIMEOUT_SECONDS = 5
-READ_TIMEOUT_SECONDS = 120
-RESPONSE_BODY_TIMEOUT_SECONDS = 120
+READ_TIMEOUT_SECONDS = 600
+RESPONSE_BODY_TIMEOUT_SECONDS = 600
 _READ_CHUNK_BYTES = 64 * 1024
 _BLOCKED_SUFFIXES = (
     ".localhost", ".local", ".localdomain", ".internal", ".lan", ".home",
@@ -219,6 +219,8 @@ def _read_json(response: http.client.HTTPResponse) -> dict:
 def _status_error(status: int) -> OpenModelHTTPError:
     if status == 401:
         return _error("AUTHENTICATION_FAILED")
+    if status == 402:
+        return _error("INSUFFICIENT_BALANCE")
     if status == 403:
         return _error("ACCESS_DENIED")
     if status == 404:
