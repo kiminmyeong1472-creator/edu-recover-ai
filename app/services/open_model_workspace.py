@@ -6,7 +6,7 @@ _HTML = '''<!doctype html>
 <title>교육·의료 AI 작업 | 에듀리커버</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#172b45;font-family:system-ui,sans-serif;line-height:1.6}
-main{width:min(900px,calc(100% - 28px));margin:24px auto}header{display:flex;justify-content:space-between;align-items:center}
+main{width:min(900px,calc(100% - 28px));margin:24px auto}header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 h1{font-size:27px;margin:18px 0 8px}h2{font-size:19px}p,small{color:#485d75}
 section{background:white;border:1px solid #d5dfeb;border-radius:14px;padding:22px;margin:18px 0}
 label{display:block;font-weight:700;margin-top:16px}input,select,textarea{display:block;width:100%;font:inherit;padding:11px;border:1px solid #8294ad;border-radius:7px;margin-top:6px}
@@ -18,7 +18,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 #status,#model-readiness{white-space:pre-wrap}#result{overflow-wrap:anywhere}#result p{white-space:pre-wrap}
 .error{color:#a01919}li{margin:8px 0}a{color:#174d9e}@media(max-width:600px){.grid{grid-template-columns:1fr}section{padding:16px}h1{font-size:24px}}
 </style></head><body><main>
-<header><strong>EduRecover</strong><a href="/owner">관리 화면</a><a href="/owner/open-models/chutes">별도 직접 호출</a><a href="/owner/open-models/learning">모델 개발·학습 허용 모음</a></header>
+<header><strong>EduRecover</strong><a href="/owner">관리 화면</a><a href="/owner/open-models/chutes">Chutes 9개 제공판 호출</a><a href="/owner/open-models/learning">모델 개발·학습 허용 모음</a></header>
 <h1>교육·의료 AI 작업</h1>
 <p>선택한 8개 계열·25개 모델에 직접 질문하거나 튜터 대화, 문제 출제, 자료 검토를 진행할 수 있습니다. Qwen·DeepSeek·gpt-oss·Gemma·GLM·Mistral·Phi·NVIDIA Nemotron을 포함하며, Amazon Nova 등 AWS 추가 후보는 따로 표시합니다.</p>
 <p>GPT-6 Luna는 별도 Azure 서비스로 표시합니다. OpenRouter를 통해 Azure로만 요청하며, 제공자가 입력·응답을 저장하지 않는 조건(ZDR)을 충족하는 경로에만 요청하도록 제한합니다. 실제 호출에는 연결 설정과 소유자 사용 허용이 필요합니다.</p>
@@ -283,7 +283,7 @@ addSource();setupVoice();updateTask();loadModels();
 def chutes_workspace_html() -> str:
     """A separate direct-only workspace; no existing route is replaced."""
     html = _HTML.replace(
-        '<a href="/owner/open-models/chutes">별도 직접 호출</a>',
+        '<a href="/owner/open-models/chutes">Chutes 9개 제공판 호출</a>',
         '<a href="/owner/open-models">기존 모델 작업</a>',
     )
     intro_start = html.index('<h1>')
@@ -365,6 +365,9 @@ def learning_workspace_html() -> str:
     intro_start = html.index('<h1>')
     intro_end = html.index('<section><form')
     html = html[:intro_start] + '''<h1>자체 모델 개발·학습 허용 모델 모음</h1>
+<aside class="notice" aria-labelledby="chutes-call-heading"><h2 id="chutes-call-heading">Qwen3.8 질문은 별도의 Chutes 제공판 화면에서</h2>
+<p>이 모음의 Qwen3.8-27B는 직접 실행할 서버가 연결되지 않아 질문을 전송할 수 없습니다. Chutes에 연결한 Qwen3.8-27B-FP8는 별도 제공판입니다. FP8은 모델 수치를 저장·계산하는 정밀도 방식입니다. 원래 모델을 자동으로 바꾸지 않습니다.</p>
+<p><a href="/owner/open-models/chutes">Qwen3.8-27B-FP8 등 Chutes 9개 제공판 선택 화면 열기</a></p></aside>
 <p>다른 모델 개발·학습을 허용하는 공식 API와 공개 가중치를 먼저 모았습니다. 입력·응답을 보관하지 않는 조건(ZDR)은 이번 목록의 포함 조건으로 삼지 않습니다. 이 조건까지 확인된 경로가 있으면 우선 사용할 수 있으며, 아직 ZDR 충족을 보장하지 않습니다.</p>
 <p>DeepSeek V4.1 Flash·V4 Pro는 공식 API 약관 제4.2조에서 출력으로 다른 모델을 학습·증류하는 것을 명시적으로 허용합니다. 기존 전용 키로 공식 서버에 직접 요청하며, OpenRouter를 거치지 않습니다. 실제 응답 성공 여부는 별도로 확인해야 합니다.</p>
 <p>나머지는 공개 가중치를 직접 운영할 때 수정·파생 모델 개발을 허용하는 모델입니다. 가중치는 모델 실행에 필요한 파일입니다. 직접 실행할 서버가 아직 연결되지 않은 모델은 목록에 보관하며 질문을 보내지 않습니다. 공개 라이선스가 외부 API 제공자의 계약까지 바꾸지는 않습니다.</p>
@@ -403,4 +406,5 @@ def learning_workspace_html() -> str:
 async function loadModels(){''',
     )
     return html
+
 
