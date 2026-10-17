@@ -6,7 +6,7 @@ _HTML = '''<!doctype html>
 <title>교육·의료 AI 작업 | 에듀리커버</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#172b45;font-family:system-ui,sans-serif;line-height:1.6}
-main{width:min(900px,calc(100% - 28px));margin:24px auto}header{display:flex;justify-content:space-between;align-items:center}
+main{width:min(900px,calc(100% - 28px));margin:24px auto}header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
 h1{font-size:27px;margin:18px 0 8px}h2{font-size:19px}p,small{color:#485d75}
 section{background:white;border:1px solid #d5dfeb;border-radius:14px;padding:22px;margin:18px 0}
 label{display:block;font-weight:700;margin-top:16px}input,select,textarea{display:block;width:100%;font:inherit;padding:11px;border:1px solid #8294ad;border-radius:7px;margin-top:6px}
@@ -15,7 +15,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 .attachment-list{padding-left:20px}.attachment-list button{padding:4px 10px;margin:0 0 0 10px}.voice-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.voice-controls p{margin:8px 0}.attachment-controls{margin:14px 0;padding:14px;background:#f3f6fa;border-radius:8px}
 .grid{display:grid;grid-template-columns:1fr 2fr;gap:16px}.notice{padding:10px;background:#edf3fc;border-radius:6px}
 .source{padding:10px 0;border-bottom:1px solid #e6ebf3}.source label{margin-top:4px}
-#status,#model-readiness{white-space:pre-wrap}#result{overflow-wrap:anywhere}#result p{white-space:pre-wrap}
+#status,#model-readiness{white-space:pre-wrap;overflow-wrap:anywhere}#result{overflow-wrap:anywhere}#result p{white-space:pre-wrap}
 .error{color:#a01919}li{margin:8px 0}a{color:#174d9e}@media(max-width:600px){.grid{grid-template-columns:1fr}section{padding:16px}h1{font-size:24px}}
 </style></head><body><main>
 <header><strong>EduRecover</strong><a href="/owner">관리 화면</a><a href="/owner/open-models/chutes">별도 직접 호출</a><a href="/owner/open-models/learning">모델 개발·학습 허용 모음</a></header>
@@ -173,7 +173,7 @@ function updateTask(){
  byId('result').hidden=true;clearHistory();
 }
 const familyNames={deepseek:'DeepSeek · 딥시크',qwen:'Qwen · 큐웬',nova:'Amazon Nova · 아마존 노바','gpt-oss':'gpt-oss',gemma:'젬마',glm:'GLM',mistral:'미스트랄',phi:'Phi',nemotron:'네모트론',openai:'OpenAI',anthropic:'Claude · 클로드',gemini:'Gemini · 제미나이'};
-const readinessLabels={not_configured:'연결 설정 필요',missing_credentials:'인증 정보 필요',disabled:'호출 기능 꺼짐',configured_not_verified:'호출 설정됨 · 실제 응답 미확인'};
+const readinessLabels={not_configured:'연결 설정 필요',missing_credentials:'인증 정보 필요',disabled:'호출 기능 꺼짐',configured_not_verified:'호출 설정됨 · 실제 응답 미확인',configuration_invalid:'직접 운영 서버 설정 확인 필요',self_hosting_confirmation_required:'본인 서버 운영 확인 필요'};
 const permissionLabels={ALLOWED:'소유자 사용 허용',HOLD:'소유자가 전체 AI 호출을 중지함',OWNER_PERMISSION_REQUIRED:'소유자 사용 허용 필요',BLOCKED:'소유자가 이 모델 계열의 호출을 차단함',RESTRICTED_VERIFY_ONLY:'검증 전용 허용 · 질문 생성 보류',CONTROL_CONFIG_INVALID:'소유자 사용 제어 설정 확인 필요'};
 function modelReady(row){return !!row&&row.configured===true&&row.enabled===true&&row.permitted===true&&(!row.readiness_state||row.readiness_state==='configured_not_verified');}
 function connectionLabel(row){return readinessLabels[row.readiness_state]||(row.configured?(row.enabled?'호출 설정됨 · 실제 응답 미확인':'호출 기능 꺼짐'):'연결 설정 필요');}
@@ -336,6 +336,7 @@ def learning_workspace_html() -> str:
 <p>다른 모델 개발·학습을 허용하는 공식 API와 공개 가중치를 먼저 모았습니다. 입력·응답을 보관하지 않는 조건(ZDR)은 이번 목록의 포함 조건으로 삼지 않습니다. 이 조건까지 확인된 경로가 있으면 우선 사용할 수 있으며, 아직 ZDR 충족을 보장하지 않습니다.</p>
 <p>DeepSeek V4.1 Flash·V4 Pro는 공식 API 약관 제4.2조에서 출력으로 다른 모델을 학습·증류하는 것을 명시적으로 허용합니다. 기존 전용 키로 공식 서버에 직접 요청하며, OpenRouter를 거치지 않습니다. 실제 응답 성공 여부는 별도로 확인해야 합니다.</p>
 <p>나머지는 공개 가중치를 직접 운영할 때 수정·파생 모델 개발을 허용하는 모델입니다. 가중치는 모델 실행에 필요한 파일입니다. 직접 실행할 서버가 아직 연결되지 않은 모델은 목록에 보관하며 질문을 보내지 않습니다. 공개 라이선스가 외부 API 제공자의 계약까지 바꾸지는 않습니다.</p>
+<p>NVIDIA 개인 계정 실행은 기존 모델 연결 작업 뒤의 후속 작업입니다. Nano 4B BF16는 직접 운영 구성을 검사할 시험 예제로 준비했습니다. 본인 계정의 GPU 서버에서 모델을 실행하고 이 화면에서 요청하는 방식입니다. GPU는 모델의 계산을 처리하는 장치입니다. Chutes 개인 계정으로 요청하는 방식과 다르며, 서버 주소·전용 키·본인 운영 확인이 준비되어야 호출할 수 있습니다. 직접 운영만으로 무보관 조건이 보장되지는 않습니다.</p>
 <p>모든 모델에는 해당 라이선스·약관, 관련 법령과 제3자 권리가 적용됩니다. 기존 OpenRouter·Chutes 연결은 유지합니다. 검토일: 2026-10-17.</p>
 <p><a href="https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html" target="_blank" rel="noopener noreferrer">DeepSeek 공식 API 약관</a> · <a href="/owner/open-models/chutes">Chutes 별도 직접 호출</a></p>
 <section aria-labelledby="learning-list-heading"><h2 id="learning-list-heading">허용 근거와 연결 상태</h2><p id="learning-count" role="status">모델 목록을 불러오는 중입니다.</p><ul id="learning-model-list"></ul></section>
@@ -359,7 +360,7 @@ def learning_workspace_html() -> str:
  for(const row of rows){
   const item=document.createElement('li'),name=document.createElement('strong'),detail=document.createElement('p');
   name.textContent=row.display_name;
-  detail.textContent=row.policy_label+' · '+(row.license||'공식 API 약관')+' · '+(row.policy_scope==='self_hosted_weights'?'자체 실행 서버 미연결':connectionLabel(row));
+  detail.textContent=row.policy_label+' · '+(row.license||'공식 API 약관')+' · '+(row.policy_scope==='self_hosted_weights'&&row.readiness_state==='not_configured'?'자체 실행 서버 미연결':connectionLabel(row));
   item.append(name,detail);
   if(row.policy_source&&row.policy_source.startsWith('https://')){
    const link=document.createElement('a');link.textContent='공식 허용 근거';link.href=row.policy_source;link.target='_blank';link.rel='noopener noreferrer';item.append(link);

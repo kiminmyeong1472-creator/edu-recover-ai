@@ -113,7 +113,7 @@ class OpenModelWorkspaceTests(unittest.TestCase):
         harness = _HARNESS.replace('/owner/open-models/catalog', '/owner/open-models/learning/catalog')
         harness = harness.replace("display_name:'Flash',", "display_name:'Flash',policy_scope:'official_api_outputs',policy_label:'출력 학습 허용',policy_source:'https://example.test/terms',")
         harness = harness.replace("display_name:'Pro',", "display_name:'Pro',policy_scope:'official_api_outputs',policy_label:'출력 학습 허용',")
-        harness = harness.replace("display_name:'Unconfigured',", "display_name:'Unconfigured',policy_scope:'self_hosted_weights',policy_label:'공개 가중치 수정 허용',license:'MIT',policy_source:'https://example.test/LICENSE',")
+        harness = harness.replace("display_name:'Unconfigured',", "display_name:'Unconfigured',policy_scope:'self_hosted_weights',readiness_state:'not_configured',policy_label:'공개 가중치 수정 허용',license:'MIT',policy_source:'https://example.test/LICENSE',")
         self.run_workspace(r"""
  assert.match(element('learning-count').textContent,/총 3개.*공식 API 출력 학습 허용 2개.*공개 가중치 직접 운영 허용 1개/);
  assert.equal(element('learning-model-list').children.length,3);
@@ -121,6 +121,9 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  assert.match(last.children[1].textContent,/공개 가중치 수정 허용.*MIT.*자체 실행 서버 미연결/);
  assert.equal(last.children[2].href,'https://example.test/LICENSE');
  choose('unconfigured');assert.equal(element('generate').disabled,true);await submit();assert.equal(requests.length,0);
+ run("const hosted=modelRows.get('unconfigured');hosted.configured=true;hosted.enabled=true;hosted.permitted=true;hosted.readiness_state='configured_not_verified';renderLearningCollection([...modelRows.values()]);");
+ assert.match(element('learning-model-list').children[2].children[1].textContent,/호출 설정됨/);
+ assert.doesNotMatch(element('learning-model-list').children[2].children[1].textContent,/서버 미연결/);
  choose('DeepSeek-V4.1-Flash');assert.match(element('model-readiness').textContent,/출력 학습 허용/);
  attach([file('notes.txt','원문')]);await submit();
  assert.equal(requests.length,1);assert.equal(requests[0].url,'/owner/open-models/learning/call');
