@@ -138,6 +138,7 @@ def _catalog_response(*, route: str | None = None) -> JSONResponse:
         models = catalog_status() if route is None else catalog_status(route=route)
         for model in models:
             model["selection_group"] = (
+                "chutes_variant" if route == "chutes" else
                 "cloud_service" if model["model_key"] in _CLOUD_SERVICE_KEYS else
                 "aws_additional" if model["model_key"] in _AWS_ADDITIONAL_KEYS else "selected_25"
             )

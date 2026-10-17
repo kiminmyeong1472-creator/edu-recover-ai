@@ -57,11 +57,50 @@ CLOUD_SERVICE_MODEL_CATALOG: tuple[dict[str, str], ...] = (
     {"model_key": "Gemini-2.5-Flash-Lite", "family": "gemini", "display_name": "Gemini 2.5 Flash-Lite · ZDR 경로"},
 )
 MODEL_CATALOG = SOURCE_MODEL_CATALOG + AWS_ADDITIONAL_MODEL_CATALOG + CLOUD_SERVICE_MODEL_CATALOG
-_MODEL_FAMILIES = {entry["model_key"]: entry["family"] for entry in MODEL_CATALOG}
+
+# Chutes' dated serving variants are a separate selection, never replacements
+# for the owner's original catalogue or ordinary deployment bindings. The
+# existing DeepSeek-V3.2 route keeps its historical key; every other key states
+# the distinct version/precision explicitly. Metadata describes identity only,
+# not licence, output-training, retention or successful live-call guarantees.
+_CHUTES_SELECTION = (
+    ("DeepSeek-V3.2", "deepseek", "DeepSeek-V3.2", "V3.2", "FP8",
+     "원래 DeepSeek-V3.2와 별도로 연결한 Chutes FP8 제공판입니다."),
+    ("Qwen3.6-27B-FP8", "qwen", "Qwen3.6-27B", "3.6-27B", "FP8",
+     "원래 Qwen3.6-27B와 별도로 연결한 Chutes FP8 제공판입니다."),
+    ("Qwen3.5-397B-A17B-FP8", "qwen", "Qwen3.5-397B-A17B", "3.5-397B-A17B", "FP8",
+     "원래 Qwen3.5-397B-A17B와 별도로 연결한 Chutes FP8 제공판입니다."),
+    ("Qwen3.8-27B-FP8", "qwen", "Qwen3.8-27B", "3.8-27B", "FP8",
+     "원래 Qwen3.8-27B와 별도로 연결한 Chutes FP8 제공판입니다."),
+    ("Qwen3-32B-FP8", "qwen", "Qwen3-32B", "3-32B", "FP8",
+     "원래 Qwen3-32B와 별도로 연결한 Chutes FP8 제공판입니다."),
+    ("GLM-5.1-FP8", "glm", "GLM-5.1", "5.1", "FP8",
+     "원래 GLM-5.1과 별도로 연결한 Chutes FP8 제공판입니다."),
+    ("GLM-5.2-NVFP4", "glm", "GLM-5.2", "5.2", "NVFP4",
+     "원래 GLM-5.2와 별도로 연결한 NVIDIA NVFP4 변환 제공판입니다."),
+    ("Gemma-4-31B-IT-NVFP4", "gemma", "gemma-4-31B-it", "4-31B-IT", "NVFP4",
+     "원래 gemma-4-31B-it와 별도로 연결한 NVIDIA NVFP4 변환 제공판입니다."),
+    ("DeepSeek-V4-Flash-0731-FP8-DSpark", "deepseek", "DeepSeek-V4-Flash",
+     "V4-Flash-0731", "FP8",
+     "원래 DeepSeek-V4-Flash와 별도로 연결한 0731 날짜판의 AtlasCloud DSpark FP8 제공판입니다."),
+)
+CHUTES_MODEL_CATALOG: tuple[dict[str, str], ...] = tuple(
+    {
+        "model_key": name, "family": family, "display_name": name,
+        "original_model_key": original, "version": version, "precision": precision,
+        "difference": difference, "variant_note": difference,
+        "catalog_verified_on": "2026-10-17",
+    }
+    for name, family, original, version, precision, difference in _CHUTES_SELECTION
+)
+_MODEL_FAMILIES = {
+    entry["model_key"]: entry["family"]
+    for entry in MODEL_CATALOG + CHUTES_MODEL_CATALOG
+}
 
 
 def model_family(model_key: str) -> str:
-    """Return a selected model's family; names are exact and case-sensitive."""
+    """Resolve ordinary and explicit Chutes selections without aliasing names."""
     if not isinstance(model_key, str) or model_key not in _MODEL_FAMILIES:
         raise ValueError("등록되지 않은 모델 이름입니다.")
     return _MODEL_FAMILIES[model_key]

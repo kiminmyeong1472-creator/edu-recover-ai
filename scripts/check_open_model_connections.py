@@ -1,4 +1,4 @@
-"""Report the owner's 25 selected models, or all 27 with --route learning.
+"""Inspect original models, the learning collection, or exact Chutes variants.
 
 The default is a configuration-only report. Each explicitly selected, permitted,
 configured and enabled model receives at most one synthetic request with
@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.control_plane import ProviderHeld, assert_provider_allowed, evaluate_provider
-from app.services.open_model_catalog import SOURCE_MODEL_CATALOG
+from app.services.open_model_catalog import CHUTES_MODEL_CATALOG, SOURCE_MODEL_CATALOG
 from app.services.open_model_transport import OpenModelError, call_model, catalog_status
 from app.services.training_model_policy import permitted_model_catalog
 
@@ -47,12 +47,15 @@ async def check_models(model_keys: list[str], invoke: bool = False,
                        *, route: str | None = None) -> dict:
     """Inspect selected exact names, with no invocation unless explicitly asked."""
     # Validate the explicit invocation gate before resolving the default list.
-    # Consequently --invoke alone can never expand to 25 or 27 paid requests.
+    # Consequently --invoke alone can never expand into paid requests.
     if invoke and not model_keys:
         raise ValueError("실제 호출할 모델 이름을 지정해야 합니다.")
-    if route not in (None, "learning"):
+    if route not in (None, "learning", "chutes"):
         raise ValueError("등록된 모델 점검 경로를 지정해야 합니다.")
-    catalog = permitted_model_catalog() if route == "learning" else SOURCE_MODEL_CATALOG
+    if route == "chutes":
+        catalog = CHUTES_MODEL_CATALOG
+    else:
+        catalog = permitted_model_catalog() if route == "learning" else SOURCE_MODEL_CATALOG
     known = {entry["model_key"] for entry in catalog}
     if (not isinstance(model_keys, list)
             or any(not isinstance(key, str) for key in model_keys)
@@ -97,7 +100,8 @@ async def check_models(model_keys: list[str], invoke: bool = False,
                     record["live_call_attempted"] = True
                     answer = await call_model(
                         entry["model_key"], "답은 숫자 하나만 출력하십시오.",
-                        "1 더하기 1은 얼마입니까?", max_tokens=32, **route_options,
+                        "1 더하기 1은 얼마입니까?", max_tokens=512 if route == "chutes" else 32,
+                        **route_options,
                     )
                     record.update(
                         response_received=True,
@@ -124,8 +128,8 @@ async def check_models(model_keys: list[str], invoke: bool = False,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-key", action="append", default=[])
-    parser.add_argument("--route", choices=("learning",), default=None,
-                        help="learning: 학습용 27개 목록과 전용 연결만 점검")
+    parser.add_argument("--route", choices=("learning", "chutes"), default=None,
+                        help="learning: 학습용 목록, chutes: 정확한 제공 변형만 점검")
     parser.add_argument("--invoke", action="store_true", help="명시한 모델마다 합성 시험 요청 1회")
     args = parser.parse_args(argv)
     try:
@@ -148,4 +152,5 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
