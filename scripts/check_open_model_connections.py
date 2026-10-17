@@ -1,4 +1,4 @@
-"""Report the owner's 25 selected models; live checks require explicit names.
+"""Report the owner's 25 selected models, or all 27 with --route learning.
 
 The default is a configuration-only report. Each explicitly selected, permitted,
 configured and enabled model receives at most one synthetic request with
@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.services.control_plane import ProviderHeld, assert_provider_allowed, evaluate_provider
 from app.services.open_model_catalog import SOURCE_MODEL_CATALOG
 from app.services.open_model_transport import OpenModelError, call_model, catalog_status
+from app.services.training_model_policy import permitted_model_catalog
 
 
 # Error codes are public vocabulary, not arbitrary exception data. An unknown
@@ -42,24 +43,29 @@ def _public_error_code(exc: OpenModelError) -> str:
     return exc.code if exc.code in _PUBLIC_ERROR_CODES else "OPEN_MODEL_CHECK_FAILED"
 
 
-async def check_models(model_keys: list[str], invoke: bool = False) -> dict:
+async def check_models(model_keys: list[str], invoke: bool = False,
+                       *, route: str | None = None) -> dict:
     """Inspect selected exact names, with no invocation unless explicitly asked."""
     # Validate the explicit invocation gate before resolving the default list.
-    # Consequently --invoke alone can never expand to all 25 paid requests.
+    # Consequently --invoke alone can never expand to 25 or 27 paid requests.
     if invoke and not model_keys:
         raise ValueError("실제 호출할 모델 이름을 지정해야 합니다.")
-    known = {entry["model_key"] for entry in SOURCE_MODEL_CATALOG}
+    if route not in (None, "learning"):
+        raise ValueError("등록된 모델 점검 경로를 지정해야 합니다.")
+    catalog = permitted_model_catalog() if route == "learning" else SOURCE_MODEL_CATALOG
+    known = {entry["model_key"] for entry in catalog}
     if (not isinstance(model_keys, list)
             or any(not isinstance(key, str) for key in model_keys)
             or len(set(model_keys)) != len(model_keys)
             or not set(model_keys) <= known):
-        raise ValueError("선택한 25개 모델의 정확한 이름을 중복 없이 지정해야 합니다.")
+        raise ValueError("선택한 목록의 정확한 모델 이름을 중복 없이 지정해야 합니다.")
     selected_keys = set(model_keys) if model_keys else known
-    # Restrict using SOURCE_MODEL_CATALOG, even if runtime status also contains
+    # Restrict to the selected catalogue, even if runtime status also contains
     # historical AWS-only candidates. Preserve the owner's catalogue order.
-    selected = [entry for entry in SOURCE_MODEL_CATALOG
+    selected = [entry for entry in catalog
                 if entry["model_key"] in selected_keys]
-    status_by_key = {row["model_key"]: row for row in catalog_status()}
+    route_options = {"route": route} if route is not None else {}
+    status_by_key = {row["model_key"]: row for row in catalog_status(**route_options)}
     results = []
     for entry in selected:
         row = status_by_key.get(entry["model_key"], {})
@@ -91,7 +97,7 @@ async def check_models(model_keys: list[str], invoke: bool = False) -> dict:
                     record["live_call_attempted"] = True
                     answer = await call_model(
                         entry["model_key"], "답은 숫자 하나만 출력하십시오.",
-                        "1 더하기 1은 얼마입니까?", max_tokens=32,
+                        "1 더하기 1은 얼마입니까?", max_tokens=32, **route_options,
                     )
                     record.update(
                         response_received=True,
@@ -109,6 +115,7 @@ async def check_models(model_keys: list[str], invoke: bool = False) -> dict:
         results.append(record)
     return {
         "mode": "synthetic_live_call" if invoke else "configuration_only",
+        "route": route or "default",
         "configuration_is_not_live_success": True,
         "models": results,
     }
@@ -117,10 +124,12 @@ async def check_models(model_keys: list[str], invoke: bool = False) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-key", action="append", default=[])
+    parser.add_argument("--route", choices=("learning",), default=None,
+                        help="learning: 학습용 27개 목록과 전용 연결만 점검")
     parser.add_argument("--invoke", action="store_true", help="명시한 모델마다 합성 시험 요청 1회")
     args = parser.parse_args(argv)
     try:
-        result = asyncio.run(check_models(args.model_key, args.invoke))
+        result = asyncio.run(check_models(args.model_key, args.invoke, route=args.route))
     except ValueError:
         print(json.dumps({"error_code": "INVALID_CHECK_REQUEST"}, ensure_ascii=False))
         return 2
@@ -139,3 +148,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
