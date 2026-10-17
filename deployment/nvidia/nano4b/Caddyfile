@@ -1,0 +1,25 @@
+{
+    admin off
+    persist_config off
+    email {$ACME_EMAIL}
+}
+
+{$NEMOTRON_DOMAIN} {
+    @chat {
+        method POST
+        path /v1/chat/completions
+    }
+    @models {
+        method GET
+        path /v1/models
+    }
+    handle @chat {
+        reverse_proxy model:8000
+    }
+    handle @models {
+        reverse_proxy model:8000
+    }
+    handle {
+        respond 404
+    }
+}

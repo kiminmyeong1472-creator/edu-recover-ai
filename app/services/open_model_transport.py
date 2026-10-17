@@ -56,6 +56,7 @@ from app.services.chutes_direct import (
 from app.services.open_model_presets import OPENROUTER_MODELS, verified_routes_enabled
 from app.services.open_model_http import OpenModelHTTPError, post_json, validate_endpoint_url
 from app.services.training_model_policy import permitted_model_catalog
+from app.services import nemotron_self_hosted
 
 
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
@@ -313,7 +314,10 @@ def _route_bindings(route: str | None) -> dict[str, _Binding]:
     if route == "learning":
         # The reviewed official API routes use their own dedicated key and
         # are independent from legacy JSON, preset flags and third parties.
-        entries = _DEEPSEEK_DIRECT_BINDINGS
+        entries = {key: dict(entry) for key, entry in _DEEPSEEK_DIRECT_BINDINGS.items()}
+        registration = nemotron_self_hosted.registration()
+        if registration.binding is not None:
+            entries[nemotron_self_hosted.MODEL_KEY] = registration.binding
     elif route == "chutes":
         entries = chutes_bindings()
     else:
@@ -351,6 +355,16 @@ def catalog_status(*, route: str | None = None) -> list[dict[str, Any]]:
                        required_api_key_env=CHUTES_API_KEY_ENV)
         if route == "learning" and binding is None:
             row["route_label"] = "자체 실행 서버 미연결 · OpenRouter 미사용"
+        if route == "learning" and entry["model_key"] == nemotron_self_hosted.MODEL_KEY:
+            registration = nemotron_self_hosted.registration()
+            if registration.active:
+                row.update(setup_note=registration.setup_note,
+                           supports_images=False,
+                           required_api_key_env=nemotron_self_hosted.API_KEY_ENV)
+                if binding is None:
+                    row["readiness_state"] = registration.state
+                else:
+                    row["route_label"] = nemotron_self_hosted.ROUTE_LABEL
         if binding is not None and _supports_images(binding):
             row["supports_images"] = True
         if binding is not None and binding.endpoint_url == OPENROUTER_CHAT_ENDPOINT:
@@ -718,6 +732,15 @@ async def call_model(
     bindings = _route_bindings(route)
     if not _enabled():
         raise OpenModelError("선택 모델의 호출 기능이 활성화되지 않았습니다.", "OPEN_MODEL_DISABLED", 503)
+    if route == "learning" and model_key == nemotron_self_hosted.MODEL_KEY:
+        registration = nemotron_self_hosted.registration()
+        if registration.state == "configuration_invalid":
+            raise _config_error()
+        if registration.state == "self_hosting_confirmation_required":
+            raise OpenModelError(
+                "소유자가 직접 운영하는 모델 서버로 등록해야 합니다.",
+                "OPEN_MODEL_SELF_HOSTING_CONFIRMATION_REQUIRED", 503,
+            )
     binding = bindings.get(model_key)
     if binding is None:
         raise OpenModelError(

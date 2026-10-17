@@ -1,0 +1,45 @@
+services:
+  model:
+    build: .
+    restart: unless-stopped
+    gpus: all
+    shm_size: 4gb
+    environment:
+      EDURECOVER_NEMOTRON_API_KEY: ${EDURECOVER_NEMOTRON_API_KEY:?Set a dedicated random server token}
+      NEMOTRON_MAX_MODEL_LEN: ${NEMOTRON_MAX_MODEL_LEN:-262144}
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    volumes:
+      - model_cache:/root/.cache/huggingface
+    expose:
+      - "8000"
+    networks:
+      - inference
+    logging:
+      driver: none
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      NEMOTRON_DOMAIN: ${NEMOTRON_DOMAIN:?Set the public DNS name of your GPU server}
+      ACME_EMAIL: ${ACME_EMAIL:?Set the certificate contact email}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - inference
+    depends_on:
+      - model
+    logging:
+      driver: none
+networks:
+  inference: {}
+volumes:
+  model_cache: {}
+  caddy_data: {}
+  caddy_config: {}
