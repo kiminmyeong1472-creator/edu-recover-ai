@@ -128,6 +128,11 @@ def chutes_model_catalog() -> JSONResponse:
     return _catalog_response(route="chutes")
 
 
+@router.get("/learning/catalog")
+def learning_model_catalog() -> JSONResponse:
+    return _catalog_response(route="learning")
+
+
 def _catalog_response(*, route: str | None = None) -> JSONResponse:
     try:
         models = catalog_status() if route is None else catalog_status(route=route)
@@ -183,6 +188,11 @@ async def chutes_model_call(request: DirectCallRequest) -> JSONResponse:
     return await _direct_call_response(request, route="chutes")
 
 
+@router.post("/learning/call")
+async def learning_model_call(request: DirectCallRequest) -> JSONResponse:
+    return await _direct_call_response(request, route="learning")
+
+
 async def _direct_call_response(
     request: DirectCallRequest, *, route: str | None = None,
 ) -> JSONResponse:
@@ -232,6 +242,11 @@ def open_model_workspace() -> HTMLResponse:
 @router.get("/chutes", response_class=HTMLResponse)
 def chutes_model_workspace() -> HTMLResponse:
     return _workspace_response(workspace.chutes_workspace_html())
+
+
+@router.get("/learning", response_class=HTMLResponse)
+def learning_model_workspace() -> HTMLResponse:
+    return _workspace_response(workspace.learning_workspace_html())
 
 
 def _workspace_response(html: str) -> HTMLResponse:

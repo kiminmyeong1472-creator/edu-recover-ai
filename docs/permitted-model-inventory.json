@@ -1,0 +1,879 @@
+{
+  "reviewed_on": "2026-10-17",
+  "scope": "Public weights self-hosting, modification, derivative development and training; excludes hosted API/provider service terms, ZDR, trademark rights and access/billing readiness.",
+  "public_weights_count": 27,
+  "hosted_api_permission_not_inferred": true,
+  "models": [
+    {
+      "model_key": "DeepSeek-V4-Pro",
+      "repo_id": "deepseek-ai/DeepSeek-V4-Pro",
+      "revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+      "model_card_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/b5968e9190ef611bbf34a7229255be88a0e937c1/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/raw/b5968e9190ef611bbf34a7229255be88a0e937c1/LICENSE",
+          "http_status": 200,
+          "sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040"
+        },
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/raw/b5968e9190ef611bbf34a7229255be88a0e937c1/README.md",
+          "http_status": 200,
+          "sha256": "c4d714818a4d3333542edc7d38ea065825a0cf7aa8fea3605bbd1d1c18e4a610"
+        }
+      ]
+    },
+    {
+      "model_key": "DeepSeek-V4-Flash",
+      "repo_id": "deepseek-ai/DeepSeek-V4-Flash",
+      "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+      "model_card_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/60d8d70770c6776ff598c94bb586a859a38244f1/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/raw/60d8d70770c6776ff598c94bb586a859a38244f1/LICENSE",
+          "http_status": 200,
+          "sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040"
+        },
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/raw/60d8d70770c6776ff598c94bb586a859a38244f1/README.md",
+          "http_status": 200,
+          "sha256": "c4d714818a4d3333542edc7d38ea065825a0cf7aa8fea3605bbd1d1c18e4a610"
+        }
+      ]
+    },
+    {
+      "model_key": "DeepSeek-R1",
+      "repo_id": "deepseek-ai/DeepSeek-R1",
+      "revision": "56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad",
+      "model_card_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1/blob/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-R1/raw/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/LICENSE",
+          "http_status": 200,
+          "sha256": "1c8f573e830ca9b3ebfeb7ace1823146e22b66f99ee223840e7637c9e745e1c7"
+        },
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-R1/raw/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/README.md",
+          "http_status": 200,
+          "sha256": "d26d26ddb518fee60c6c6bf7a708bd751b1619d93a4944f188143693d956c77f"
+        }
+      ]
+    },
+    {
+      "model_key": "DeepSeek-V4.1-Flash",
+      "repo_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "revision": "314113f8a7dadb388215396ba5fbee2c610a04d6",
+      "model_card_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/314113f8a7dadb388215396ba5fbee2c610a04d6/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/raw/314113f8a7dadb388215396ba5fbee2c610a04d6/LICENSE",
+          "http_status": 200,
+          "sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040"
+        },
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/raw/314113f8a7dadb388215396ba5fbee2c610a04d6/README.md",
+          "http_status": 200,
+          "sha256": "347c9db4e5506acb531cbc3b724407ab88e9af8781679152f0823d7bac16d251"
+        }
+      ]
+    },
+    {
+      "model_key": "Qwen3.6-27B",
+      "repo_id": "Qwen/Qwen3.6-27B",
+      "revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+      "model_card_url": "https://huggingface.co/Qwen/Qwen3.6-27B/blob/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3.6-27B/raw/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9/LICENSE",
+          "http_status": 200,
+          "sha256": "50cbab8a892c5f2993b8c7351a99182507472def3b1374558308605d99b86b32"
+        },
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3.6-27B/raw/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9/README.md",
+          "http_status": 200,
+          "sha256": "bb936d6da51014f1edc9aa4cf9abf28d98695b7616ad56adfeeebfa752051d3d"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "model_key": "Qwen3.6-35B-A3B",
+      "repo_id": "Qwen/Qwen3.6-35B-A3B",
+      "revision": "995ad96eacd98c81ed38be0c5b274b04031597b0",
+      "model_card_url": "https://huggingface.co/Qwen/Qwen3.6-35B-A3B/blob/995ad96eacd98c81ed38be0c5b274b04031597b0/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3.6-35B-A3B/raw/995ad96eacd98c81ed38be0c5b274b04031597b0/LICENSE",
+          "http_status": 200,
+          "sha256": "50cbab8a892c5f2993b8c7351a99182507472def3b1374558308605d99b86b32"
+        },
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3.6-35B-A3B/raw/995ad96eacd98c81ed38be0c5b274b04031597b0/README.md",
+          "http_status": 200,
+          "sha256": "c4ddaa065649ff6352648f64747a16eda31726f3e34add94ce04abb461c77b75"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "model_key": "Qwen3.5-397B-A17B",
+      "repo_id": "Qwen/Qwen3.5-397B-A17B",
+      "revision": "8472618112abcbd45acbcdc58436aff4233c23f7",
+      "model_card_url": "https://huggingface.co/Qwen/Qwen3.5-397B-A17B/blob/8472618112abcbd45acbcdc58436aff4233c23f7/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3.5-397B-A17B/raw/8472618112abcbd45acbcdc58436aff4233c23f7/LICENSE",
+          "http_status": 200,
+          "sha256": "bbedc3fda3305820b977265f01b8619d87570a6739de3a5582c3464840f1e57a"
+        },
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3.5-397B-A17B/raw/8472618112abcbd45acbcdc58436aff4233c23f7/README.md",
+          "http_status": 200,
+          "sha256": "bda4b24e975f65ac677985306ddbad33362e65064637660654c8bb7dea7edf50"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "model_key": "Qwen3.8-27B",
+      "repo_id": "Qwen/Qwen3.8-27B",
+      "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+      "model_card_url": "https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3.8-27B/raw/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/LICENSE",
+          "http_status": 200,
+          "sha256": "bbedc3fda3305820b977265f01b8619d87570a6739de3a5582c3464840f1e57a"
+        },
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3.8-27B/raw/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/README.md",
+          "http_status": 200,
+          "sha256": "57e4bdb258ee1a7d2635c5174ebd4e56abe392505cdb5f8bbb356b0dc4293641"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "model_key": "gpt-oss-20b",
+      "repo_id": "openai/gpt-oss-20b",
+      "revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+      "model_card_url": "https://huggingface.co/openai/gpt-oss-20b/blob/6cee5e81ee83917806bbde320786a8fb61efebee/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/openai/gpt-oss-20b/raw/6cee5e81ee83917806bbde320786a8fb61efebee/LICENSE",
+          "http_status": 200,
+          "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        },
+        {
+          "url": "https://huggingface.co/openai/gpt-oss-20b/raw/6cee5e81ee83917806bbde320786a8fb61efebee/README.md",
+          "http_status": 200,
+          "sha256": "03c2fcf292549176757b85c911e7dcf527aef3e4241d64b6caec94af3ecf3ac2"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "requested_url": "https://huggingface.co/openai/gpt-oss-20b/raw/6cee5e81ee83917806bbde320786a8fb61efebee/USAGE_POLICY",
+          "resolved_url": "https://huggingface.co/openai/gpt-oss-20b/raw/6cee5e81ee83917806bbde320786a8fb61efebee/USAGE_POLICY",
+          "http_status": 200,
+          "sha256": "d6387ef7985019c45db8d9801e6ac5fd9f98f02b9f1c56f8c5af80c3e8f385d0"
+        }
+      ]
+    },
+    {
+      "model_key": "gpt-oss-120b",
+      "repo_id": "openai/gpt-oss-120b",
+      "revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+      "model_card_url": "https://huggingface.co/openai/gpt-oss-120b/blob/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/openai/gpt-oss-120b/raw/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/LICENSE",
+          "http_status": 200,
+          "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        },
+        {
+          "url": "https://huggingface.co/openai/gpt-oss-120b/raw/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/README.md",
+          "http_status": 200,
+          "sha256": "92b0408cf5dce04e4c5e4e5f2be0361da710d3650baefd7d7519badd1c687919"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "requested_url": "https://huggingface.co/openai/gpt-oss-120b/raw/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/USAGE_POLICY",
+          "resolved_url": "https://huggingface.co/openai/gpt-oss-120b/raw/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/USAGE_POLICY",
+          "http_status": 200,
+          "sha256": "fc48d386a7a7ff8b066f743cfe62df683ab16892450f5bb7357bb4de261cd037"
+        }
+      ]
+    },
+    {
+      "model_key": "gemma-4-E2B-it",
+      "repo_id": "google/gemma-4-E2B-it",
+      "revision": "3e22461f65e89153144f8adb70e3b8c2cc9845a7",
+      "model_card_url": "https://huggingface.co/google/gemma-4-E2B-it/blob/3e22461f65e89153144f8adb70e3b8c2cc9845a7/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/google/gemma-4-E2B-it/raw/3e22461f65e89153144f8adb70e3b8c2cc9845a7/README.md",
+          "http_status": 200,
+          "sha256": "3e0608a6be80e3eb040a5aa6c76707809503deb85be6360184a118fb6156526c"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "requested_url": "https://ai.google.dev/gemma/docs/gemma_4_license",
+          "resolved_url": "https://ai.google.dev/gemma/apache_2",
+          "http_status": 200,
+          "sha256": "db409b747bfd02001eb94dc15dac6dccb9004aad5a3d85c6548ef0724e82e65e"
+        }
+      ]
+    },
+    {
+      "model_key": "gemma-4-E4B-it",
+      "repo_id": "google/gemma-4-E4B-it",
+      "revision": "ee0ef6023621cff504d758262d4e04895a5af4a2",
+      "model_card_url": "https://huggingface.co/google/gemma-4-E4B-it/blob/ee0ef6023621cff504d758262d4e04895a5af4a2/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/google/gemma-4-E4B-it/raw/ee0ef6023621cff504d758262d4e04895a5af4a2/README.md",
+          "http_status": 200,
+          "sha256": "b21e4f69614ccd77baa2f3797d05311040dee07b989cb9f0d25111aa4b605b2c"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "requested_url": "https://ai.google.dev/gemma/docs/gemma_4_license",
+          "resolved_url": "https://ai.google.dev/gemma/apache_2",
+          "http_status": 200,
+          "sha256": "db409b747bfd02001eb94dc15dac6dccb9004aad5a3d85c6548ef0724e82e65e"
+        }
+      ]
+    },
+    {
+      "model_key": "gemma-4-12B-it",
+      "repo_id": "google/gemma-4-12B-it",
+      "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7",
+      "model_card_url": "https://huggingface.co/google/gemma-4-12B-it/blob/707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/google/gemma-4-12B-it/raw/707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7/README.md",
+          "http_status": 200,
+          "sha256": "04a06469e3d83b941eaa776a3647b8690b5a7cc5c833af2381e5345bb1bb45c0"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "requested_url": "https://ai.google.dev/gemma/docs/gemma_4_license",
+          "resolved_url": "https://ai.google.dev/gemma/apache_2",
+          "http_status": 200,
+          "sha256": "db409b747bfd02001eb94dc15dac6dccb9004aad5a3d85c6548ef0724e82e65e"
+        }
+      ]
+    },
+    {
+      "model_key": "gemma-4-26B-A4B-it",
+      "repo_id": "google/gemma-4-26B-A4B-it",
+      "revision": "4d7ae4984b7db7de8f8457170b3f1a419ee76d52",
+      "model_card_url": "https://huggingface.co/google/gemma-4-26B-A4B-it/blob/4d7ae4984b7db7de8f8457170b3f1a419ee76d52/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/google/gemma-4-26B-A4B-it/raw/4d7ae4984b7db7de8f8457170b3f1a419ee76d52/README.md",
+          "http_status": 200,
+          "sha256": "4f463225c4fe49ec120115b0f9bb6713ff1556293a909903ffdae3df7bf974da"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "requested_url": "https://ai.google.dev/gemma/docs/gemma_4_license",
+          "resolved_url": "https://ai.google.dev/gemma/apache_2",
+          "http_status": 200,
+          "sha256": "db409b747bfd02001eb94dc15dac6dccb9004aad5a3d85c6548ef0724e82e65e"
+        }
+      ]
+    },
+    {
+      "model_key": "gemma-4-31B-it",
+      "repo_id": "google/gemma-4-31B-it",
+      "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+      "model_card_url": "https://huggingface.co/google/gemma-4-31B-it/blob/842da3794eaa0b77d5f08bae87a17459d91ff475/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/google/gemma-4-31B-it/raw/842da3794eaa0b77d5f08bae87a17459d91ff475/README.md",
+          "http_status": 200,
+          "sha256": "e209f5c435b1e66055bd6d7c29185103ae8d2027a03a96b359335154f206b82b"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "requested_url": "https://ai.google.dev/gemma/docs/gemma_4_license",
+          "resolved_url": "https://ai.google.dev/gemma/apache_2",
+          "http_status": 200,
+          "sha256": "db409b747bfd02001eb94dc15dac6dccb9004aad5a3d85c6548ef0724e82e65e"
+        }
+      ]
+    },
+    {
+      "model_key": "GLM-5.1",
+      "repo_id": "zai-org/GLM-5.1",
+      "revision": "26e1bd6e011feb778d25ae34b09b07074139d92d",
+      "model_card_url": "https://huggingface.co/zai-org/GLM-5.1/blob/26e1bd6e011feb778d25ae34b09b07074139d92d/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/zai-org/GLM-5.1/raw/26e1bd6e011feb778d25ae34b09b07074139d92d/LICENSE",
+          "http_status": 200,
+          "sha256": "f4a18c6ae40b0a8e7d2b7667f52f6e1994e54a46430d2e172b73cb8c9b5eb0d7"
+        },
+        {
+          "url": "https://huggingface.co/zai-org/GLM-5.1/raw/26e1bd6e011feb778d25ae34b09b07074139d92d/README.md",
+          "http_status": 200,
+          "sha256": "2cb148b732f596716f8c9366edf072e35746de6d06fe69c92301ddb492557077"
+        }
+      ]
+    },
+    {
+      "model_key": "GLM-5.2",
+      "repo_id": "zai-org/GLM-5.2",
+      "revision": "cf457fa734ab149ffef225f80893eb38c6ff5cdc",
+      "model_card_url": "https://huggingface.co/zai-org/GLM-5.2/blob/cf457fa734ab149ffef225f80893eb38c6ff5cdc/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/zai-org/GLM-5.2/raw/cf457fa734ab149ffef225f80893eb38c6ff5cdc/LICENSE",
+          "http_status": 200,
+          "sha256": "f4a18c6ae40b0a8e7d2b7667f52f6e1994e54a46430d2e172b73cb8c9b5eb0d7"
+        },
+        {
+          "url": "https://huggingface.co/zai-org/GLM-5.2/raw/cf457fa734ab149ffef225f80893eb38c6ff5cdc/README.md",
+          "http_status": 200,
+          "sha256": "7ba22185651d8f69fbf6227ee718eb680fd834ec8e79ba78df6fa54896614b3d"
+        }
+      ]
+    },
+    {
+      "model_key": "GLM-5.3-Flash",
+      "repo_id": "zai-org/GLM-5.3-Flash",
+      "revision": "46a050bec13002ad29ee795c16e61cf4fa3c4a9c",
+      "model_card_url": "https://huggingface.co/zai-org/GLM-5.3-Flash/blob/46a050bec13002ad29ee795c16e61cf4fa3c4a9c/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/zai-org/GLM-5.3-Flash/raw/46a050bec13002ad29ee795c16e61cf4fa3c4a9c/LICENSE",
+          "http_status": 200,
+          "sha256": "30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1"
+        },
+        {
+          "url": "https://huggingface.co/zai-org/GLM-5.3-Flash/raw/46a050bec13002ad29ee795c16e61cf4fa3c4a9c/README.md",
+          "http_status": 200,
+          "sha256": "e6c5d41400e28f5a89418a0d15b09b9c113314a7553d40d7d4a8a72fcdb87d02"
+        }
+      ]
+    },
+    {
+      "model_key": "Mistral-Small-3.2-24B-Instruct-2506",
+      "repo_id": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+      "revision": "95a6d26c4bfb886c58daf9d3f7332c857cb27b43",
+      "model_card_url": "https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506/blob/95a6d26c4bfb886c58daf9d3f7332c857cb27b43/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506/raw/95a6d26c4bfb886c58daf9d3f7332c857cb27b43/README.md",
+          "http_status": 200,
+          "sha256": "48d492d5ded3dfb80ab53033391c7ada71f42037e442758d9eb29fdb08929edb"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "model_key": "Mistral-Large-3-675B-Base-2512",
+      "repo_id": "mistralai/Mistral-Large-3-675B-Base-2512",
+      "revision": "3123f82420d99a7fc9313b2d69f9a0ab6cb6ab4d",
+      "model_card_url": "https://huggingface.co/mistralai/Mistral-Large-3-675B-Base-2512/blob/3123f82420d99a7fc9313b2d69f9a0ab6cb6ab4d/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/mistralai/Mistral-Large-3-675B-Base-2512/raw/3123f82420d99a7fc9313b2d69f9a0ab6cb6ab4d/README.md",
+          "http_status": 200,
+          "sha256": "770ec15b98c81cd2276d3dfa88f26342fb9482db83d052db1f1f2f9316a63eb8"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "model_key": "Mistral-Small-4-119B-2603",
+      "repo_id": "mistralai/Mistral-Small-4-119B-2603",
+      "revision": "a11f36bebf709121056b1dbcc943d1c6afbe494d",
+      "model_card_url": "https://huggingface.co/mistralai/Mistral-Small-4-119B-2603/blob/a11f36bebf709121056b1dbcc943d1c6afbe494d/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/mistralai/Mistral-Small-4-119B-2603/raw/a11f36bebf709121056b1dbcc943d1c6afbe494d/README.md",
+          "http_status": 200,
+          "sha256": "243f9d4f6cdb5644ca93d34d2e002822cb946803a6a7e3aed39b56d6ceeb1996"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "model_key": "phi-4",
+      "repo_id": "microsoft/phi-4",
+      "revision": "2db69c1c3e91a05d2c64a3185acfbaf36f744e25",
+      "model_card_url": "https://huggingface.co/microsoft/phi-4/blob/2db69c1c3e91a05d2c64a3185acfbaf36f744e25/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/microsoft/phi-4/raw/2db69c1c3e91a05d2c64a3185acfbaf36f744e25/LICENSE",
+          "http_status": 200,
+          "sha256": "c49419617a6070bcb197cfe272f7007fdec3e790dbb529cb995473bd69c0bd51"
+        },
+        {
+          "url": "https://huggingface.co/microsoft/phi-4/raw/2db69c1c3e91a05d2c64a3185acfbaf36f744e25/README.md",
+          "http_status": 200,
+          "sha256": "4cc56faa6a5bcbde6227789b2ef9aedfde481ca660c8a4b686703aae19b00011"
+        }
+      ]
+    },
+    {
+      "model_key": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "repo_id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "revision": "a9904d24bcc1d289a1950fa9d2b978c47cf903b9",
+      "model_card_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16/blob/a9904d24bcc1d289a1950fa9d2b978c47cf903b9/README.md",
+      "effective_weight_license": "OpenMDW-1.1",
+      "permission_basis": "The inspected OpenMDW 1.1 text grants unrestricted dealing in model materials under granted rights and explicitly imposes no restrictions or obligations on use, modification or sharing of generated outputs.",
+      "license_obligations": [
+        "Retain license and applicable copyright/origin notices on distribution.",
+        "Specified patent/copyright litigation can terminate granted rights.",
+        "Third-party rights clearance remains the user responsibility.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16/raw/a9904d24bcc1d289a1950fa9d2b978c47cf903b9/LICENSE",
+          "http_status": 200,
+          "sha256": "d7c8a9e5d1896d0a9588319cc7b1433e64645ad6d9e55632c30b78d8c038c23b"
+        },
+        {
+          "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16/raw/a9904d24bcc1d289a1950fa9d2b978c47cf903b9/README.md",
+          "http_status": 200,
+          "sha256": "5d9d96d2f2b154d72625d39628a011e39e0477ffb99e45967eefe4cfd269b928"
+        },
+        {
+          "requested_url": "https://openmdw.ai/license/1-1/",
+          "resolved_url": "https://openmdw.ai/license/1-1/",
+          "http_status": 200,
+          "sha256": "f886204f2179ac2778dd6bce94b330b7b8c2d84787d29824ae06c6f6080f84c9"
+        }
+      ]
+    },
+    {
+      "model_key": "NVIDIA-Nemotron-3-Nano-4B-BF16",
+      "repo_id": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+      "revision": "dfaf35de3e30f1867dd8dbc38a7fc9fb52d3914f",
+      "model_card_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16/blob/dfaf35de3e30f1867dd8dbc38a7fc9fb52d3914f/README.md",
+      "effective_weight_license": "NVIDIA-Nemotron-Open-Model-License-2025-12-15",
+      "permission_basis": "The inspected official NVIDIA terms expressly allow commercial use and derivative creation/distribution; Section 2 grants broad reproduction/derivative/sublicensing/distribution rights. No competing-model development prohibition was found in that license. This is a different license from OpenMDW 1.1.",
+      "license_obligations": [
+        "Provide license and retain applicable notices when redistributing.",
+        "Preserve applicable NOTICE statement if the work includes a NOTICE file.",
+        "Specified patent/copyright litigation terminates granted rights.",
+        "Trademark, export/import, trade and sanctions conditions apply.",
+        "No warranty; liability/indemnity conditions apply.",
+        "NIM/container licenses and hosted service terms are separate and are not approved here."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16/raw/dfaf35de3e30f1867dd8dbc38a7fc9fb52d3914f/LICENSE",
+          "http_status": 200,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16/raw/dfaf35de3e30f1867dd8dbc38a7fc9fb52d3914f/README.md",
+          "http_status": 200,
+          "sha256": "06f349f02b364c5ff6d92562be82ddd190e00b7e161a749c297766d372068c18"
+        },
+        {
+          "requested_url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/",
+          "resolved_url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/",
+          "http_status": 200,
+          "sha256": "a845b8329135db0e4cf5eb6efdaef0a1b6be2f72b097dc01919b9b19ea272c87"
+        }
+      ]
+    },
+    {
+      "model_key": "NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+      "repo_id": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+      "revision": "2dc98e2afe4face0e4ce40972a915c45368bd34a",
+      "model_card_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16/blob/2dc98e2afe4face0e4ce40972a915c45368bd34a/README.md",
+      "effective_weight_license": "NVIDIA-Nemotron-Open-Model-License-2025-12-15",
+      "permission_basis": "The inspected official NVIDIA terms expressly allow commercial use and derivative creation/distribution; Section 2 grants broad reproduction/derivative/sublicensing/distribution rights. No competing-model development prohibition was found in that license. This is a different license from OpenMDW 1.1.",
+      "license_obligations": [
+        "Provide license and retain applicable notices when redistributing.",
+        "Preserve applicable NOTICE statement if the work includes a NOTICE file.",
+        "Specified patent/copyright litigation terminates granted rights.",
+        "Trademark, export/import, trade and sanctions conditions apply.",
+        "No warranty; liability/indemnity conditions apply.",
+        "NIM/container licenses and hosted service terms are separate and are not approved here."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16/raw/2dc98e2afe4face0e4ce40972a915c45368bd34a/README.md",
+          "http_status": 200,
+          "sha256": "cade76c064eda90d4f53e12614f45816ae6cfe43dacc8a9410abcc2fc7a17e59"
+        },
+        {
+          "requested_url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/",
+          "resolved_url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/",
+          "http_status": 200,
+          "sha256": "a845b8329135db0e4cf5eb6efdaef0a1b6be2f72b097dc01919b9b19ea272c87"
+        }
+      ]
+    },
+    {
+      "model_key": "Qwen3-32B",
+      "repo_id": "Qwen/Qwen3-32B",
+      "revision": "9216db5781bf21249d130ec9da846c4624c16137",
+      "model_card_url": "https://huggingface.co/Qwen/Qwen3-32B/blob/9216db5781bf21249d130ec9da846c4624c16137/README.md",
+      "effective_weight_license": "Apache-2.0",
+      "permission_basis": "The official model card identifies Apache License 2.0; the inspected full license grants reproduction, derivative works, distribution and applicable patent rights without a competing-model development prohibition.",
+      "license_obligations": [
+        "Provide license copy when redistributing.",
+        "Retain applicable copyright, patent, trademark and attribution notices.",
+        "Identify changed files and preserve applicable NOTICE contents.",
+        "Patent-claim termination and trademark limitations apply.",
+        "No warranty is granted."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3-32B/raw/9216db5781bf21249d130ec9da846c4624c16137/LICENSE",
+          "http_status": 200,
+          "sha256": "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e"
+        },
+        {
+          "url": "https://huggingface.co/Qwen/Qwen3-32B/raw/9216db5781bf21249d130ec9da846c4624c16137/README.md",
+          "http_status": 200,
+          "sha256": "0af37735eef45eb3b406f3d74952e6cbcbc180904dc68b73a31a690719a235da"
+        },
+        {
+          "requested_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "resolved_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+          "http_status": 200,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "model_key": "DeepSeek-V3.2",
+      "repo_id": "deepseek-ai/DeepSeek-V3.2",
+      "revision": "a7e62ac04ecb2c0a54d736dc46601c5606cf10a6",
+      "model_card_url": "https://huggingface.co/deepseek-ai/DeepSeek-V3.2/blob/a7e62ac04ecb2c0a54d736dc46601c5606cf10a6/README.md",
+      "effective_weight_license": "MIT",
+      "permission_basis": "The inspected MIT text grants use, copying, modification, distribution, sublicensing and sale without a competing-model development prohibition; copyright and permission notices must be retained.",
+      "license_obligations": [
+        "Retain copyright and permission notices in copies or substantial portions.",
+        "No warranty is granted.",
+        "Third-party rights and applicable law remain separate."
+      ],
+      "permission_scope": "Official released model weights deployed on an independently controlled GPU server; model modification, derivative development and training under the identified weight license. This does not approve any third-party hosted API contract.",
+      "competition_restriction_assessment": "No competing-model development prohibition found in the inspected model-weight license; licensing interpretation limited to these public weights, not a guarantee of all third-party rights or any hosted API contract.",
+      "evidence": [
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V3.2/raw/a7e62ac04ecb2c0a54d736dc46601c5606cf10a6/LICENSE",
+          "http_status": 200,
+          "sha256": "f2c6c602815669d292889e5be8c802f2ed950653b77999b1584e8e6aed25d040"
+        },
+        {
+          "url": "https://huggingface.co/deepseek-ai/DeepSeek-V3.2/raw/a7e62ac04ecb2c0a54d736dc46601c5606cf10a6/README.md",
+          "http_status": 200,
+          "sha256": "22b9f57e1ece2df27f9de0e71377e19481f7a6892eca8bc23e73fcdffe1d845c"
+        }
+      ]
+    }
+  ]
+}
