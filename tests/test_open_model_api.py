@@ -69,7 +69,7 @@ class OpenModelAPITests(unittest.TestCase):
             response = self.client.get("/owner/open-models/catalog", auth=self.auth)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(len(data["models"]), 30)
+        self.assertEqual(len(data["models"]), 32)
         self.assertTrue({"qwen", "deepseek", "gpt-oss", "gemma", "glm", "mistral", "phi", "nemotron"}
                         <= {m["family"] for m in data["models"]})
         self.assertTrue(all(not m["configured"] for m in data["models"]))
@@ -80,7 +80,7 @@ class OpenModelAPITests(unittest.TestCase):
         self.assertEqual({m["model_key"] for m in data["models"] if m["selection_group"] == "aws_additional"},
                          {"Qwen3-32B", "DeepSeek-V3.2", "Amazon-Nova-2-Lite", "Amazon-Nova-Pro"})
         cloud = [m for m in data["models"] if m["selection_group"] == "cloud_service"]
-        self.assertEqual(len(cloud), 1)
+        self.assertEqual(len(cloud), 3)
         self.assertEqual(cloud[0]["model_key"], "GPT-6-Luna")
         self.assertEqual(cloud[0]["family"], "openai")
         self.assertFalse(cloud[0]["permitted"])
@@ -210,12 +210,12 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
 (async()=>{
  vm.runInContext(fs.readFileSync(0,'utf8'),context);await new Promise(resolve=>setImmediate(resolve));
  const options=element('model').children.flatMap(node=>node.tag==='optgroup'?node.children:[]);
- assert.equal(options.length,30);
+ assert.equal(options.length,catalogRows.length);
  assert.ok(options.every(option=>option.disabled===false),'all registered options remain selectable, including held models');
  const cloudGroup=element('model').children.find(node=>node.tag==='optgroup'&&node.label==='OpenAI · Azure 서비스');
  assert.ok(cloudGroup);assert.equal(cloudGroup.children.length,1);
  assert.equal(cloudGroup.children[0].value,'GPT-6-Luna');
- const awsOptions=element('model').children.filter(node=>node.tag==='optgroup'&&node.label.endsWith(' · AWS 추가 후보')).flatMap(node=>node.children);
+ const awsOptions=element('model').children.filter(node=>node.tag==='optgroup'&&node.label.endsWith(' · 추가 서비스')).flatMap(node=>node.children);
  assert.equal(awsOptions.length,4);
  assert.equal(element('generate').disabled,true,'a ready model elsewhere must not enable the placeholder selection');
  await submit();assert.equal(requests.length,0,'programmatic placeholder submission must not call any model');
@@ -248,7 +248,7 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
  // Even if no row is ready, the original 29 and Azure service remain selectable.
  for(const row of catalogRows){row.configured=false;row.enabled=false;row.permitted=false;row.readiness_state='not_configured'}
  await run('loadModels()');
- assert.equal(element('model').children.flatMap(node=>node.tag==='optgroup'?node.children:[]).length,30);
+ assert.equal(element('model').children.flatMap(node=>node.tag==='optgroup'?node.children:[]).length,catalogRows.length);
  choose('gpt-oss-20b');assert.equal(element('model').value,'gpt-oss-20b');assert.equal(element('generate').disabled,true);
  await submit();assert.equal(requests.length,1);
 })().catch(error=>{console.error(error);process.exitCode=1});
@@ -305,9 +305,9 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
         aws_keys = ("Qwen3-32B", "DeepSeek-V3.2", "Amazon-Nova-2-Lite", "Amazon-Nova-Pro")
         self.assertEqual(tuple(row["model_key"] for row in AWS_ADDITIONAL_MODEL_CATALOG), aws_keys)
         self.assertEqual(tuple(row["model_key"] for row in MODEL_CATALOG[:29]), SELECTED_MODEL_KEYS + aws_keys)
-        self.assertEqual(len(MODEL_CATALOG), 30)
-        self.assertEqual(len({row["model_key"] for row in MODEL_CATALOG}), 30)
-        self.assertEqual(CLOUD_SERVICE_MODEL_CATALOG, (
+        self.assertEqual(len(MODEL_CATALOG), 32)
+        self.assertEqual(len({row["model_key"] for row in MODEL_CATALOG}), 32)
+        self.assertEqual(CLOUD_SERVICE_MODEL_CATALOG[:1], (
             {"model_key": "GPT-6-Luna", "family": "openai", "display_name": "GPT-6 Luna · Azure 경유"},
         ))
         self.assertEqual(model_family("GPT-6-Luna"), "openai")

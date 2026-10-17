@@ -22,7 +22,11 @@ Azure only, no provider fallbacks, and ZDR with data collection denied. It is
 disabled by default and must not duplicate a JSON binding for the same name.
 Any explicit JSON binding for GPT-6-Luna must match that fixed preset exactly.
 
-Other than this explicitly enabled fixed preset, no endpoint, model identifier,
+EDURECOVER_VERIFIED_MODEL_ROUTES_ENABLED=true adds the dated, verified routes
+in open_model_presets only where no explicit binding exists. It never adds a
+DeepSeek OpenRouter route and every OpenRouter request still requires ZDR.
+
+Other than these explicitly enabled presets, no endpoint, model identifier,
 region, provider, or fallback is inferred. The ordinary boto3 credential chain
 is used without reading/returning credentials.
 Nothing invokes AWS until call_model is called and the new feature is enabled.
@@ -46,6 +50,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from app.services.open_model_catalog import MODEL_CATALOG, model_family
+from app.services.open_model_presets import OPENROUTER_MODELS, verified_routes_enabled
 from app.services.open_model_http import OpenModelHTTPError, post_json, validate_endpoint_url
 
 
@@ -231,6 +236,14 @@ def _bindings() -> dict[str, _Binding]:
             if model_family(key) != family or key in source:
                 raise ValueError("Conflicting family binding.")
             source[key] = {"transport": "bedrock", "model_id": model_id, "region": region}
+        if verified_routes_enabled():
+            for key, model_id in OPENROUTER_MODELS.items():
+                source.setdefault(key, {
+                    "transport": "openai_compatible",
+                    "endpoint_url": OPENROUTER_CHAT_ENDPOINT,
+                    "model_id": model_id, "api_key_env": "OPENROUTER_API_KEY",
+                    "request_format": "chat",
+                })
         result: dict[str, _Binding] = {}
         for key, entry in source.items():
             model_family(key)
@@ -306,6 +319,11 @@ def catalog_status() -> list[dict[str, Any]]:
                    enabled=enabled and bool(credentials_ready), readiness_state=state)
         if binding is not None and _supports_images(binding):
             row["supports_images"] = True
+        if binding is not None and binding.endpoint_url == OPENROUTER_CHAT_ENDPOINT:
+            row["route_label"] = (
+                "OpenRouter · Azure 전용 · ZDR 필수" if entry["model_key"] == GPT6_LUNA_MODEL_KEY
+                else "OpenRouter · ZDR 필수"
+            )
         preset = _DEEPSEEK_DIRECT_BINDINGS.get(entry["model_key"])
         if preset is not None and binding is not None and (
             binding.transport == "openai_compatible"

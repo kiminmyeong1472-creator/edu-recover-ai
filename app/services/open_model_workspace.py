@@ -22,6 +22,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 <h1>교육·의료 AI 작업</h1>
 <p>선택한 8개 계열·25개 모델에 직접 질문하거나 튜터 대화, 문제 출제, 자료 검토를 진행할 수 있습니다. Qwen·DeepSeek·gpt-oss·Gemma·GLM·Mistral·Phi·NVIDIA Nemotron을 포함하며, Amazon Nova 등 AWS 추가 후보는 따로 표시합니다.</p>
 <p>GPT-6 Luna는 별도 Azure 서비스로 표시합니다. OpenRouter를 통해 Azure로만 요청하며, 제공자가 입력·응답을 저장하지 않는 조건(ZDR)을 충족하는 경로에만 요청하도록 제한합니다. 실제 호출에는 연결 설정과 소유자 사용 허용이 필요합니다.</p>
+<p>Claude는 Haiku 5.5, Gemini는 2.5 Flash-Lite를 별도로 표시합니다. 이 모델과 추가 OpenRouter 연결은 ZDR 경로에만 요청합니다. ZDR은 보관 조건이며, 모델별 경쟁 모델 개발 제한을 없애지 않습니다. 모델의 공개 라이선스와 호출 서비스의 사용 조건은 별도로 적용됩니다.</p>
 <p>딥시크 직접 연결을 켜면 V4.1 Flash와 V4 Pro는 딥시크 공식 서버에 요청합니다. 이 두 직접 경로에는 무보관 조건을 요구하지 않으며, 딥시크의 보관·이용 정책이 적용됩니다. Railway 서버의 DEEPSEEK_API_KEY 인증 키가 필요합니다. OpenRouter 키는 대신 사용할 수 없습니다.</p>
 <section><form id="draft-form">
 <label for="task">할 일</label><select id="task"><option value="direct">모델에 직접 질문</option><option value="tutor">튜터 대화·개념 설명</option><option value="questions">교재 기반 문제 출제</option><option value="source_review">교육·의료 자료 검토</option></select>
@@ -171,7 +172,7 @@ function updateTask(){
  byId('task-notice').textContent=direct?'질문하기를 실행하면 입력한 질문과 첨부한 파일을 선택한 모델 하나에 전송합니다. 답변은 생성 초안이며 공식 출처 대조와 독립 AI 검증을 수행하지 않습니다.':'선택한 모델 하나에 입력한 내용만 전송합니다. 튜터는 자료 없이 질문할 수 있으며, 출처가 필요한 설명에는 자료를 함께 넣을 수 있습니다. 문제 출제와 자료 검토에는 원문이 필요합니다.';
  byId('result').hidden=true;clearHistory();
 }
-const familyNames={deepseek:'DeepSeek · 딥시크',qwen:'Qwen · 큐웬',nova:'Amazon Nova · 아마존 노바','gpt-oss':'gpt-oss',gemma:'젬마',glm:'GLM',mistral:'미스트랄',phi:'Phi',nemotron:'네모트론',openai:'OpenAI'};
+const familyNames={deepseek:'DeepSeek · 딥시크',qwen:'Qwen · 큐웬',nova:'Amazon Nova · 아마존 노바','gpt-oss':'gpt-oss',gemma:'젬마',glm:'GLM',mistral:'미스트랄',phi:'Phi',nemotron:'네모트론',openai:'OpenAI',anthropic:'Claude · 클로드',gemini:'Gemini · 제미나이'};
 const readinessLabels={not_configured:'연결 설정 필요',missing_credentials:'인증 정보 필요',disabled:'호출 기능 꺼짐',configured_not_verified:'호출 설정됨 · 실제 응답 미확인'};
 const permissionLabels={ALLOWED:'소유자 사용 허용',HOLD:'소유자가 전체 AI 호출을 중지함',OWNER_PERMISSION_REQUIRED:'소유자 사용 허용 필요',BLOCKED:'소유자가 이 모델 계열의 호출을 차단함',RESTRICTED_VERIFY_ONLY:'검증 전용 허용 · 질문 생성 보류',CONTROL_CONFIG_INVALID:'소유자 사용 제어 설정 확인 필요'};
 function modelReady(row){return !!row&&row.configured===true&&row.enabled===true&&row.permitted===true&&(!row.readiness_state||row.readiness_state==='configured_not_verified');}
@@ -205,7 +206,7 @@ async function loadModels(){
   const groups={};let usableModels=0;
   for(const row of data.models){
    const additional=row.selection_group==='aws_additional',cloud=row.selection_group==='cloud_service',groupKey=row.family+(additional?'-aws':cloud?'-cloud':'');
-   let group=groups[groupKey];if(!group){group=document.createElement('optgroup');group.label=(familyNames[row.family]||row.family)+(additional?' · AWS 추가 후보':cloud?' · Azure 서비스':'');groups[groupKey]=group;select.append(group);}
+   let group=groups[groupKey];if(!group){group=document.createElement('optgroup');group.label=(familyNames[row.family]||row.family)+(additional?' · 추가 서비스':cloud?(row.family==='openai'?' · Azure 서비스':' · ZDR 서비스'):'');groups[groupKey]=group;select.append(group);}
    const option=document.createElement('option');option.value=row.model_key;
    modelRows.set(row.model_key,row);const ready=modelReady(row);
    option.textContent=row.display_name+' · '+connectionLabel(row)+(row.permitted===true?'':' · '+permissionLabel(row));group.append(option);if(ready)usableModels++;

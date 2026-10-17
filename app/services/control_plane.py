@@ -14,6 +14,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Any
+from app.services.open_model_presets import PRESET_FAMILIES, verified_routes_enabled
 
 
 class ProviderHeld(RuntimeError):
@@ -75,6 +76,14 @@ def _normalized_manifest() -> dict[str, Any]:
     restricted |= _csv_env("EDURECOVER_RESTRICTED_PROVIDERS")
     allowed = set(str(v).strip().lower() for v in manifest.get("allowed_providers", []) if str(v).strip())
     allowed |= _csv_env("EDURECOVER_ALLOWED_PROVIDERS")
+    # This separate opt-in records the owner's 2026-10-17 connection request.
+    # It adds permissions without overwriting the existing manifest or CSV.
+    # All global holds, explicit blocks and verify-only restrictions still win.
+    try:
+        if verified_routes_enabled():
+            allowed |= PRESET_FAMILIES
+    except ValueError as exc:
+        raise RuntimeError("Invalid verified model route authorization.") from exc
     require_explicit_allow = bool(
         manifest.get(
             "require_explicit_provider_allow",
