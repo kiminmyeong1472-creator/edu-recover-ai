@@ -18,7 +18,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 #status,#model-readiness{white-space:pre-wrap}#result{overflow-wrap:anywhere}#result p{white-space:pre-wrap}
 .error{color:#a01919}li{margin:8px 0}a{color:#174d9e}@media(max-width:600px){.grid{grid-template-columns:1fr}section{padding:16px}h1{font-size:24px}}
 </style></head><body><main>
-<header><strong>EduRecover</strong><a href="/owner">관리 화면</a><a href="/owner/open-models/chutes">별도 직접 호출</a></header>
+<header><strong>EduRecover</strong><a href="/owner">관리 화면</a><a href="/owner/open-models/chutes">별도 직접 호출</a><a href="/owner/open-models/learning">모델 개발·학습 허용 모음</a></header>
 <h1>교육·의료 AI 작업</h1>
 <p>선택한 8개 계열·25개 모델에 직접 질문하거나 튜터 대화, 문제 출제, 자료 검토를 진행할 수 있습니다. Qwen·DeepSeek·gpt-oss·Gemma·GLM·Mistral·Phi·NVIDIA Nemotron을 포함하며, Amazon Nova 등 AWS 추가 후보는 따로 표시합니다.</p>
 <p>GPT-6 Luna는 별도 Azure 서비스로 표시합니다. OpenRouter를 통해 Azure로만 요청하며, 제공자가 입력·응답을 저장하지 않는 조건(ZDR)을 충족하는 경로에만 요청하도록 제한합니다. 실제 호출에는 연결 설정과 소유자 사용 허용이 필요합니다.</p>
@@ -182,6 +182,10 @@ function modelExplanation(row){
  if(!row)return '사용할 모델을 선택하십시오. 연결 준비가 끝나지 않은 모델도 선택하여 필요한 설정을 확인할 수 있습니다.';
  const lines=[row.display_name,'연결 상태: '+connectionLabel(row),'사용 권한: '+permissionLabel(row)];
  if(row.route_label)lines.push('호출 경로: '+row.route_label);
+ if(row.policy_label)lines.push('개발·학습 허용 범위: '+row.policy_label);
+ if(row.license)lines.push('공개 가중치 라이선스: '+row.license);
+ if(row.policy_source)lines.push('확인 근거: '+row.policy_source);
+ if(row.setup_note)lines.push(row.setup_note);
  if(row.required_api_key_env&&row.readiness_state==='missing_credentials')lines.push('서버에 필요한 인증 키 설정 이름: '+row.required_api_key_env);
  if(row.readiness_state==='missing_credentials')lines.push('해당 모델 서버의 인증 키가 필요합니다.');
  else if(!row.configured)lines.push('모델 서버 주소와 서버에서 사용하는 모델 이름의 연결 설정이 필요합니다.');
@@ -318,4 +322,51 @@ def chutes_workspace_html() -> str:
             '/owner/open-models/' + suffix,
             '/owner/open-models/chutes/' + suffix,
         )
+    return html
+
+
+def learning_workspace_html() -> str:
+    """Collect reviewed development permissions without imposing ZDR."""
+    html = chutes_workspace_html().replace(
+        '<a href="/owner/open-models/learning">모델 개발·학습 허용 모음</a>', '',
+    )
+    intro_start = html.index('<h1>')
+    intro_end = html.index('<section><form')
+    html = html[:intro_start] + '''<h1>자체 모델 개발·학습 허용 모델 모음</h1>
+<p>다른 모델 개발·학습을 허용하는 공식 API와 공개 가중치를 먼저 모았습니다. 입력·응답을 보관하지 않는 조건(ZDR)은 이번 목록의 포함 조건으로 삼지 않습니다. 이 조건까지 확인된 경로가 있으면 우선 사용할 수 있으며, 아직 ZDR 충족을 보장하지 않습니다.</p>
+<p>DeepSeek V4.1 Flash·V4 Pro는 공식 API 약관 제4.2조에서 출력으로 다른 모델을 학습·증류하는 것을 명시적으로 허용합니다. 기존 전용 키로 공식 서버에 직접 요청하며, OpenRouter를 거치지 않습니다. 실제 응답 성공 여부는 별도로 확인해야 합니다.</p>
+<p>나머지는 공개 가중치를 직접 운영할 때 수정·파생 모델 개발을 허용하는 모델입니다. 가중치는 모델 실행에 필요한 파일입니다. 직접 실행할 서버가 아직 연결되지 않은 모델은 목록에 보관하며 질문을 보내지 않습니다. 공개 라이선스가 외부 API 제공자의 계약까지 바꾸지는 않습니다.</p>
+<p>모든 모델에는 해당 라이선스·약관, 관련 법령과 제3자 권리가 적용됩니다. 기존 OpenRouter·Chutes 연결은 유지합니다. 검토일: 2026-10-17.</p>
+<p><a href="https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html" target="_blank" rel="noopener noreferrer">DeepSeek 공식 API 약관</a> · <a href="/owner/open-models/chutes">Chutes 별도 직접 호출</a></p>
+<section aria-labelledby="learning-list-heading"><h2 id="learning-list-heading">허용 근거와 연결 상태</h2><p id="learning-count" role="status">모델 목록을 불러오는 중입니다.</p><ul id="learning-model-list"></ul></section>
+''' + html[intro_end:]
+    html = html.replace('chutes-output-tokens', 'learning-output-tokens')
+    html = html.replace('/owner/open-models/chutes/' , '/owner/open-models/learning/')
+    html = html.replace(
+        '질문 한 개를 선택한 모델에 전달하고 답변을 그대로 표시합니다. 기본 학습 모델을 포함한 25개 모델에 사용할 수 있으며, 실제 호출에는 각 모델의 연결 설정과 인증 정보가 필요합니다.',
+        '이 모음에서 호출 준비가 된 모델에만 질문을 보냅니다. 자체 실행 서버가 없는 공개 가중치 모델은 목록과 허용 근거만 보관합니다.',
+    )
+    html = html.replace(
+        "  select.value=modelRows.has(previous)?previous:'';refreshModelSelection();",
+        "  renderLearningCollection(data.models);\n  select.value=modelRows.has(previous)?previous:'';refreshModelSelection();",
+    )
+    html = html.replace(
+        "async function loadModels(){",
+        r'''function renderLearningCollection(rows){
+ const list=byId('learning-model-list');list.replaceChildren();
+ const apiCount=rows.filter(row=>row.policy_scope==='official_api_outputs').length;
+ byId('learning-count').textContent='총 '+rows.length+'개 · 공식 API 출력 학습 허용 '+apiCount+'개 · 공개 가중치 직접 운영 허용 '+(rows.length-apiCount)+'개';
+ for(const row of rows){
+  const item=document.createElement('li'),name=document.createElement('strong'),detail=document.createElement('p');
+  name.textContent=row.display_name;
+  detail.textContent=row.policy_label+' · '+(row.license||'공식 API 약관')+' · '+(row.policy_scope==='self_hosted_weights'?'자체 실행 서버 미연결':connectionLabel(row));
+  item.append(name,detail);
+  if(row.policy_source&&row.policy_source.startsWith('https://')){
+   const link=document.createElement('a');link.textContent='공식 허용 근거';link.href=row.policy_source;link.target='_blank';link.rel='noopener noreferrer';item.append(link);
+  }
+  list.append(item);
+ }
+}
+async function loadModels(){''',
+    )
     return html

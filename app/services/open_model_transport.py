@@ -55,6 +55,7 @@ from app.services.chutes_direct import (
 )
 from app.services.open_model_presets import OPENROUTER_MODELS, verified_routes_enabled
 from app.services.open_model_http import OpenModelHTTPError, post_json, validate_endpoint_url
+from app.services.training_model_policy import permitted_model_catalog
 
 
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
@@ -309,14 +310,20 @@ def _route_bindings(route: str | None) -> dict[str, _Binding]:
     """Keep the new explicit route independent from every legacy setting."""
     if route is None:
         return _bindings()
-    if route != "chutes":
+    if route == "learning":
+        # The reviewed official API routes use their own dedicated key and
+        # are independent from legacy JSON, preset flags and third parties.
+        entries = _DEEPSEEK_DIRECT_BINDINGS
+    elif route == "chutes":
+        entries = chutes_bindings()
+    else:
         raise OpenModelError("등록되지 않은 모델 호출 경로입니다.", "OPEN_MODEL_ROUTE_UNKNOWN", 400)
     return {
         key: _Binding(
             entry["transport"], "", entry["model_id"], None,
             entry["endpoint_url"], entry["api_key_env"], entry["request_format"],
         )
-        for key, entry in chutes_bindings().items()
+        for key, entry in entries.items()
     }
 
 
@@ -325,7 +332,8 @@ def catalog_status(*, route: str | None = None) -> list[dict[str, Any]]:
     bindings = _route_bindings(route)
     enabled = _enabled()
     rows = []
-    for entry in MODEL_CATALOG:
+    entries = permitted_model_catalog() if route == "learning" else MODEL_CATALOG
+    for entry in entries:
         if route == "chutes" and entry["model_key"] not in bindings:
             continue
         binding = bindings.get(entry["model_key"])
@@ -341,6 +349,8 @@ def catalog_status(*, route: str | None = None) -> list[dict[str, Any]]:
             row.update(display_name=entry["display_name"] + " · Chutes 직접",
                        route_label=CHUTES_ROUTE_LABEL,
                        required_api_key_env=CHUTES_API_KEY_ENV)
+        if route == "learning" and binding is None:
+            row["route_label"] = "자체 실행 서버 미연결 · OpenRouter 미사용"
         if binding is not None and _supports_images(binding):
             row["supports_images"] = True
         if binding is not None and binding.endpoint_url == OPENROUTER_CHAT_ENDPOINT:

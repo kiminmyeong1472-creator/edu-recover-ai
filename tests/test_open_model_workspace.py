@@ -3,7 +3,7 @@ import re
 import subprocess
 import unittest
 
-from app.services.open_model_workspace import _HTML, chutes_workspace_html
+from app.services.open_model_workspace import _HTML, chutes_workspace_html, learning_workspace_html
 
 
 _HARNESS = r"""
@@ -101,6 +101,33 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  assert.equal('max_tokens' in requests[0].body,false);
  assert.ok(element('result').children.some(node=>node.textContent==='<script>untrusted</script>'));
 """, voice=True, html=html, harness=harness)
+
+    def test_learning_collection_keeps_permissions_separate_and_calls_only_its_route(self):
+        html = learning_workspace_html()
+        self.assertIn('href="/owner/open-models/learning"', _HTML)
+        self.assertIn('자체 모델 개발·학습 허용 모델 모음', html)
+        self.assertNotIn('CHUTES_API_KEY', html)
+        self.assertNotIn('1,024토큰', html)
+        self.assertNotIn('<option value="tutor">', html)
+        self.assertNotIn('innerHTML', html)
+        harness = _HARNESS.replace('/owner/open-models/catalog', '/owner/open-models/learning/catalog')
+        harness = harness.replace("display_name:'Flash',", "display_name:'Flash',policy_scope:'official_api_outputs',policy_label:'출력 학습 허용',policy_source:'https://example.test/terms',")
+        harness = harness.replace("display_name:'Pro',", "display_name:'Pro',policy_scope:'official_api_outputs',policy_label:'출력 학습 허용',")
+        harness = harness.replace("display_name:'Unconfigured',", "display_name:'Unconfigured',policy_scope:'self_hosted_weights',policy_label:'공개 가중치 수정 허용',license:'MIT',policy_source:'https://example.test/LICENSE',")
+        self.run_workspace(r"""
+ assert.match(element('learning-count').textContent,/총 3개.*공식 API 출력 학습 허용 2개.*공개 가중치 직접 운영 허용 1개/);
+ assert.equal(element('learning-model-list').children.length,3);
+ const last=element('learning-model-list').children[2];
+ assert.match(last.children[1].textContent,/공개 가중치 수정 허용.*MIT.*자체 실행 서버 미연결/);
+ assert.equal(last.children[2].href,'https://example.test/LICENSE');
+ choose('unconfigured');assert.equal(element('generate').disabled,true);await submit();assert.equal(requests.length,0);
+ choose('DeepSeek-V4.1-Flash');assert.match(element('model-readiness').textContent,/출력 학습 허용/);
+ attach([file('notes.txt','원문')]);await submit();
+ assert.equal(requests.length,1);assert.equal(requests[0].url,'/owner/open-models/learning/call');
+ assert.equal(requests[0].body.attachments.length,1);assert.equal('max_tokens' in requests[0].body,false);
+ element('learning-output-tokens').value='1000000';await submit();
+ assert.equal(requests.length,2);assert.equal(requests[1].body.max_tokens,1000000);
+""", html=html, harness=harness)
 
     def test_separate_direct_workspace_blocks_images_without_fallback(self):
         harness = _HARNESS.replace('/owner/open-models/catalog', '/owner/open-models/chutes/catalog')
