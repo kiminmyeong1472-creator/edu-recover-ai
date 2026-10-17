@@ -9,7 +9,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.services.control_plane import ProviderHeld
-from app.services.open_model_catalog import AWS_ADDITIONAL_MODEL_CATALOG, SOURCE_MODEL_CATALOG
+from app.services.open_model_catalog import (
+    AWS_ADDITIONAL_MODEL_CATALOG, CHUTES_MODEL_CATALOG, SOURCE_MODEL_CATALOG,
+)
 from app.services.open_model_transport import OpenModelError, catalog_status
 from app.services.training_model_policy import permitted_model_catalog
 from scripts.check_open_model_connections import check_models, main
@@ -77,6 +79,28 @@ class OpenModelConnectionCheckTests(unittest.TestCase):
         self.invoke.assert_not_awaited()
         self.allowed.assert_not_called()
         self.assert_private_values_absent(result)
+
+    def test_chutes_exact_nine_can_be_checked_without_legacy_expansion(self):
+        self.status.return_value = [dict(row, configured=True, enabled=True)
+                                    for row in CHUTES_MODEL_CATALOG]
+        keys = [row["model_key"] for row in CHUTES_MODEL_CATALOG]
+        result = self.run_check(keys, invoke=True, route="chutes")
+        self.assertEqual(result["route"], "chutes")
+        self.assertEqual([row["model_key"] for row in result["models"]], keys)
+        self.assertEqual(len(keys), 9)
+        self.assertEqual(self.invoke.await_count, 9)
+        self.assertTrue(all(row["response_received"] for row in result["models"]))
+        for call in self.invoke.await_args_list:
+            self.assertEqual(call.kwargs, {"max_tokens": 512, "route": "chutes"})
+        self.assert_private_values_absent(result)
+
+    def test_chutes_checks_need_explicit_names_and_reject_original_aliases(self):
+        with self.assertRaises(ValueError):
+            self.run_check(invoke=True, route="chutes")
+        with self.assertRaises(ValueError):
+            self.run_check(["Qwen3.6-27B"], invoke=True, route="chutes")
+        self.status.assert_not_called()
+        self.invoke.assert_not_awaited()
 
     def test_all_25_can_be_individually_selected_and_invoke_exactly_one_synthetic_request(self):
         for entry in SOURCE_MODEL_CATALOG:
@@ -299,4 +323,5 @@ class OpenModelConnectionCheckTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 

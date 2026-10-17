@@ -49,9 +49,10 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from app.services.open_model_catalog import MODEL_CATALOG, model_family
+from app.services.open_model_catalog import CHUTES_MODEL_CATALOG, MODEL_CATALOG, model_family
 from app.services.chutes_direct import (
-    CHUTES_API_KEY_ENV, CHUTES_ROUTE_LABEL, fixed_bindings as chutes_bindings,
+    CHUTES_API_KEY_ENV, CHUTES_CHAT_ENDPOINT, CHUTES_IMAGE_MODEL_IDS,
+    CHUTES_ROUTE_LABEL, fixed_bindings as chutes_bindings,
 )
 from app.services.open_model_presets import OPENROUTER_MODELS, verified_routes_enabled
 from app.services.open_model_http import OpenModelHTTPError, post_json, validate_endpoint_url
@@ -85,6 +86,7 @@ _DEEPSEEK_DIRECT_BINDINGS = {
         ("DeepSeek-V4-Pro", "deepseek-v4-pro"),
     )
 }
+_ORDINARY_MODEL_KEYS = frozenset(entry["model_key"] for entry in MODEL_CATALOG)
 
 
 class OpenModelError(RuntimeError):
@@ -138,9 +140,13 @@ class _Binding:
 
 
 def _supports_images(binding: _Binding) -> bool:
-    """Only the documented DeepSeek Flash vision route accepts raw images."""
+    """Accept images only for exact, documented provider and model identities."""
     if binding.transport != "openai_compatible" or binding.request_format != "chat":
         return False
+    if (binding.endpoint_url == CHUTES_CHAT_ENDPOINT
+            and binding.api_key_env == CHUTES_API_KEY_ENV
+            and binding.model_id in CHUTES_IMAGE_MODEL_IDS):
+        return True
     if (binding.endpoint_url == DEEPSEEK_CHAT_ENDPOINT
             and binding.api_key_env == "DEEPSEEK_API_KEY"
             and binding.model_id == _DEEPSEEK_DIRECT_BINDINGS["DeepSeek-V4.1-Flash"]["model_id"]):
@@ -202,6 +208,8 @@ def _bindings() -> dict[str, _Binding]:
         )
         if not isinstance(source, dict):
             raise ValueError("Expected object.")
+        if any(key not in _ORDINARY_MODEL_KEYS for key in source):
+            raise ValueError("Model is not in the ordinary catalogue.")
         deepseek_direct = os.getenv("EDURECOVER_DEEPSEEK_DIRECT_ENABLED", "false").strip().lower()
         if deepseek_direct not in {"true", "false"}:
             raise ValueError("Invalid DeepSeek direct flag.")
@@ -237,7 +245,7 @@ def _bindings() -> dict[str, _Binding]:
                 _required_string(os.environ[field], limit)
                 for field, limit in zip(fields, (256, 2048, 64))
             )
-            if model_family(key) != family or key in source:
+            if key not in _ORDINARY_MODEL_KEYS or model_family(key) != family or key in source:
                 raise ValueError("Conflicting family binding.")
             source[key] = {"transport": "bedrock", "model_id": model_id, "region": region}
         if verified_routes_enabled():
@@ -332,10 +340,9 @@ def catalog_status(*, route: str | None = None) -> list[dict[str, Any]]:
     bindings = _route_bindings(route)
     enabled = _enabled()
     rows = []
-    entries = permitted_model_catalog() if route == "learning" else MODEL_CATALOG
+    entries = (CHUTES_MODEL_CATALOG if route == "chutes" else
+               permitted_model_catalog() if route == "learning" else MODEL_CATALOG)
     for entry in entries:
-        if route == "chutes" and entry["model_key"] not in bindings:
-            continue
         binding = bindings.get(entry["model_key"])
         credentials_ready = binding is not None and (
             binding.transport != "openai_compatible" or _http_token(binding) is not None
@@ -730,3 +737,4 @@ async def call_model(
             "OPEN_MODEL_IMAGE_UNSUPPORTED", 400,
         )
     return await asyncio.to_thread(_invoke, binding, instructions, prompt, max_tokens, validated_images)
+

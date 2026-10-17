@@ -289,12 +289,44 @@ def chutes_workspace_html() -> str:
     intro_start = html.index('<h1>')
     intro_end = html.index('<section><form')
     html = html[:intro_start] + '''<h1>공개 모델 별도 직접 호출</h1>
-<p>Railway 서버에서 Chutes의 DeepSeek-V3.2에 직접 요청합니다. 이 화면은 OpenRouter를 거치지 않으며, 기존 모델 작업 화면의 연결은 그대로 유지됩니다.</p>
+<p>Railway 서버에서 Chutes의 9개 제공판 중 선택한 하나에 직접 요청합니다. 제공판은 같은 계열이라도 버전·날짜·수치 정밀도가 다를 수 있는 모델입니다. 기존 27개 목록과 OpenRouter 연결은 그대로 유지합니다. 목록 확인일: 2026-10-17.</p>
 <p>별도 인증 키 CHUTES_API_KEY가 서버에 필요합니다. OpenRouter 키나 DeepSeek 공식 API 키를 대신 사용하지 않습니다. 키 등록 여부와 실제 응답 성공 여부를 구분해 표시합니다.</p>
-<p>사용 조건 검토: 모델의 MIT 라이선스와 확인한 Chutes 약관에서는 경쟁 모델 개발 금지 조항을 찾지 못했습니다. 이는 모든 학습 목적에 대한 별도의 서면 승인을 받았다는 뜻은 아닙니다. 제공자는 API 입력·응답을 저장하지 않는다고 명시하며, 실제 계정과 호출 상태는 별도로 확인해야 합니다.</p>
-<p><a href="https://chutes.ai/terms" target="_blank" rel="noopener noreferrer">Chutes 사용 조건</a> · <a href="https://huggingface.co/deepseek-ai/DeepSeek-V3.2/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">모델 MIT 라이선스</a> · <a href="https://chutes.ai/app" target="_blank" rel="noopener noreferrer">Chutes 계정·키 관리</a></p>
-<p>문서·텍스트 파일과 음성 받아쓰기를 사용할 수 있습니다. 이 모델은 사진 입력을 지원하지 않습니다. 앱이 답변 길이를 지정하지 않으면 제공자의 기본값이 적용되며, 공식 문서에 기재된 기본 답변 예산은 1,024토큰입니다.</p>
+<p>모델 파일의 사용허가(라이선스)는 모델마다 다르며 MIT·Apache-2.0 등을 따릅니다. 확인한 Chutes 사용 조건에서는 경쟁 모델 개발·학습을 명시적으로 금지하는 조항을 찾지 못했습니다. 이는 모든 목적에 대한 허가나 법적 보증은 아닙니다. 제공자는 프로그램 호출(API)의 입력·응답을 저장하지 않는다고 설명합니다.</p>
+<p><a href="https://chutes.ai/terms" target="_blank" rel="noopener noreferrer">Chutes 사용 조건</a> · <a href="https://chutes.ai/privacy" target="_blank" rel="noopener noreferrer">개인정보 처리 조건</a> · <a href="https://chutes.ai/app" target="_blank" rel="noopener noreferrer">Chutes 계정·키 관리</a></p>
+<p>문서·텍스트 파일과 음성 받아쓰기를 사용할 수 있습니다. 사진 지원 여부는 선택한 모델의 설명에 표시합니다. 앱이 답변 길이를 지정하지 않으면 선택한 제공판의 기본값과 처리 한도가 적용됩니다.</p>
+<section aria-labelledby="chutes-list-heading"><h2 id="chutes-list-heading">별도로 연결한 9개 제공판</h2><p>FP8·NVFP4는 모델 수치를 저장·계산하는 정밀도 이름입니다. 0731은 제공판 이름에 포함된 날짜 식별자입니다. 원래 모델과 다른 부분을 아래에 표시합니다.</p><p id="chutes-count" role="status">제공판 목록을 불러오는 중입니다.</p><ul id="chutes-model-list"></ul></section>
 ''' + html[intro_end:]
+    html = html.replace(
+        '질문 한 개를 선택한 모델에 전달하고 답변을 그대로 표시합니다. 기본 학습 모델을 포함한 25개 모델에 사용할 수 있으며, 실제 호출에는 각 모델의 연결 설정과 인증 정보가 필요합니다.',
+        '선택한 Chutes 제공판 하나에만 질문을 보내고 답변을 그대로 표시합니다. 연결 설정을 마쳤더라도 실제로 응답을 받는지는 질문을 보내 확인해야 합니다.',
+    )
+    html = html.replace(
+        " if(row.route_label)lines.push('호출 경로: '+row.route_label);",
+        " if(row.original_model_key)lines.push('원래 목록의 모델: '+row.original_model_key);\n"
+        " if(row.version)lines.push('제공판 버전: '+row.version);\n"
+        " if(row.precision)lines.push('수치 정밀도: '+row.precision);\n"
+        " if(row.difference)lines.push('원래 모델과의 차이: '+row.difference);\n"
+        " if(row.catalog_verified_on)lines.push('공개 목록 확인일: '+row.catalog_verified_on);\n"
+        " if(row.route_label)lines.push('호출 경로: '+row.route_label);",
+    )
+    html = html.replace(
+        "  select.value=modelRows.has(previous)?previous:'';refreshModelSelection();",
+        "  renderChutesCollection(data.models);\n  select.value=modelRows.has(previous)?previous:'';refreshModelSelection();",
+    )
+    html = html.replace(
+        "async function loadModels(){",
+        r'''function renderChutesCollection(rows){
+ const list=byId('chutes-model-list');if(!list)return;list.replaceChildren();
+ byId('chutes-count').textContent='총 '+rows.length+'개 · 목록 등록과 호출 설정을 표시하며, 실제 응답 성공을 뜻하지 않습니다.';
+ for(const row of rows){
+  const item=document.createElement('li'),name=document.createElement('strong'),detail=document.createElement('p');
+  name.textContent=row.display_name;
+  detail.textContent=[row.version?'버전 '+row.version:'',row.precision?'정밀도 '+row.precision:'',row.catalog_verified_on?'목록 확인일 '+row.catalog_verified_on:'',row.difference||'',connectionLabel(row)].filter(Boolean).join(' · ');
+  item.append(name,detail);list.append(item);
+ }
+}
+async function loadModels(){''',
+    )
     for option in (
         '<option value="tutor">튜터 대화·개념 설명</option>',
         '<option value="questions">교재 기반 문제 출제</option>',
@@ -343,9 +375,10 @@ def learning_workspace_html() -> str:
     html = html.replace('chutes-output-tokens', 'learning-output-tokens')
     html = html.replace('/owner/open-models/chutes/' , '/owner/open-models/learning/')
     html = html.replace(
-        '질문 한 개를 선택한 모델에 전달하고 답변을 그대로 표시합니다. 기본 학습 모델을 포함한 25개 모델에 사용할 수 있으며, 실제 호출에는 각 모델의 연결 설정과 인증 정보가 필요합니다.',
+        '선택한 Chutes 제공판 하나에만 질문을 보내고 답변을 그대로 표시합니다. 연결 설정을 마쳤더라도 실제로 응답을 받는지는 질문을 보내 확인해야 합니다.',
         '이 모음에서 호출 준비가 된 모델에만 질문을 보냅니다. 자체 실행 서버가 없는 공개 가중치 모델은 목록과 허용 근거만 보관합니다.',
     )
+    html = html.replace('  renderChutesCollection(data.models);\n', '')
     html = html.replace(
         "  select.value=modelRows.has(previous)?previous:'';refreshModelSelection();",
         "  renderLearningCollection(data.models);\n  select.value=modelRows.has(previous)?previous:'';refreshModelSelection();",
@@ -370,3 +403,4 @@ def learning_workspace_html() -> str:
 async function loadModels(){''',
     )
     return html
+

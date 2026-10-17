@@ -1,9 +1,11 @@
 """Run the real workspace JavaScript without contacting model providers."""
+import json
 import re
 import subprocess
 import unittest
 
 from app.services.open_model_workspace import _HTML, chutes_workspace_html, learning_workspace_html
+from app.services.open_model_catalog import CHUTES_MODEL_CATALOG
 
 
 _HARNESS = r"""
@@ -63,6 +65,20 @@ function speechResult(transcript,isFinal=false){return Object.assign([{transcrip
 
 
 class OpenModelWorkspaceTests(unittest.TestCase):
+    def chutes_harness(self):
+        rows = [
+            dict(row, configured=True, enabled=True, permitted=True,
+                 readiness_state="configured_not_verified", permission_state="ALLOWED",
+                 supports_images=row["model_key"] in {
+                     "Qwen3.6-27B-FP8", "Qwen3.5-397B-A17B-FP8",
+                     "Qwen3.8-27B-FP8", "Gemma-4-31B-IT-NVFP4",
+                 },
+                 required_api_key_env="CHUTES_API_KEY")
+            for row in CHUTES_MODEL_CATALOG
+        ]
+        harness = re.sub(r"const rows=\[.*?\n\];", lambda _: "const rows=" + json.dumps(rows) + ";", _HARNESS, flags=re.S)
+        return harness.replace('/owner/open-models/catalog', '/owner/open-models/chutes/catalog')
+
     def run_workspace(self, assertions, *, voice=False, html=None, harness=None):
         import os
 
@@ -83,7 +99,10 @@ class OpenModelWorkspaceTests(unittest.TestCase):
         self.assertNotIn('<option value="questions">', html)
         self.assertNotIn('<option value="source_review">', html)
         self.assertIn('CHUTES_API_KEY', html)
-        self.assertIn('1,024토큰', html)
+        self.assertNotIn('1,024토큰', html)
+        self.assertIn('9개 제공판', html)
+        self.assertIn('기존 27개 목록과 OpenRouter 연결', html)
+        self.assertNotIn('모델의 MIT 라이선스', html)
         harness = _HARNESS.replace('/owner/open-models/catalog', '/owner/open-models/chutes/catalog')
         harness = harness.replace('DeepSeek-V4.1-Flash', 'DeepSeek-V3.2')
         harness = harness.replace('supports_images:true', 'supports_images:false')
@@ -102,11 +121,62 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  assert.ok(element('result').children.some(node=>node.textContent==='<script>untrusted</script>'));
 """, voice=True, html=html, harness=harness)
 
+    def test_chutes_nine_variants_show_precision_and_call_only_selected_route(self):
+        expected = [
+            'DeepSeek-V3.2', 'Qwen3.6-27B-FP8', 'Qwen3.5-397B-A17B-FP8',
+            'Qwen3.8-27B-FP8', 'Qwen3-32B-FP8', 'GLM-5.1-FP8',
+            'GLM-5.2-NVFP4', 'Gemma-4-31B-IT-NVFP4',
+            'DeepSeek-V4-Flash-0731-FP8-DSpark',
+        ]
+        self.assertEqual([row['model_key'] for row in CHUTES_MODEL_CATALOG], expected)
+        html = chutes_workspace_html()
+        self.assertNotIn('innerHTML', html)
+        self.assertNotIn('25개 모델', html)
+        self.run_workspace(r"""
+ assert.match(element('chutes-count').textContent,/총 9개.*실제 응답 성공을 뜻하지/);
+ assert.equal(element('chutes-model-list').children.length,9);
+ const options=element('model').children.flatMap(group=>group.children);
+ assert.equal(options.length,9);
+ assert.deepEqual(options.map(option=>option.value).sort(),rows.map(row=>row.model_key).sort());
+ for(const row of rows){
+  choose(row.model_key);
+  assert.equal(element('generate').disabled,false);
+  assert.ok(element('model-readiness').textContent.includes('수치 정밀도: '+row.precision));
+  assert.ok(element('model-readiness').textContent.includes(row.difference));
+  assert.ok(element('model-readiness').textContent.includes('공개 목록 확인일: 2026-10-17'));
+  assert.match(element('model-readiness').textContent,/실제 응답.*미확인/);
+ }
+ choose('DeepSeek-V4-Flash-0731-FP8-DSpark');await submit();
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].url,'/owner/open-models/chutes/call');
+ assert.equal(requests[0].body.model_key,'DeepSeek-V4-Flash-0731-FP8-DSpark');
+ assert.equal('max_tokens' in requests[0].body,false);
+ assert.match(element('domain-help').textContent,/선택한 Chutes 제공판 하나에만/);
+""", html=html, harness=self.chutes_harness())
+
+    def test_chutes_catalog_metadata_is_plain_text_and_image_support_is_per_model(self):
+        harness = self.chutes_harness().replace(
+            'vm.runInContext(fs.readFileSync',
+            "rows[0].display_name='<img src=x onerror=alert(1)>';rows[0].difference='<script>variant</script>';vm.runInContext(fs.readFileSync",
+        )
+        self.run_workspace(r"""
+ const first=element('chutes-model-list').children[0];
+ assert.equal(first.children[0].textContent,'<img src=x onerror=alert(1)>');
+ assert.ok(first.children[1].textContent.includes('<script>variant</script>'));
+ choose('DeepSeek-V3.2');attach([file('image.png')]);await submit();
+ assert.equal(requests.length,0);
+ choose('Qwen3.6-27B-FP8');await submit();
+ assert.equal(requests.length,1);assert.equal(requests[0].body.attachments.length,1);
+ assert.equal(requests[0].body.model_key,'Qwen3.6-27B-FP8');
+""", html=chutes_workspace_html(), harness=harness)
+
     def test_learning_collection_keeps_permissions_separate_and_calls_only_its_route(self):
         html = learning_workspace_html()
         self.assertIn('href="/owner/open-models/learning"', _HTML)
         self.assertIn('자체 모델 개발·학습 허용 모델 모음', html)
         self.assertNotIn('CHUTES_API_KEY', html)
+        self.assertNotIn('id="chutes-count"', html)
+        self.assertNotIn('renderChutesCollection(data.models)', html)
         self.assertNotIn('1,024토큰', html)
         self.assertNotIn('<option value="tutor">', html)
         self.assertNotIn('innerHTML', html)
@@ -117,6 +187,7 @@ class OpenModelWorkspaceTests(unittest.TestCase):
         self.run_workspace(r"""
  assert.match(element('learning-count').textContent,/총 3개.*공식 API 출력 학습 허용 2개.*공개 가중치 직접 운영 허용 1개/);
  assert.equal(element('learning-model-list').children.length,3);
+ assert.match(element('domain-help').textContent,/이 모음에서 호출 준비가 된 모델에만/);
  const last=element('learning-model-list').children[2];
  assert.match(last.children[1].textContent,/공개 가중치 수정 허용.*MIT.*자체 실행 서버 미연결/);
  assert.equal(last.children[2].href,'https://example.test/LICENSE');
@@ -315,3 +386,4 @@ class OpenModelWorkspaceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
