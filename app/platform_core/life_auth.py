@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import sqlite3
@@ -9,6 +10,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from html import escape
 
 from urllib.parse import parse_qs
 
@@ -24,6 +26,7 @@ router = APIRouter(prefix="/life/auth", tags=["life-auth"])
 owner_router = APIRouter(prefix="/owner/life", tags=["owner"])
 _COOKIE = "__Host-liferecover_session"
 _SESSION_TTL = 60 * 60 * 24 * 7
+logger = logging.getLogger(__name__)
 
 _FORM_STYLE = """
 <style>
@@ -41,20 +44,26 @@ a{color:#1457b8}
 """
 
 
-def _form_page(title: str, action: str, button: str, *, error: str = "") -> HTMLResponse:
-    error_html = f'<p class="error">{error}</p>' if error else ""
+def _form_page(title: str, action: str, button: str, *, error: str = "",
+               status_code: int = 200, password_min_length: int = 1) -> HTMLResponse:
+    error_html = f'<p class="error" role="alert">{escape(error)}</p>' if error else ""
+    help_html = (
+        '<p>생활앱 전용 계정으로 로그인하십시오. 관리자 계정과는 별도입니다.</p>'
+        '<p><a href="/owner/life/account-setup">관리자가 생활앱 계정 만들기</a></p>'
+        if action == "/life/auth/login-form" else ""
+    )
     html = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>{_FORM_STYLE}</head>
 <body><main><div class="brand">생활의 회복 · Life Recover</div><h1>{title}</h1>{error_html}
 <form method="post" action="{action}">
-<label>아이디</label><input name="username" autocomplete="username" minlength="3" maxlength="80" required>
-<label>비밀번호</label><input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="256" required>
-<button type="submit">{button}</button></form></main></body></html>"""
-    return HTMLResponse(html, headers={"Cache-Control":"no-store","Referrer-Policy":"same-origin",
+<label for="username">아이디</label><input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="80" required>
+<label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="{'new-password' if password_min_length == 10 else 'current-password'}" minlength="{password_min_length}" maxlength="256" required>
+<button type="submit">{button}</button></form>{help_html}</main></body></html>"""
+    return HTMLResponse(html, status_code=status_code, headers={"Cache-Control":"no-store","Referrer-Policy":"same-origin",
         "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"})
 
 
-async def _read_form(request: Request) -> tuple[str, str]:
+async def _read_form(request: Request, *, password_min_length: int = 1) -> tuple[str, str]:
     if request.headers.get("content-type", "").split(";",1)[0].strip() != "application/x-www-form-urlencoded":
         raise HTTPException(status_code=400, detail="form_required")
     body = bytearray()
@@ -64,11 +73,11 @@ async def _read_form(request: Request) -> tuple[str, str]:
             raise HTTPException(status_code=413, detail="form_too_large")
     try:
         fields = parse_qs(body.decode("utf-8"), keep_blank_values=True, max_num_fields=2)
-        if set(fields) != {"username","password"}:
+        if set(fields) != {"username","password"} or any(len(v) != 1 for v in fields.values()):
             raise ValueError
         username = fields["username"][0].strip()
         password = fields["password"][0]
-        if not (3 <= len(username) <= 80 and 10 <= len(password) <= 256):
+        if not (3 <= len(username) <= 80 and password_min_length <= len(password) <= 256):
             raise ValueError
         return username, password
     except (ValueError, UnicodeError, KeyError, IndexError):
@@ -128,6 +137,64 @@ def _hash_password(password: str, salt: bytes) -> str:
     ).hex()
 
 
+@contextmanager
+def _existing_accounts():
+    """Login and diagnostics must never create an empty replacement database."""
+    path = state_root() / "liferecover" / "accounts.sqlite3"
+    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def _authenticate(username: str, password: str) -> str:
+    try:
+        with _existing_accounts() as conn:
+            row = conn.execute(
+                "SELECT account_id,password_hash,salt FROM account WHERE username = ?",
+                (username.strip(),),
+            ).fetchone()
+    except (sqlite3.Error, OSError):
+        raise HTTPException(status_code=503, detail="life_account_database_unavailable") from None
+    if not row:
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    try:
+        actual = _hash_password(password, bytes.fromhex(row["salt"]))
+        matches = secrets.compare_digest(actual, row["password_hash"])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=503, detail="life_account_record_invalid") from None
+    if not matches:
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    return row["account_id"]
+
+
+def login_readiness() -> dict:
+    """Read-only operator diagnostics; never returns names, hashes or secrets."""
+    blockers = []
+    try:
+        _session_secret()
+        signing_ready = True
+    except HTTPException:
+        signing_ready = False
+        blockers.append("LIFE_SESSION_SECRET_NOT_CONFIGURED")
+    accounts = None
+    database_status = "unavailable"
+    try:
+        with _existing_accounts() as conn:
+            accounts = conn.execute("SELECT COUNT(*) FROM account").fetchone()[0]
+        database_status = "readable"
+        if accounts == 0:
+            blockers.append("LIFE_ACCOUNT_SETUP_REQUIRED")
+    except (sqlite3.Error, OSError):
+        blockers.append("LIFE_ACCOUNT_DATABASE_UNAVAILABLE")
+    return {"read_only": True, "ready": not blockers, "blockers": blockers,
+            "session_signing_ready": signing_ready, "database_status": database_status,
+            "account_count": accounts, "password_check": "not_performed",
+            "owner_and_life_accounts_are_separate": True}
+
+
 def _session_secret() -> bytes:
     raw = os.getenv("LIFERECOVER_SESSION_SECRET", "").encode("utf-8")
     if len(raw) < 32:
@@ -156,14 +223,16 @@ def _parse_session(token: str | None) -> str | None:
         payload = f"{account_id}.{expiry}.{nonce}"
         if not secrets.compare_digest(signature, _sign(payload)):
             return None
-        with _db() as conn:
+        with _existing_accounts() as conn:
             row = conn.execute(
                 "SELECT account_id FROM account WHERE account_id = ?",
                 (account_id,),
             ).fetchone()
         return account_id if row else None
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, UnicodeError):
         return None
+    except (sqlite3.Error, OSError):
+        raise HTTPException(status_code=503, detail="life_account_database_unavailable") from None
 
 
 def require_life_user(request: Request) -> str:
@@ -176,8 +245,11 @@ def require_life_user(request: Request) -> str:
 @router.post("/register")
 def register(payload: RegisterRequest, response: Response) -> dict[str, str]:
     invite = os.getenv("LIFERECOVER_REGISTRATION_INVITE", "")
-    if not invite or not secrets.compare_digest(payload.invite_code, invite):
+    if not invite or not secrets.compare_digest(payload.invite_code.encode("utf-8"), invite.encode("utf-8")):
         raise HTTPException(status_code=403, detail="registration_invite_required")
+
+    # Fail before inserting an account if a session cannot be issued.
+    _session_secret()
 
     salt = os.urandom(16)
     account_id = f"usr_{uuid.uuid4().hex}"
@@ -211,26 +283,18 @@ def register(payload: RegisterRequest, response: Response) -> dict[str, str]:
 
 @router.post("/login")
 def login(payload: LoginRequest, response: Response) -> dict[str, str]:
-    with _db() as conn:
-        row = conn.execute(
-            "SELECT account_id,password_hash,salt FROM account WHERE username = ?",
-            (payload.username.strip(),),
-        ).fetchone()
-    if not row:
-        raise HTTPException(status_code=401, detail="invalid_credentials")
-    actual = _hash_password(payload.password, bytes.fromhex(row["salt"]))
-    if not secrets.compare_digest(actual, row["password_hash"]):
-        raise HTTPException(status_code=401, detail="invalid_credentials")
+    account_id = _authenticate(payload.username, payload.password)
     response.set_cookie(
         _COOKIE,
-        _issue_session(row["account_id"]),
+        _issue_session(account_id),
         max_age=_SESSION_TTL,
         httponly=True,
         secure=True,
         samesite="strict",
         path="/",
     )
-    return {"account_id": row["account_id"], "status": "logged_in"}
+    response.headers["Cache-Control"] = "no-store"
+    return {"account_id": account_id, "status": "logged_in"}
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -242,33 +306,38 @@ def login_page() -> HTMLResponse:
 async def login_form(request: Request):
     try:
         username, password = await _read_form(request)
-        with _db() as conn:
-            row = conn.execute(
-                "SELECT account_id,password_hash,salt FROM account WHERE username = ?",
-                (username,),
-            ).fetchone()
-        if not row:
-            return _form_page("로그인", "/life/auth/login-form", "로그인", error="아이디 또는 비밀번호가 일치하지 않습니다.")
-        actual = _hash_password(password, bytes.fromhex(row["salt"]))
-        if not secrets.compare_digest(actual, row["password_hash"]):
-            return _form_page("로그인", "/life/auth/login-form", "로그인", error="아이디 또는 비밀번호가 일치하지 않습니다.")
+        account_id = _authenticate(username, password)
         response = RedirectResponse("/life", status_code=303, headers={"Cache-Control":"no-store"})
-        response.set_cookie(_COOKIE,_issue_session(row["account_id"]),max_age=_SESSION_TTL,
+        response.set_cookie(_COOKIE,_issue_session(account_id),max_age=_SESSION_TTL,
             httponly=True,secure=True,samesite="strict",path="/")
         return response
-    except HTTPException:
-        return _form_page("로그인", "/life/auth/login-form", "로그인", error="입력 내용을 확인해 주세요.")
+    except HTTPException as exc:
+        logger.warning("life_login_failed reason=%s status=%s", exc.detail, exc.status_code)
+        if exc.status_code == 401:
+            error = "아이디 또는 비밀번호가 일치하지 않습니다. 생활앱 전용 계정을 확인하십시오."
+        elif exc.status_code == 503:
+            error = "로그인 서버 설정 또는 계정 저장소를 확인해야 합니다. 관리자에게 문의하십시오."
+        else:
+            error = "아이디와 비밀번호의 입력 형식을 확인하십시오."
+        return _form_page("로그인", "/life/auth/login-form", "로그인",
+                          error=error, status_code=exc.status_code)
+
+
+@owner_router.get("/auth-status")
+def owner_auth_status(response: Response, _: None = Depends(require_owner)) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    return login_readiness()
 
 
 @owner_router.get("/account-setup", response_class=HTMLResponse)
 def owner_account_setup(_: None = Depends(require_owner)) -> HTMLResponse:
-    return _form_page("Life Recover 계정 만들기", "/owner/life/account-setup", "계정 생성")
+    return _form_page("Life Recover 계정 만들기", "/owner/life/account-setup", "계정 생성", password_min_length=10)
 
 
 @owner_router.post("/account-setup")
 async def owner_account_setup_submit(request: Request, _: None = Depends(require_owner)):
     try:
-        username, password = await _read_form(request)
+        username, password = await _read_form(request, password_min_length=10)
         salt = os.urandom(16)
         account_id = f"usr_{uuid.uuid4().hex}"
         with _db() as conn:
@@ -280,14 +349,14 @@ async def owner_account_setup_submit(request: Request, _: None = Depends(require
         return HTMLResponse(
             f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{_FORM_STYLE}</head>
 <body><main><div class="brand">생활의 회복 · Life Recover</div><h1>계정 생성 완료</h1>
-<p>아이디 <b>{username}</b> 계정이 생성됐습니다.</p><p><a href="/life/auth/login">Life Recover 로그인 화면 열기</a></p></main></body></html>""",
+<p>아이디 <b>{escape(username)}</b> 계정이 생성됐습니다.</p><p><a href="/life/auth/login">Life Recover 로그인 화면 열기</a></p></main></body></html>""",
             headers={"Cache-Control":"no-store","Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff",
                      "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}
         )
     except sqlite3.IntegrityError:
-        return _form_page("Life Recover 계정 만들기", "/owner/life/account-setup", "계정 생성", error="이미 사용 중인 아이디입니다.")
-    except HTTPException:
-        return _form_page("Life Recover 계정 만들기", "/owner/life/account-setup", "계정 생성", error="입력 내용을 확인해 주세요.")
+        return _form_page("Life Recover 계정 만들기", "/owner/life/account-setup", "계정 생성", error="이미 사용 중인 아이디입니다.", status_code=409, password_min_length=10)
+    except HTTPException as exc:
+        return _form_page("Life Recover 계정 만들기", "/owner/life/account-setup", "계정 생성", error="입력 내용을 확인하십시오.", status_code=exc.status_code, password_min_length=10)
 
 
 @router.post("/logout")

@@ -35,7 +35,9 @@ def life_home(request: Request) -> HTMLResponse:
         account_id = require_life_user(request)
         identity = escape(account_id[-8:])
         auth_text = f"로그인됨 · {identity}"
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code != 401:
+            raise
         auth_text = "로그인이 필요합니다."
 
     html = f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'>
@@ -72,7 +74,9 @@ color:#172b45;text-decoration:none;min-height:155px}}
 def _page_user_or_login(request: Request) -> str | RedirectResponse:
     try:
         return require_life_user(request)
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code != 401:
+            raise
         return RedirectResponse("/life/auth/login", status_code=303)
 
 
