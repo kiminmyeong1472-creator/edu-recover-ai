@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_v
 from starlette.concurrency import run_in_threadpool
 
 from app.services import open_model_transport as transport
+from app.services import open_model_workspace as workspace
 from app.services.open_model_attachments import (
     AttachmentInput, MAX_ATTACHMENTS, MAX_REQUEST_BYTES, prepare_attachments,
 )
@@ -119,8 +120,17 @@ router = APIRouter(prefix="/owner/open-models", dependencies=[Depends(require_ow
 
 @router.get("/catalog")
 def open_model_catalog() -> JSONResponse:
+    return _catalog_response()
+
+
+@router.get("/chutes/catalog")
+def chutes_model_catalog() -> JSONResponse:
+    return _catalog_response(route="chutes")
+
+
+def _catalog_response(*, route: str | None = None) -> JSONResponse:
     try:
-        models = catalog_status()
+        models = catalog_status() if route is None else catalog_status(route=route)
         for model in models:
             model["selection_group"] = (
                 "cloud_service" if model["model_key"] in _CLOUD_SERVICE_KEYS else
@@ -165,6 +175,17 @@ async def open_model_draft(request: DraftRequest) -> JSONResponse:
 
 @router.post("/call")
 async def open_model_call(request: DirectCallRequest) -> JSONResponse:
+    return await _direct_call_response(request)
+
+
+@router.post("/chutes/call")
+async def chutes_model_call(request: DirectCallRequest) -> JSONResponse:
+    return await _direct_call_response(request, route="chutes")
+
+
+async def _direct_call_response(
+    request: DirectCallRequest, *, route: str | None = None,
+) -> JSONResponse:
     try:
         try:
             family = model_family(request.model_key)
@@ -173,6 +194,8 @@ async def open_model_call(request: DirectCallRequest) -> JSONResponse:
         assert_provider_allowed(family, "generate")
         document_text, images = await run_in_threadpool(prepare_attachments, request.attachments)
         call_options: dict[str, Any] = {"max_tokens": request.max_tokens}
+        if route is not None:
+            call_options["route"] = route
         if images:
             call_options["images"] = images
         answer = await transport.call_model(
@@ -203,10 +226,19 @@ async def open_model_call(request: DirectCallRequest) -> JSONResponse:
 
 @router.get("", response_class=HTMLResponse)
 def open_model_workspace() -> HTMLResponse:
+    return _workspace_response(_HTML)
+
+
+@router.get("/chutes", response_class=HTMLResponse)
+def chutes_model_workspace() -> HTMLResponse:
+    return _workspace_response(workspace.chutes_workspace_html())
+
+
+def _workspace_response(html: str) -> HTMLResponse:
     headers = dict(_HEADERS)
     headers["Content-Security-Policy"] = (
         "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
         "connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
     )
-    return HTMLResponse(_HTML, headers=headers)
+    return HTMLResponse(html, headers=headers)
 

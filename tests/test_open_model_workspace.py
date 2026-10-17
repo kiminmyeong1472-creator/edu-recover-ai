@@ -3,7 +3,7 @@ import re
 import subprocess
 import unittest
 
-from app.services.open_model_workspace import _HTML
+from app.services.open_model_workspace import _HTML, chutes_workspace_html
 
 
 _HARNESS = r"""
@@ -63,16 +63,63 @@ function speechResult(transcript,isFinal=false){return Object.assign([{transcrip
 
 
 class OpenModelWorkspaceTests(unittest.TestCase):
-    def run_workspace(self, assertions, *, voice=False):
+    def run_workspace(self, assertions, *, voice=False, html=None, harness=None):
         import os
 
-        script = re.search(r"<script>(.*?)</script>", _HTML, re.S).group(1)
+        script = re.search(r"<script>(.*?)</script>", html or _HTML, re.S).group(1)
         result = subprocess.run(
-            ["node", "-e", _HARNESS.replace("__TEST__", assertions)],
+            ["node", "-e", (harness or _HARNESS).replace("__TEST__", assertions)],
             input=script, capture_output=True, text=True,
             env=dict(os.environ, TEST_VOICE=str(voice).lower()),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_separate_direct_workspace_keeps_existing_page_and_uses_own_api(self):
+        html = chutes_workspace_html()
+        self.assertIn('href="/owner/open-models/chutes"', _HTML)
+        self.assertIn("fetch('/owner/open-models/catalog'", _HTML)
+        self.assertIn('href="/owner/open-models"', html)
+        self.assertNotIn('<option value="tutor">', html)
+        self.assertNotIn('<option value="questions">', html)
+        self.assertNotIn('<option value="source_review">', html)
+        self.assertIn('CHUTES_API_KEY', html)
+        self.assertIn('1,024토큰', html)
+        harness = _HARNESS.replace('/owner/open-models/catalog', '/owner/open-models/chutes/catalog')
+        harness = harness.replace('DeepSeek-V4.1-Flash', 'DeepSeek-V3.2')
+        harness = harness.replace('supports_images:true', 'supports_images:false')
+        self.run_workspace(r"""
+ choose('DeepSeek-V3.2');
+ element('voice-input').events.click();const microphone=Recognition.instance;
+ const event={resultIndex:0,results:[speechResult('RAG 예제를 설명하십시오.',true)]};
+ microphone.onresult(event);microphone.onresult(event);
+ attach([file('notes.txt','문서 근거')]);await submit();
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].url,'/owner/open-models/chutes/call');
+ assert.equal(requests[0].body.model_key,'DeepSeek-V3.2');
+ assert.equal(requests[0].body.prompt,'시험 질문\nRAG 예제를 설명하십시오.');
+ assert.equal(requests[0].body.attachments.length,1);
+ assert.equal('max_tokens' in requests[0].body,false);
+ assert.ok(element('result').children.some(node=>node.textContent==='<script>untrusted</script>'));
+""", voice=True, html=html, harness=harness)
+
+    def test_separate_direct_workspace_blocks_images_without_fallback(self):
+        harness = _HARNESS.replace('/owner/open-models/catalog', '/owner/open-models/chutes/catalog')
+        harness = harness.replace('DeepSeek-V4.1-Flash', 'DeepSeek-V3.2')
+        harness = harness.replace('supports_images:true', 'supports_images:false')
+        self.run_workspace(r"""
+ choose('DeepSeek-V3.2');attach([file('image.png')]);await submit();
+ assert.equal(requests.length,0);
+""", html=chutes_workspace_html(), harness=harness)
+
+    def test_direct_provider_output_budget_is_optional_and_has_no_app_ceiling(self):
+        harness = _HARNESS.replace('/owner/open-models/catalog', '/owner/open-models/chutes/catalog')
+        harness = harness.replace('DeepSeek-V4.1-Flash', 'DeepSeek-V3.2')
+        self.run_workspace(r"""
+ choose('DeepSeek-V3.2');
+ element('chutes-output-tokens').value='1000000';await submit();
+ assert.equal(requests.length,1);assert.equal(requests[0].body.max_tokens,1000000);
+ for(const invalid of ['-1','1.5','0','1e3']){element('chutes-output-tokens').value=invalid;await submit();assert.equal(requests.length,1);}
+""", html=chutes_workspace_html(), harness=harness)
 
     def test_direct_ui_omits_token_limit_and_keeps_model_output_as_text(self):
         self.assertNotIn('id="max-tokens"', _HTML)

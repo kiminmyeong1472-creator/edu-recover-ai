@@ -50,6 +50,9 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from app.services.open_model_catalog import MODEL_CATALOG, model_family
+from app.services.chutes_direct import (
+    CHUTES_API_KEY_ENV, CHUTES_ROUTE_LABEL, fixed_bindings as chutes_bindings,
+)
 from app.services.open_model_presets import OPENROUTER_MODELS, verified_routes_enabled
 from app.services.open_model_http import OpenModelHTTPError, post_json, validate_endpoint_url
 
@@ -302,12 +305,29 @@ def _enabled() -> bool:
     return raw == "true"
 
 
-def catalog_status() -> list[dict[str, Any]]:
+def _route_bindings(route: str | None) -> dict[str, _Binding]:
+    """Keep the new explicit route independent from every legacy setting."""
+    if route is None:
+        return _bindings()
+    if route != "chutes":
+        raise OpenModelError("등록되지 않은 모델 호출 경로입니다.", "OPEN_MODEL_ROUTE_UNKNOWN", 400)
+    return {
+        key: _Binding(
+            entry["transport"], "", entry["model_id"], None,
+            entry["endpoint_url"], entry["api_key_env"], entry["request_format"],
+        )
+        for key, entry in chutes_bindings().items()
+    }
+
+
+def catalog_status(*, route: str | None = None) -> list[dict[str, Any]]:
     """Return availability flags, never deployment names or account information."""
-    bindings = _bindings()
+    bindings = _route_bindings(route)
     enabled = _enabled()
     rows = []
     for entry in MODEL_CATALOG:
+        if route == "chutes" and entry["model_key"] not in bindings:
+            continue
         binding = bindings.get(entry["model_key"])
         credentials_ready = binding is not None and (
             binding.transport != "openai_compatible" or _http_token(binding) is not None
@@ -317,6 +337,10 @@ def catalog_status() -> list[dict[str, Any]]:
                  "disabled" if not enabled else "configured_not_verified")
         row = dict(entry, configured=bool(credentials_ready),
                    enabled=enabled and bool(credentials_ready), readiness_state=state)
+        if route == "chutes":
+            row.update(display_name=entry["display_name"] + " · Chutes 직접",
+                       route_label=CHUTES_ROUTE_LABEL,
+                       required_api_key_env=CHUTES_API_KEY_ENV)
         if binding is not None and _supports_images(binding):
             row["supports_images"] = True
         if binding is not None and binding.endpoint_url == OPENROUTER_CHAT_ENDPOINT:
@@ -665,6 +689,7 @@ def _invoke(
 async def call_model(
     model_key: str, instructions: str, prompt: str, *, max_tokens: int | None = 2048,
     images: list[dict[str, str]] | None = None,
+    route: str | None = None,
 ) -> str:
     """Make exactly one configured inference attempt, with no automatic fallback."""
     try:
@@ -680,7 +705,7 @@ async def call_model(
             raise OpenModelError("모델에 전달할 요청 내용이 크기 제한을 초과했습니다.", "OPEN_MODEL_INPUT_INVALID", 400)
     except UnicodeError:
         raise OpenModelError("모델에 전달할 요청 내용이 올바르지 않습니다.", "OPEN_MODEL_INPUT_INVALID", 400) from None
-    bindings = _bindings()
+    bindings = _route_bindings(route)
     if not _enabled():
         raise OpenModelError("선택 모델의 호출 기능이 활성화되지 않았습니다.", "OPEN_MODEL_DISABLED", 503)
     binding = bindings.get(model_key)

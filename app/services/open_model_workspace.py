@@ -18,7 +18,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 #status,#model-readiness{white-space:pre-wrap}#result{overflow-wrap:anywhere}#result p{white-space:pre-wrap}
 .error{color:#a01919}li{margin:8px 0}a{color:#174d9e}@media(max-width:600px){.grid{grid-template-columns:1fr}section{padding:16px}h1{font-size:24px}}
 </style></head><body><main>
-<header><strong>EduRecover</strong><a href="/owner">관리 화면</a></header>
+<header><strong>EduRecover</strong><a href="/owner">관리 화면</a><a href="/owner/open-models/chutes">별도 직접 호출</a></header>
 <h1>교육·의료 AI 작업</h1>
 <p>선택한 8개 계열·25개 모델에 직접 질문하거나 튜터 대화, 문제 출제, 자료 검토를 진행할 수 있습니다. Qwen·DeepSeek·gpt-oss·Gemma·GLM·Mistral·Phi·NVIDIA Nemotron을 포함하며, Amazon Nova 등 AWS 추가 후보는 따로 표시합니다.</p>
 <p>GPT-6 Luna는 별도 Azure 서비스로 표시합니다. OpenRouter를 통해 Azure로만 요청하며, 제공자가 입력·응답을 저장하지 않는 조건(ZDR)을 충족하는 경로에만 요청하도록 제한합니다. 실제 호출에는 연결 설정과 소유자 사용 허용이 필요합니다.</p>
@@ -274,3 +274,48 @@ byId('draft-form').addEventListener('submit',async event=>{
 });
 addSource();setupVoice();updateTask();loadModels();
 </script></body></html>'''
+
+
+def chutes_workspace_html() -> str:
+    """A separate direct-only workspace; no existing route is replaced."""
+    html = _HTML.replace(
+        '<a href="/owner/open-models/chutes">별도 직접 호출</a>',
+        '<a href="/owner/open-models">기존 모델 작업</a>',
+    )
+    intro_start = html.index('<h1>')
+    intro_end = html.index('<section><form')
+    html = html[:intro_start] + '''<h1>공개 모델 별도 직접 호출</h1>
+<p>Railway 서버에서 Chutes의 DeepSeek-V3.2에 직접 요청합니다. 이 화면은 OpenRouter를 거치지 않으며, 기존 모델 작업 화면의 연결은 그대로 유지됩니다.</p>
+<p>별도 인증 키 CHUTES_API_KEY가 서버에 필요합니다. OpenRouter 키나 DeepSeek 공식 API 키를 대신 사용하지 않습니다. 키 등록 여부와 실제 응답 성공 여부를 구분해 표시합니다.</p>
+<p>사용 조건 검토: 모델의 MIT 라이선스와 확인한 Chutes 약관에서는 경쟁 모델 개발 금지 조항을 찾지 못했습니다. 이는 모든 학습 목적에 대한 별도의 서면 승인을 받았다는 뜻은 아닙니다. 제공자는 API 입력·응답을 저장하지 않는다고 명시하며, 실제 계정과 호출 상태는 별도로 확인해야 합니다.</p>
+<p><a href="https://chutes.ai/terms" target="_blank" rel="noopener noreferrer">Chutes 사용 조건</a> · <a href="https://huggingface.co/deepseek-ai/DeepSeek-V3.2/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">모델 MIT 라이선스</a> · <a href="https://chutes.ai/app" target="_blank" rel="noopener noreferrer">Chutes 계정·키 관리</a></p>
+<p>문서·텍스트 파일과 음성 받아쓰기를 사용할 수 있습니다. 이 모델은 사진 입력을 지원하지 않습니다. 앱이 답변 길이를 지정하지 않으면 제공자의 기본값이 적용되며, 공식 문서에 기재된 기본 답변 예산은 1,024토큰입니다.</p>
+''' + html[intro_end:]
+    for option in (
+        '<option value="tutor">튜터 대화·개념 설명</option>',
+        '<option value="questions">교재 기반 문제 출제</option>',
+        '<option value="source_review">교육·의료 자료 검토</option>',
+    ):
+        html = html.replace(option, '')
+    html = html.replace(
+        '<div id="direct-options"><p>앱에서 답변 토큰 수를 제한하지 않습니다. 모델 제공자의 처리 한도는 적용됩니다.</p></div>',
+        '<div id="direct-options"><label for="chutes-output-tokens">답변 길이 직접 지정 (선택)</label>'
+        '<input id="chutes-output-tokens" type="number" min="1" step="1" inputmode="numeric" '
+        'placeholder="비워두면 제공자 기본값 적용">'
+        '<p>토큰은 AI가 글을 처리하는 단위입니다. 필요한 답변 길이를 양의 정수로 지정할 수 있습니다. '
+        '앱에서 상한을 정하지 않으며, 제공자의 문맥·출력 한도는 적용됩니다.</p></div>',
+    )
+    html = html.replace(
+        "  if(task==='direct'&&attachmentFiles.length)",
+        r"""  const tokenOverride=byId('chutes-output-tokens').value.trim();
+  if(tokenOverride){const amount=Number(tokenOverride);if(!/^[1-9]\d*$/.test(tokenOverride)||!Number.isSafeInteger(amount))throw new Error('답변 길이는 양의 정수로 입력하십시오.');body.max_tokens=amount;}
+  if(task==='direct'&&attachmentFiles.length)""",
+    )
+    # All form requests stay on this named route. There is no fallback to the
+    # existing call API, including for an injected unsupported task value.
+    for suffix in ('catalog', 'call', 'draft'):
+        html = html.replace(
+            '/owner/open-models/' + suffix,
+            '/owner/open-models/chutes/' + suffix,
+        )
+    return html
