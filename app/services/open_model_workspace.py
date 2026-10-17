@@ -48,7 +48,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 </main><script>
 const byId=id=>document.getElementById(id);
 let sourceCount=0, busy=false, tutorHistory=[], modelRows=new Map(), attachmentFiles=[], currentTask='direct';
-let recognition=null, listening=false, voiceBase='', voiceFinal='';
+let recognition=null, listening=false, voiceBase='';
 const MAX_ATTACHMENTS=4,MAX_ATTACHMENT_BYTES=8*1024*1024;
 const attachmentTypes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',txt:'text/plain',md:'text/plain',csv:'text/plain',json:'text/plain',py:'text/plain',js:'text/plain',html:'text/plain',css:'text/plain',yaml:'text/plain',yml:'text/plain'};
 function attachmentStatus(text,error=false){byId('attachment-status').textContent=text;byId('attachment-status').className=error?'error':'';}
@@ -94,8 +94,10 @@ function setupVoice(){
  recognition.onstart=()=>{if(busy){try{recognition.stop();}catch(error){}listening=false;updateVoiceButton();return;}listening=true;voiceStatus('듣고 있습니다. 음성 입력을 마치려면 중지하십시오. 자동으로 질문을 보내지 않습니다.');updateVoiceButton();};
  recognition.onresult=event=>{
   if(busy||!listening)return;
-  let interim='';for(let index=event.resultIndex;index<event.results.length;index++){const result=event.results[index];if(result.isFinal)voiceFinal+=result[0].transcript+' ';else interim+=result[0].transcript;}
-  const text=voiceBase+(voiceBase?'\\n':'')+voiceFinal+interim,field=byId('question');field.value=field.maxLength>0?text.slice(0,field.maxLength):text;
+  // results is the current session snapshot, not new text to append. Rebuild
+  // it so repeated final events and revised interim text cannot accumulate.
+  const parts=[];for(let index=0;index<event.results.length;index++){const transcript=event.results[index]?.[0]?.transcript;if(typeof transcript==='string'&&transcript.trim())parts.push(transcript.trim());}
+  const transcript=parts.join(' '),text=voiceBase+(voiceBase&&transcript?'\\n':'')+transcript,field=byId('question');field.value=field.maxLength>0?text.slice(0,field.maxLength):text;
  };
  recognition.onerror=event=>{listening=false;const messages={'not-allowed':'마이크 사용이 허용되지 않았습니다. 브라우저에서 마이크 권한을 확인하십시오.','service-not-allowed':'이 브라우저에서 음성 인식 서비스를 사용할 수 없습니다.','audio-capture':'사용 가능한 마이크를 찾지 못했습니다.','no-speech':'인식한 음성이 없습니다. 다시 시작하십시오.','network':'음성 인식 서비스에 연결하지 못했습니다.'};voiceStatus(messages[event.error]||'음성 입력이 중단되었습니다. 질문을 직접 입력하거나 다시 시작하십시오.',true);updateVoiceButton();};
  recognition.onend=()=>{listening=false;updateVoiceButton();if(!byId('voice-status').className.includes('error'))voiceStatus('음성 입력을 마쳤습니다. 내용을 확인한 뒤 질문을 보내십시오.');};
@@ -104,7 +106,7 @@ function setupVoice(){
 function toggleVoice(){
  if(busy||!recognition)return;
  if(listening){stopVoice();return;}
- voiceBase=byId('question').value.trimEnd();voiceFinal='';
+ voiceBase=byId('question').value.trimEnd();
  try{listening=true;updateVoiceButton();recognition.start();}catch(error){listening=false;voiceStatus('음성 입력을 시작하지 못했습니다. 마이크 권한을 확인한 뒤 다시 시작하십시오.',true);updateVoiceButton();}
 }
 function addSource(){
