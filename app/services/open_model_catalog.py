@@ -53,6 +53,8 @@ AWS_ADDITIONAL_MODEL_CATALOG: tuple[dict[str, str], ...] = (
 # owner's provider allow/hold controls; it is not the gpt-oss family.
 CLOUD_SERVICE_MODEL_CATALOG: tuple[dict[str, str], ...] = (
     {"model_key": "GPT-6-Luna", "family": "openai", "display_name": "GPT-6 Luna · Azure 경유"},
+    {"model_key": "Claude-Haiku-5.5", "family": "anthropic", "display_name": "Claude Haiku 5.5 · ZDR 경로"},
+    {"model_key": "Gemini-2.5-Flash-Lite", "family": "gemini", "display_name": "Gemini 2.5 Flash-Lite · ZDR 경로"},
 )
 MODEL_CATALOG = SOURCE_MODEL_CATALOG + AWS_ADDITIONAL_MODEL_CATALOG + CLOUD_SERVICE_MODEL_CATALOG
 _MODEL_FAMILIES = {entry["model_key"]: entry["family"] for entry in MODEL_CATALOG}

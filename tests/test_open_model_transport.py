@@ -82,11 +82,11 @@ class CatalogTests(unittest.TestCase):
     def test_source_names_families_and_public_flags_only(self):
         self.assertEqual(25, len(SOURCE_MODEL_CATALOG))
         self.assertEqual(4, len(AWS_ADDITIONAL_MODEL_CATALOG))
-        self.assertEqual(1, len(CLOUD_SERVICE_MODEL_CATALOG))
+        self.assertEqual(3, len(CLOUD_SERVICE_MODEL_CATALOG))
         self.assertEqual(LUNA_KEY, CLOUD_SERVICE_MODEL_CATALOG[0]["model_key"])
         self.assertEqual("openai", CLOUD_SERVICE_MODEL_CATALOG[0]["family"])
-        self.assertEqual(30, len(MODEL_CATALOG))
-        self.assertEqual(30, len({entry["model_key"] for entry in MODEL_CATALOG}))
+        self.assertEqual(32, len(MODEL_CATALOG))
+        self.assertEqual(32, len({entry["model_key"] for entry in MODEL_CATALOG}))
         self.assertEqual("openai", model_family(LUNA_KEY))
         self.assertEqual({"deepseek", "qwen", "gpt-oss", "gemma", "glm", "mistral", "phi", "nemotron"},
                          {entry["family"] for entry in SOURCE_MODEL_CATALOG})
