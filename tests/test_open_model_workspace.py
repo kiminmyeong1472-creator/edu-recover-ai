@@ -54,6 +54,7 @@ function attach(files){element('attachments').files=files;element('attachments')
 function file(name,contents='file body',size=null){return {name,contents,size:size===null?Buffer.byteLength(contents):size}}
 function selectedNames(){return element('attachment-list').children.map(item=>item.children[0].textContent)}
 function switchTask(task){element('task').value=task;element('task').events.change()}
+function speechResult(transcript,isFinal=false){return Object.assign([{transcript}],{isFinal})}
 (async()=>{
  vm.runInContext(fs.readFileSync(0,'utf8'),context);await new Promise(resolve=>setImmediate(resolve));
  __TEST__
@@ -165,6 +166,76 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  const before=element('question').value;
  microphone.onresult({resultIndex:0,results:[Object.assign([{transcript:'busy late text'}],{isFinal:true})]});assert.equal(element('question').value,before);
  run('setBusy(false)');assert.equal(element('voice-input').disabled,false);assert.equal(requests.length,0);
+ """, voice=True)
+
+    def test_repeated_final_voice_event_does_not_repeat_the_same_words(self):
+        self.run_workspace(r"""
+ const microphone=Recognition.instance;element('voice-input').events.click();
+ const event={resultIndex:0,results:[speechResult('변형 생성 문법',true)]};
+ microphone.onresult(event);microphone.onresult(event);microphone.onresult(event);
+ assert.equal(element('question').value.trimEnd(),'시험 질문\n변형 생성 문법');
+ assert.equal(requests.length,0,'dictation must never send a question automatically');
+ """, voice=True)
+
+    def test_cumulative_final_replacement_uses_the_latest_transcript(self):
+        self.run_workspace(r"""
+ const microphone=Recognition.instance;element('voice-input').events.click();
+ for(const transcript of ['변형','변형 생성','변형 생성 문법']){
+  microphone.onresult({resultIndex:0,results:[speechResult(transcript,true)]});
+  assert.equal(element('question').value.trimEnd(),'시험 질문\n'+transcript);
+ }
+ """, voice=True)
+
+    def test_interim_voice_replacement_and_shrinking_remove_stale_words(self):
+        self.run_workspace(r"""
+ const microphone=Recognition.instance;element('voice-input').events.click();
+ for(const transcript of ['변형 생성 문법 설명','변형','변형 생성 문법']){
+  microphone.onresult({resultIndex:0,results:[speechResult(transcript)]});
+  assert.equal(element('question').value.trimEnd(),'시험 질문\n'+transcript);
+ }
+ microphone.onresult({resultIndex:0,results:[speechResult('변형 생성 문법',true)]});
+ assert.equal(element('question').value.trimEnd(),'시험 질문\n변형 생성 문법');
+ """, voice=True)
+
+    def test_stable_final_and_revised_interim_remain_once_each(self):
+        self.run_workspace(r"""
+ const microphone=Recognition.instance;element('voice-input').events.click();
+ microphone.onresult({resultIndex:0,results:[speechResult('첫 문장.',true)]});
+ for(const transcript of ['두 번째 문장 설명','두 번째','두 번째 문장.']){
+  microphone.onresult({resultIndex:1,results:[speechResult('첫 문장.',true),speechResult(transcript)]});
+  assert.equal(element('question').value.trimEnd(),'시험 질문\n첫 문장. '+transcript);
+ }
+ microphone.onresult({resultIndex:1,results:[speechResult('첫 문장.',true),speechResult('두 번째 문장.',true)]});
+ assert.equal(element('question').value.trimEnd(),'시험 질문\n첫 문장. 두 번째 문장.');
+ """, voice=True)
+
+    def test_deliberate_repeated_words_are_preserved(self):
+        self.run_workspace(r"""
+ const microphone=Recognition.instance;element('voice-input').events.click();
+ microphone.onresult({resultIndex:0,results:[speechResult('아니 아니, RAG 코드를 만들어 주십시오.',true)]});
+ assert.equal(element('question').value.trimEnd(),'시험 질문\n아니 아니, RAG 코드를 만들어 주십시오.');
+ """, voice=True)
+
+    def test_each_microphone_start_uses_current_text_and_resets_results(self):
+        self.run_workspace(r"""
+ const microphone=Recognition.instance;element('question').value='직접 입력한 내용';
+ element('voice-input').events.click();
+ microphone.onresult({resultIndex:0,results:[speechResult('첫 녹음',true)]});
+ element('voice-input').events.click();
+ element('question').value='수정한 내용\n첫 녹음';
+ element('voice-input').events.click();
+ microphone.onresult({resultIndex:0,results:[speechResult('새 녹음',true)]});
+ assert.equal(element('question').value.trimEnd(),'수정한 내용\n첫 녹음\n새 녹음');
+ assert.equal(microphone.starts,2);assert.equal(requests.length,0);
+ """, voice=True)
+
+    def test_late_voice_result_after_stop_does_not_modify_question(self):
+        self.run_workspace(r"""
+ const microphone=Recognition.instance;element('voice-input').events.click();
+ microphone.onresult({resultIndex:0,results:[speechResult('확인한 내용',true)]});
+ element('voice-input').events.click();const before=element('question').value;
+ microphone.onresult({resultIndex:0,results:[speechResult('중지 후 도착한 내용',true)]});
+ assert.equal(element('question').value,before);assert.equal(requests.length,0);
  """, voice=True)
 
 
