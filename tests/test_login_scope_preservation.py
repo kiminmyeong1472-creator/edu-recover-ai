@@ -8,10 +8,10 @@ from fastapi import Depends
 
 from app.platform_core import life_auth as auth
 from app.services import owner_basic_auth as owner
-from test_life_login import LifeLoginTests as _LifeLoginTests
+import test_life_login as login_fixtures
 
 
-class LoginScopePreservationTests(_LifeLoginTests):
+class LoginScopePreservationTests(login_fixtures.LifeLoginTests):
     # Run only the additional cases here; the base suite is collected separately.
     def setUp(self):
         super().setUp()
@@ -93,6 +93,6 @@ class LoginScopePreservationTests(_LifeLoginTests):
 
 
 # Avoid duplicating inherited cases in the new class's test count.
-for _name in dir(_LifeLoginTests):
+for _name in dir(login_fixtures.LifeLoginTests):
     if _name.startswith("test_") and not _name.startswith("test_additional_"):
         setattr(LoginScopePreservationTests, _name, None)
