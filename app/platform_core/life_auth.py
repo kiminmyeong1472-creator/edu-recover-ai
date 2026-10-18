@@ -180,19 +180,43 @@ def login_readiness() -> dict:
         signing_ready = False
         blockers.append("LIFE_SESSION_SECRET_NOT_CONFIGURED")
     accounts = None
+    integrity_ok = None
     database_status = "unavailable"
     try:
         with _existing_accounts() as conn:
+            # COUNT(*) alone also succeeds on an incompatible account schema.
+            conn.execute("SELECT account_id,username,password_hash,salt,created_at FROM account LIMIT 0")
+            integrity_ok = conn.execute("PRAGMA quick_check(1)").fetchone()[0] == "ok"
             accounts = conn.execute("SELECT COUNT(*) FROM account").fetchone()[0]
         database_status = "readable"
+        if not integrity_ok:
+            blockers.append("LIFE_ACCOUNT_DATABASE_INTEGRITY_FAILED")
         if accounts == 0:
             blockers.append("LIFE_ACCOUNT_SETUP_REQUIRED")
     except (sqlite3.Error, OSError):
         blockers.append("LIFE_ACCOUNT_DATABASE_UNAVAILABLE")
     return {"read_only": True, "ready": not blockers, "blockers": blockers,
             "session_signing_ready": signing_ready, "database_status": database_status,
+            "database_integrity_ok": integrity_ok,
             "account_count": accounts, "password_check": "not_performed",
+            "verification_scope": "configuration_and_storage_only",
             "owner_and_life_accounts_are_separate": True}
+
+
+def log_login_readiness() -> None:
+    """Emit only bounded configuration flags and counts at service startup."""
+    import json
+    from app.services.owner_basic_auth import _credentials, _TTL
+
+    users, password = _credentials()
+    result = login_readiness()
+    result["owner"] = {"configured": bool(users and password),
+                       "session_ttl_seconds": _TTL,
+                       "session_ends_on_restart": True,
+                       "password_check": "not_performed"}
+    logging.getLogger("uvicorn.error").info(
+        "auth_readiness=%s", json.dumps(result, sort_keys=True)
+    )
 
 
 def _session_secret() -> bytes:
