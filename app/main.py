@@ -55,7 +55,9 @@ from app.services.encrypted_backup import (
 )
 from app.services.agent_access_guard import agent_access_status, evaluate_agent_access
 from app.services.socratic_trap import detect_socratic_traps
-from app.platform_core.life_auth import router as life_auth_router, owner_router as life_owner_router
+from app.platform_core.life_auth import (
+    router as life_auth_router, owner_router as life_owner_router, log_login_readiness,
+)
 from app.liferecover_runtime import router as liferecover_router
 from app.domains.medical.hospital_os_api import router as hospital_os_router
 from app.domains.medical.hospital_access_api import router as hospital_access_router, owner_router as hospital_access_owner_router
@@ -84,6 +86,7 @@ app.router.add_event_handler("startup", prepare_runtime_storage)
 app.router.add_event_handler("startup", import_private_documents_from_env)
 app.router.add_event_handler("startup", log_storage_inventory)
 app.router.add_event_handler("startup", log_backup_readiness)
+app.router.add_event_handler("startup", log_login_readiness)
 app.router.add_event_handler("startup", start_backup_scheduler)
 app.router.add_event_handler("shutdown", stop_backup_scheduler)
 app.include_router(owner_auth_router)
