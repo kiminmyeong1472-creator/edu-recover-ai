@@ -1,4 +1,4 @@
-"""Trust Chain cross-validation using real OpenAI and Anthropic APIs.
+"""Trust Chain cross-validation using isolated OpenAI and Anthropic channels.
 
 The protocol is fail-closed and deliberately rejects majority voting.
 A teacher-selected problem set is approved only when both independent providers return
@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.services.access_notice import AI_ACCESS_NOTICE
 from app.services.control_plane import ProviderHeld, assert_provider_allowed
 from app.services.privacy_guard import ProviderZDRHeld, assert_provider_zdr
+from app.services import bedrock_provider
 
 
 class WorkerVerdict(StrEnum):
@@ -164,6 +165,16 @@ async def _validate_with_openai(
     except (ProviderHeld, ProviderZDRHeld) as exc:
         return WorkerResult(worker=worker, verdict=WorkerVerdict.FAIL, reasons=(str(exc),))
 
+    try:
+        if bedrock_provider.uses_bedrock("openai"):
+            text, _ = await bedrock_provider.converse_text(
+                "openai", VALIDATION_INSTRUCTIONS, _serialize_problems(problems), max_tokens=1200,
+            )
+            return _parse_worker_response(worker, text)
+    except Exception as exc:
+        return WorkerResult(worker=worker, verdict=WorkerVerdict.FAIL,
+                            reasons=(f"OpenAI validation request failed ({type(exc).__name__}).",))
+
     if settings.openai_api_key is None:
         return WorkerResult(
             worker=worker,
@@ -205,6 +216,16 @@ async def _validate_with_anthropic(
         assert_provider_zdr("claude")
     except (ProviderHeld, ProviderZDRHeld) as exc:
         return WorkerResult(worker=worker, verdict=WorkerVerdict.FAIL, reasons=(str(exc),))
+
+    try:
+        if bedrock_provider.uses_bedrock("claude"):
+            text, _ = await bedrock_provider.converse_text(
+                "claude", VALIDATION_INSTRUCTIONS, _serialize_problems(problems), max_tokens=1200,
+            )
+            return _parse_worker_response(worker, text)
+    except Exception as exc:
+        return WorkerResult(worker=worker, verdict=WorkerVerdict.FAIL,
+                            reasons=(f"Anthropic validation request failed ({type(exc).__name__}).",))
 
     if settings.anthropic_api_key is None:
         return WorkerResult(

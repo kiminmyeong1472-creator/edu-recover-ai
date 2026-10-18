@@ -78,9 +78,10 @@ class ProviderExecutionTests(unittest.TestCase):
             self.assertFalse(retry.json()['fallback_used'])
             self.assertEqual([call.kwargs['provider'] for call in gen.await_args_list], ['openai', 'openai'])
 
-    def test_zdr_missing_or_bad_flag_never_reaches_sdk(self):
-        for value in ('true', 'ture', ''):
-            with self.subTest(value=value), patch.dict(os.environ, {'EDURECOVER_REQUIRE_ZDR': value}), \
+    def test_explicit_zdr_enforcement_with_missing_or_bad_approval_never_reaches_sdk(self):
+        for value in ('false', 'ture', ''):
+            with self.subTest(value=value), patch.dict(os.environ, {
+                    'EDURECOVER_REQUIRE_ZDR': 'true', 'EDURECOVER_OPENAI_ZDR_CONFIRMED': value}), \
                     patch.object(generation, 'AsyncOpenAI') as sdk:
                 response = self.client.post('/channel/openai/generate', json=self.payload, auth=self.credentials)
                 self.assertEqual(response.status_code, 423)

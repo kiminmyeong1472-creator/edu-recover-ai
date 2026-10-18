@@ -1,4 +1,4 @@
-"""Fail-closed provider-retention gate for EduRecover AI."""
+"""Opt-in provider-retention gate and factual approval ledger for EduRecover AI."""
 
 from __future__ import annotations
 
@@ -19,8 +19,7 @@ def _bool_env(name: str, default: bool = False) -> bool:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    # A typo must not disable a default-on privacy requirement or enable
-    # an unconfirmed provider. Preserve the security default.
+    # Unknown values neither opt in to enforcement nor confirm an approval.
     return default
 
 
@@ -32,7 +31,9 @@ _PROVIDER_SETTINGS = {
 
 
 def privacy_status() -> dict[str, Any]:
-    required = _bool_env("EDURECOVER_REQUIRE_ZDR", True)
+    # Owner temporarily disabled ZDR blocking. Retain approval facts, but require
+    # a subsequent explicit true flag before this gate can block provider calls.
+    required = _bool_env("EDURECOVER_REQUIRE_ZDR", False)
     providers: dict[str, Any] = {}
     for provider, (flag_name, basis_name) in _PROVIDER_SETTINGS.items():
         confirmed = _bool_env(flag_name, False)
@@ -44,12 +45,14 @@ def privacy_status() -> dict[str, Any]:
         }
     return {
         "strict_provider_zdr_required": required,
-        "fail_closed": True,
+        "fail_closed": required,
+        "enforcement_mode": "explicit_operator_opt_in" if required else "disabled_by_owner",
         "platform_chat_history_forwarded": False,
         "provider_calls_are_stateless": True,
         "providers": providers,
         "note": (
-            "Application flags are only an operator attestation. Provider-side ZDR must be enabled, "
+            "Disabling enforcement does not enable provider-side ZDR or change account retention. "
+            "Application approval flags are only an operator attestation. Provider-side ZDR must be enabled, "
             "approved, contracted, or otherwise formally covered for the exact organization/project, "
             "endpoint and model before the corresponding flag is set true."
         ),

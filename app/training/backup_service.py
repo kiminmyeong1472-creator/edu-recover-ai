@@ -84,6 +84,33 @@ def _is_enabled() -> bool:
     return os.getenv("EDURECOVER_BACKUP_ENABLED", "").lower() in {"true", "1", "yes"}
 
 
+def _persistent_volume_verified() -> bool:
+    """Check an actual mount; an environment path alone never proves durability.
+
+    The provider-neutral mount is an explicit opt-in. If supplied, even an empty
+    or invalid value must not fall back to a different Railway mount.
+    """
+    mount = os.getenv("EDURECOVER_PERSISTENT_MOUNT_PATH")
+    if mount is None:
+        mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+    if not mount:
+        return False
+    try:
+        mount_path = Path(mount)
+        if not mount_path.is_absolute() or not mount_path.is_mount():
+            return False
+        mount_root = mount_path.resolve(strict=True)
+        if mount_root == Path("/"):
+            return False
+        return all(
+            os.getenv(ENV[key])
+            and Path(os.environ[ENV[key]]).resolve().is_relative_to(mount_root)
+            for key in ("server_root", "state_dir", "source_root", "manifest")
+        )
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
 def get_backup_service_status() -> dict[str, Any]:
     """No cloud call and no secret values: configuration is not a successful backup."""
     blockers = []
@@ -108,14 +135,7 @@ def get_backup_service_status() -> dict[str, Any]:
         blockers.append("DRIVE_DESTINATIONS_NOT_CONFIGURED")
     # A /tmp or container-layer backup is never advertised as durable production storage.
     production = bool(os.getenv("RAILWAY_SERVICE_ID")) or os.getenv("ENVIRONMENT", "").lower() == "production"
-    durable = False
-    mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
-    if mount:
-        mount_path = Path(mount)
-        durable = mount_path.is_mount() and mount_path.resolve() != Path("/")
-        if durable:
-            durable = all(os.getenv(ENV[k]) and Path(os.environ[ENV[k]]).resolve().is_relative_to(mount_path.resolve())
-                          for k in ("server_root", "state_dir", "source_root"))
+    durable = _persistent_volume_verified()
     if production and not durable:
         blockers.append("PERSISTENT_SOURCE_SERVER_AND_STATE_VOLUME_REQUIRED")
     for key in ("source_root", "server_root", "state_dir"):

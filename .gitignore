@@ -89,6 +89,7 @@ temp/
 *.pid.lock
 
 # Local databases
+.edurecover_classroom_state/
 *.sqlite
 *.sqlite3
 *.db

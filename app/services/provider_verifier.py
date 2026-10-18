@@ -21,6 +21,8 @@ from app.services.auto_generator import (
     _log_gemini_error,
     _vertex_gemini_client,
     gemini_generation_config,
+    bedrock_selected,
+    bedrock_text,
 )
 
 
@@ -109,6 +111,12 @@ async def _verify_payload(
         raise GenerationFailed("At least one generated problem is required.")
 
     normalized = provider.strip().lower()
+
+    if normalized in {GenerationProvider.OPENAI.value, GenerationProvider.CLAUDE.value}:
+        assert_provider_zdr(normalized)
+        if bedrock_selected(normalized):
+            text, _ = await bedrock_text(normalized, VERIFICATION_INSTRUCTIONS, payload, max_tokens=1200)
+            return {"provider": normalized, **_parse_result(text)}
 
     if normalized == GenerationProvider.OPENAI.value:
         assert_provider_zdr("openai")

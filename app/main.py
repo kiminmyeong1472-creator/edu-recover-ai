@@ -299,6 +299,13 @@ async def health_check() -> dict[str, str]:
 
 
 def _provider_secret_configured(provider: str) -> bool:
+    from app.services import bedrock_provider
+    if provider in {"openai", "claude"}:
+        try:
+            if bedrock_provider.uses_bedrock(provider):
+                return bedrock_provider.configured(provider)
+        except bedrock_provider.BedrockProviderError:
+            return False
     return {
         "openai": settings.openai_api_key is not None,
         "gemini": settings.google_credentials_json is not None,
@@ -307,6 +314,11 @@ def _provider_secret_configured(provider: str) -> bool:
 
 
 def _provider_model(provider: str) -> str:
+    if provider in {"openai", "claude"} and settings.provider_transport.strip().lower() == "bedrock":
+        return {
+            "openai": settings.bedrock_openai_inference_profile or "",
+            "claude": settings.bedrock_claude_inference_profile or "",
+        }[provider]
     return {
         "openai": settings.openai_model,
         "gemini": settings.gemini_model,
@@ -372,15 +384,21 @@ async def owner_ai_status(_: None = Depends(require_owner)) -> dict[str, Any]:
             "configured": _provider_secret_configured(provider),
             "model": _provider_model(provider),
             "thinking_level": settings.gemini_thinking_level if provider == "gemini" else None,
-            "product_profile": "GOOGLE_CLOUD_VERTEX_AI" if provider == "gemini" else None,
-            "location": settings.gemini_vertex_location if provider == "gemini" else None,
+            "product_profile": ("GOOGLE_CLOUD_VERTEX_AI" if provider == "gemini" else
+                                "AWS_BEDROCK_CONVERSE" if settings.provider_transport.strip().lower() == "bedrock" else
+                                "DIRECT_PROVIDER_API"),
+            "location": (settings.gemini_vertex_location if provider == "gemini" else
+                         settings.aws_region if settings.provider_transport.strip().lower() == "bedrock" else None),
+            "connection_verification": "not_checked_configuration_only",
+            "runtime_retention_check": ("optional_diagnostic_not_enforced" if provider in {"openai", "claude"}
+                                        and settings.provider_transport.strip().lower() == "bedrock" else None),
             "control": control,
             "privacy": privacy.get("providers", {}).get(provider, {}),
         }
     return {
         "provider_selection_required": True,
         "providers": rows,
-        "strict_provider_zdr_required": privacy.get("strict_provider_zdr_required", True),
+        "strict_provider_zdr_required": privacy.get("strict_provider_zdr_required", False),
         "platform_chat_history_forwarded": False,
         "provider_calls_are_stateless": True,
     }

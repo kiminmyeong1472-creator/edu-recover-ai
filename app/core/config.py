@@ -53,6 +53,20 @@ class Settings(BaseSettings):
         default="high",
         validation_alias="GEMINI_THINKING_LEVEL",
     )
+    # This controls OpenAI and Claude only. Gemini remains on enterprise Google
+    # Cloud. AWS deployment must explicitly opt in; it never falls back to a
+    # direct provider API if IAM, retention or profile validation fails.
+    provider_transport: str = Field(
+        default="direct",
+        validation_alias="EDURECOVER_PROVIDER_TRANSPORT",
+    )
+    aws_region: str | None = Field(default=None, validation_alias="AWS_REGION")
+    bedrock_openai_inference_profile: str | None = Field(
+        default=None, validation_alias="EDURECOVER_BEDROCK_OPENAI_INFERENCE_PROFILE",
+    )
+    bedrock_claude_inference_profile: str | None = Field(
+        default=None, validation_alias="EDURECOVER_BEDROCK_CLAUDE_INFERENCE_PROFILE",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

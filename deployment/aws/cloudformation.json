@@ -1,0 +1,528 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "EduRecover single-worker SSM-only AWS migration candidate. Zero ingress and loopback-only application, retained encrypted EBS, external original pinned secret; application stopped at launch.",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "Existing VPC; no VPC/network creation"
+    },
+    "SubnetId": {
+      "Type": "AWS::EC2::Subnet::Id",
+      "Description": "Existing subnet with matching IGW default route (default egress-only public IPv4) or an existing NAT route"
+    },
+    "AvailabilityZone": {
+      "Type": "AWS::EC2::AvailabilityZone::Name"
+    },
+    "AmiId": {
+      "Type": "AWS::EC2::Image::Id",
+      "Description": "Verified official Amazon Linux 2023 x86_64 AMI"
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.small",
+      "AllowedValues": [
+        "t3.small",
+        "t3.medium",
+        "t3.large",
+        "m6i.large"
+      ]
+    },
+    "ImageUri": {
+      "Type": "String",
+      "AllowedPattern": "[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}",
+      "Description": "Existing private ECR image pinned to immutable digest"
+    },
+    "EcrRepositoryArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:aws:ecr:[a-z0-9-]+:[0-9]{12}:repository/[a-z0-9][a-z0-9._/-]*"
+    },
+    "ApplicationSecretArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+",
+      "Description": "EXTERNAL existing JSON environment secret; never created or rotated by stack"
+    },
+    "ApplicationSecretVersionId": {
+      "Type": "String",
+      "AllowedPattern": "[A-Za-z0-9-]{32,64}",
+      "Description": "Original verified version; no AWSCURRENT alias substitution"
+    },
+    "SecretKmsKeyArn": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "(^$|arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]+)"
+    },
+    "DataKmsKeyArn": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "(^$|arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]+)"
+    },
+    "DataVolumeSizeGb": {
+      "Type": "Number",
+      "Default": 5,
+      "MinValue": 1,
+      "MaxValue": 16384
+    },
+    "ExistingDataVolumeId": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "(^$|vol-[a-f0-9]{8,17})",
+      "Description": "Optional existing encrypted ext4 data EBS; never format an existing volume"
+    },
+    "EnableApprovedBedrockRuntime": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "false",
+        "true"
+      ],
+      "Description": "Explicitly reviewed IAM Invoke permission only; preserves original owner authentication and access controls"
+    },
+    "ApprovedBedrockResourceArns": {
+      "Type": "CommaDelimitedList",
+      "Description": "Exact reviewed inference-profile AND underlying foundation-model ARNs; no wildcard"
+    },
+    "OutboundMode": {
+      "Type": "String",
+      "Default": "public-egress",
+      "AllowedValues": [
+        "public-egress",
+        "existing-nat"
+      ],
+      "Description": "public-egress gives outbound-only public IPv4, never ingress; existing-nat uses no public IP"
+    }
+  },
+  "Conditions": {
+    "CreateDataVolume": {
+      "Fn::Equals": [
+        {
+          "Ref": "ExistingDataVolumeId"
+        },
+        ""
+      ]
+    },
+    "HasSecretKmsKey": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "SecretKmsKeyArn"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "HasDataKmsKey": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "DataKmsKeyArn"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "ApprovedRuntime": {
+      "Fn::Equals": [
+        {
+          "Ref": "EnableApprovedBedrockRuntime"
+        },
+        "true"
+      ]
+    },
+    "PublicEgress": {
+      "Fn::Equals": [
+        {
+          "Ref": "OutboundMode"
+        },
+        "public-egress"
+      ]
+    }
+  },
+  "Rules": {
+    "ApprovedRuntimeNeedsResources": {
+      "RuleCondition": {
+        "Fn::Equals": [
+          {
+            "Ref": "EnableApprovedBedrockRuntime"
+          },
+          "true"
+        ]
+      },
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  {
+                    "Ref": "ApprovedBedrockResourceArns"
+                  },
+                  ""
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "Approved invoke mode requires explicit resource ARNs"
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "PrivateSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "SSM-only candidate; zero inbound rules; HTTPS egress only",
+        "VpcId": {
+          "Ref": "VpcId"
+        },
+        "SecurityGroupIngress": [],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-private"
+            }
+          }
+        ]
+      }
+    },
+    "InstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        ],
+        "Policies": [
+          {
+            "PolicyName": "ReadExistingDeploymentArtifacts",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:GetAuthorizationToken"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage"
+                  ],
+                  "Resource": {
+                    "Ref": "EcrRepositoryArn"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "secretsmanager:GetSecretValue"
+                  ],
+                  "Resource": {
+                    "Ref": "ApplicationSecretArn"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "bedrock:GetAccountDataRetention",
+                    "bedrock:GetModelInvocationLoggingConfiguration",
+                    "bedrock:GetInferenceProfile",
+                    "bedrock:ListInferenceProfiles",
+                    "bedrock:GetFoundationModel",
+                    "bedrock:ListFoundationModels"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Fn::If": [
+                    "HasSecretKmsKey",
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "kms:Decrypt"
+                      ],
+                      "Resource": {
+                        "Ref": "SecretKmsKeyArn"
+                      },
+                      "Condition": {
+                        "StringEquals": {
+                          "kms:ViaService": {
+                            "Fn::Sub": "secretsmanager.${AWS::Region}.amazonaws.com"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "Ref": "AWS::NoValue"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "Fn::If": [
+              "ApprovedRuntime",
+              {
+                "PolicyName": "ExplicitlyApprovedBedrockInvoke",
+                "PolicyDocument": {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "bedrock:InvokeModel"
+                      ],
+                      "Resource": {
+                        "Ref": "ApprovedBedrockResourceArns"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "Ref": "AWS::NoValue"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Roles": [
+          {
+            "Ref": "InstanceRole"
+          }
+        ]
+      }
+    },
+    "DataVolume": {
+      "Type": "AWS::EC2::Volume",
+      "Condition": "CreateDataVolume",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZone"
+        },
+        "Encrypted": true,
+        "KmsKeyId": {
+          "Fn::If": [
+            "HasDataKmsKey",
+            {
+              "Ref": "DataKmsKeyArn"
+            },
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "Size": {
+          "Ref": "DataVolumeSizeGb"
+        },
+        "VolumeType": "gp3",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-original-records"
+            }
+          },
+          {
+            "Key": "LogicalAgentId",
+            "Value": "DREAMKEEPER-001"
+          }
+        ]
+      }
+    },
+    "Instance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": {
+          "Ref": "AmiId"
+        },
+        "InstanceType": {
+          "Ref": "InstanceType"
+        },
+        "IamInstanceProfile": {
+          "Ref": "InstanceProfile"
+        },
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZone"
+        },
+        "NetworkInterfaces": [
+          {
+            "DeviceIndex": "0",
+            "AssociatePublicIpAddress": {
+              "Fn::If": [
+                "PublicEgress",
+                true,
+                false
+              ]
+            },
+            "SubnetId": {
+              "Ref": "SubnetId"
+            },
+            "GroupSet": [
+              {
+                "Ref": "PrivateSecurityGroup"
+              }
+            ]
+          }
+        ],
+        "MetadataOptions": {
+          "HttpTokens": "required",
+          "HttpEndpoint": "enabled",
+          "HttpPutResponseHopLimit": 2
+        },
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/xvda",
+            "Ebs": {
+              "Encrypted": true,
+              "DeleteOnTermination": true,
+              "VolumeSize": 20,
+              "VolumeType": "gp3"
+            }
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-candidate"
+            }
+          },
+          {
+            "Key": "LogicalAgentId",
+            "Value": "DREAMKEEPER-001"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Sub": [
+              "#!/usr/bin/env bash\n# CloudFormation embeds this script, substituting only validated resource IDs.\nset -euo pipefail\numask 077\nAWS_REGION='${AWS::Region}'\nIMAGE_URI='${ImageUri}'\nSECRET_ARN='${ApplicationSecretArn}'\nSECRET_VERSION='${ApplicationSecretVersionId}'\nDATA_VOLUME_ID='${SelectedDataVolumeId}'\nFORMAT_EMPTY_DATA_VOLUME='${FormatEmptyDataVolume}'\nexport AWS_REGION AWS_DEFAULT_REGION=\"$AWS_REGION\" AWS_PAGER=''\n\ndnf install -y docker awscli-2 util-linux e2fsprogs\nsystemctl enable --now docker amazon-ssm-agent\nmkdir -p /var/lib/edurecover /etc/edurecover\n\nvolume_serial=$(printf '%s' \"$DATA_VOLUME_ID\" | tr -d '-')\ndata_device=''\nfor attempt in $(seq 1 180); do\n  data_device=$(lsblk -dn -o NAME,SERIAL | awk -v serial=\"$volume_serial\" '$2 == serial {print \"/dev/\" $1; exit}')\n  [ -n \"$data_device\" ] && break\n  sleep 2\ndone\nif [ -z \"$data_device\" ]; then\n  echo 'DATA_VOLUME_NOT_ATTACHED' >&2\n  exit 1\nfi\nfilesystem=$(blkid -o value -s TYPE \"$data_device\" || true)\nif [ -z \"$filesystem\" ]; then\n  if [ \"$FORMAT_EMPTY_DATA_VOLUME\" != 'true' ] || [ -n \"$(wipefs --no-act --noheadings \"$data_device\")\" ] || [ \"$(lsblk -n \"$data_device\" | wc -l)\" -ne 1 ]; then\n    echo 'EXISTING_DATA_VOLUME_FORMATTING_FORBIDDEN' >&2\n    exit 1\n  fi\n  mkfs.ext4 \"$data_device\"\n  filesystem='ext4'\nfi\nif [ \"$filesystem\" != 'ext4' ]; then\n  echo 'DATA_VOLUME_EXT4_REQUIRED' >&2\n  exit 1\nfi\nvolume_uuid=$(blkid -o value -s UUID \"$data_device\")\ntest -n \"$volume_uuid\"\nif ! grep -Fq \"UUID=$volume_uuid /var/lib/edurecover \" /etc/fstab; then\n  printf 'UUID=%s /var/lib/edurecover ext4 defaults,nofail 0 2\\n' \"$volume_uuid\" >> /etc/fstab\nfi\nmountpoint -q /var/lib/edurecover || mount /var/lib/edurecover\nmountpoint -q /var/lib/edurecover\nchown 10001:10001 /var/lib/edurecover\nchmod 700 /var/lib/edurecover\n\n# These files contain identifiers only, never the original SecretString.\nprintf '%s\\n' \"$IMAGE_URI\" > /etc/edurecover/image-uri\nprintf '%s\\n' \"$AWS_REGION\" > /etc/edurecover/region\nprintf '%s\\n' \"$SECRET_ARN\" > /etc/edurecover/secret-arn\nprintf '%s\\n' \"$SECRET_VERSION\" > /etc/edurecover/secret-version\ncat > /usr/local/sbin/edurecover-aws-run <<'RUN_SCRIPT'\n#!/usr/bin/env bash\nset -euo pipefail\nexport AWS_PAGER=''\nimage_uri=$(cat /etc/edurecover/image-uri)\nregion=$(cat /etc/edurecover/region)\nregistry=$(printf '%s' \"$image_uri\" | cut -d / -f 1)\nmountpoint -q /var/lib/edurecover\naws ecr get-login-password --region \"$region\" | docker login --username AWS --password-stdin \"$registry\" >/dev/null\ndocker pull \"$image_uri\"\ndocker rm -f edurecover-aws >/dev/null 2>&1 || true\nexec docker run --name edurecover-aws --read-only --init \\\n  --security-opt no-new-privileges --cap-drop ALL \\\n  --tmpfs /tmp:rw,noexec,nosuid,size=256m --tmpfs /run:rw,noexec,nosuid,size=16m \\\n  --log-driver local --log-opt max-size=10m --log-opt max-file=3 \\\n  --publish 127.0.0.1:8000:8000 \\\n  --mount type=bind,src=/var/lib/edurecover/state,dst=/app/.edurecover_classroom_state \\\n  --env AWS_REGION=\"$region\" \\\n  --env EDURECOVER_APPLICATION_SECRET_ARN=\"$(cat /etc/edurecover/secret-arn)\" \\\n  --env EDURECOVER_APPLICATION_SECRET_VERSION_ID=\"$(cat /etc/edurecover/secret-version)\" \\\n  \"$image_uri\"\nRUN_SCRIPT\nchmod 700 /usr/local/sbin/edurecover-aws-run\ncat > /etc/systemd/system/edurecover-aws.service <<'UNIT'\n[Unit]\nDescription=EduRecover AWS private migration candidate\nRequires=docker.service\nAfter=docker.service network-online.target\nWants=network-online.target\nRequiresMountsFor=/var/lib/edurecover\n[Service]\nType=simple\nUMask=0077\nExecStart=/usr/local/sbin/edurecover-aws-run\nExecStop=/usr/bin/docker stop --time 30 edurecover-aws\nRestart=on-failure\nRestartSec=15\nTimeoutStopSec=45\n[Install]\nWantedBy=multi-user.target\nUNIT\nsystemctl daemon-reload\n# Data restoration and a reviewed start are separate from infrastructure creation.\n# The application service deliberately remains disabled and stopped at launch.\necho 'AWS_PRIVATE_HOST_READY_APPLICATION_NOT_STARTED'\n",
+              {
+                "SelectedDataVolumeId": {
+                  "Fn::If": [
+                    "CreateDataVolume",
+                    {
+                      "Ref": "DataVolume"
+                    },
+                    {
+                      "Ref": "ExistingDataVolumeId"
+                    }
+                  ]
+                },
+                "FormatEmptyDataVolume": {
+                  "Fn::If": [
+                    "CreateDataVolume",
+                    "true",
+                    "false"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "DataVolumeAttachment": {
+      "Type": "AWS::EC2::VolumeAttachment",
+      "Properties": {
+        "Device": "/dev/sdf",
+        "InstanceId": {
+          "Ref": "Instance"
+        },
+        "VolumeId": {
+          "Fn::If": [
+            "CreateDataVolume",
+            {
+              "Ref": "DataVolume"
+            },
+            {
+              "Ref": "ExistingDataVolumeId"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "InstanceId": {
+      "Value": {
+        "Ref": "Instance"
+      }
+    },
+    "PrivateIpAddress": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Instance",
+          "PrivateIp"
+        ]
+      }
+    },
+    "DataVolumeId": {
+      "Value": {
+        "Fn::If": [
+          "CreateDataVolume",
+          {
+            "Ref": "DataVolume"
+          },
+          {
+            "Ref": "ExistingDataVolumeId"
+          }
+        ]
+      }
+    },
+    "ApplicationSecretArn": {
+      "Value": {
+        "Ref": "ApplicationSecretArn"
+      }
+    },
+    "ApplicationSecretVersionId": {
+      "Value": {
+        "Ref": "ApplicationSecretVersionId"
+      }
+    },
+    "ApplicationStatePath": {
+      "Value": "/app/.edurecover_classroom_state"
+    },
+    "LaunchState": {
+      "Value": "PRIVATE_HOST_APPLICATION_STOPPED_NO_CUTOVER"
+    }
+  }
+}
