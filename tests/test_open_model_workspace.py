@@ -196,6 +196,8 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  attach([file('notes.txt','원문')]);await submit();
  assert.equal(requests.length,1);assert.equal(requests[0].url,'/owner/open-models/learning/call');
  assert.equal(requests[0].body.attachments.length,1);assert.equal('max_tokens' in requests[0].body,false);
+ assert.equal(element('question').value,'','accepted text is no longer an unsent draft');
+ element('question').value='답변 길이를 지정한 새 질문';element('question').events.input();
  element('learning-output-tokens').value='1000000';await submit();
  assert.equal(requests.length,2);assert.equal(requests[1].body.max_tokens,1000000);
 """, html=html, harness=harness)

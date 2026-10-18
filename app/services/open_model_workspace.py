@@ -1,5 +1,7 @@
 """Owner model workspace with file uploads and browser voice dictation."""
 
+from app.services.chat_drafts import with_draft_store
+
 _HTML = '''<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -33,6 +35,8 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 <div id="question-options" hidden><div class="grid"><div><label for="question-count">문항 수</label><input id="question-count" type="number" value="5" min="1" max="10"></div><div><label for="question-format">문제 형식</label><select id="question-format"><option value="short_answer">서답형</option><option value="multiple_choice">4지선다형</option></select></div></div></div>
 <label for="question" id="question-label">튜터에게 물어볼 내용</label>
 <textarea id="question" maxlength="4000" required placeholder="질문, 배우고 싶은 개념이나 출제 목적을 입력할 수 있습니다."></textarea>
+<p id="chat-draft-status" role="status" aria-live="polite">작성 중 문장은 이 브라우저에 보관합니다. 같은 화면으로 돌아오면 복원합니다. 첨부파일은 다시 선택해야 합니다.</p>
+<button type="button" id="clear-chat-draft" class="secondary">작성 중 문장 지우기</button>
 <div class="voice-controls"><button type="button" id="voice-input" class="secondary" aria-pressed="false">음성 입력 시작</button><p id="voice-status" role="status" aria-live="polite"></p></div>
 <div id="attachment-options" class="attachment-controls">
 <label for="attachments">사진·파일 첨부</label><input id="attachments" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt,.md,.csv,.json,.py,.js,.html,.css,.yaml,.yml" aria-describedby="attachment-help">
@@ -48,6 +52,21 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 </form></section><section id="result" hidden aria-live="polite"></section>
 </main><script>
 const byId=id=>document.getElementById(id);
+const chatDrafts=globalThis.EduRecoverDraftStore.create({workspace:globalThis.location?.pathname||'/owner/open-models',onStatus:(message,error)=>{const field=byId('chat-draft-status');field.textContent=message;field.className=error?'error':'';}});
+let draftSlot=null,draftReady=false,preferredDraftModel='';
+function saveQuestionDraft(){if(draftSlot!==null)return chatDrafts.set(draftSlot,byId('question').value);return true;}
+function switchDraftSlot(){
+ const next='question';
+ if(next!==draftSlot){const initial=byId('question').value;saveQuestionDraft();draftSlot=next;const restored=chatDrafts.get(next);byId('question').value=restored||initial;}
+ if(draftReady)chatDrafts.set('_selection_',JSON.stringify({task:byId('task').value,domain:byId('domain').value,model:byId('model').value}));
+}
+function restoreDraftSelection(){
+ try{const saved=JSON.parse(chatDrafts.get('_selection_')||'null');if(!saved)return;
+  if(['direct','tutor','questions','source_review'].includes(saved.task))byId('task').value=saved.task;
+  if(['education','medical'].includes(saved.domain))byId('domain').value=saved.domain;
+  if(typeof saved.model==='string')preferredDraftModel=saved.model;
+ }catch(error){byId('chat-draft-status').textContent='문장 보관 상태를 확인하지 못했습니다. 기존 입력은 자동 전송하지 않습니다.';}
+}
 let sourceCount=0, busy=false, tutorHistory=[], modelRows=new Map(), attachmentFiles=[], currentTask='direct';
 let recognition=null, listening=false, voiceBase='';
 const MAX_ATTACHMENTS=4,MAX_ATTACHMENT_BYTES=8*1024*1024;
@@ -98,7 +117,7 @@ function setupVoice(){
   // results is the current session snapshot, not new text to append. Rebuild
   // it so repeated final events and revised interim text cannot accumulate.
   const parts=[];for(let index=0;index<event.results.length;index++){const transcript=event.results[index]?.[0]?.transcript;if(typeof transcript==='string'&&transcript.trim())parts.push(transcript.trim());}
-  const transcript=parts.join(' '),text=voiceBase+(voiceBase&&transcript?'\\n':'')+transcript,field=byId('question');field.value=field.maxLength>0?text.slice(0,field.maxLength):text;
+  const transcript=parts.join(' '),text=voiceBase+(voiceBase&&transcript?'\\n':'')+transcript,field=byId('question');field.value=field.maxLength>0?text.slice(0,field.maxLength):text;saveQuestionDraft();
  };
  recognition.onerror=event=>{listening=false;const messages={'not-allowed':'마이크 사용이 허용되지 않았습니다. 브라우저에서 마이크 권한을 확인하십시오.','service-not-allowed':'이 브라우저에서 음성 인식 서비스를 사용할 수 없습니다.','audio-capture':'사용 가능한 마이크를 찾지 못했습니다.','no-speech':'인식한 음성이 없습니다. 다시 시작하십시오.','network':'음성 인식 서비스에 연결하지 못했습니다.'};voiceStatus(messages[event.error]||'음성 입력이 중단되었습니다. 질문을 직접 입력하거나 다시 시작하십시오.',true);updateVoiceButton();};
  recognition.onend=()=>{listening=false;updateVoiceButton();if(!byId('voice-status').className.includes('error'))voiceStatus('음성 입력을 마쳤습니다. 내용을 확인한 뒤 질문을 보내십시오.');};
@@ -205,7 +224,7 @@ async function loadModels(){
  try{
   const response=await fetch('/owner/open-models/catalog',{credentials:'same-origin',cache:'no-store'});
   if(!response.ok)throw new Error('모델 연결 정보를 불러오지 못했습니다. 관리자 로그인과 연결 설정을 확인해야 합니다.');
-  const data=await response.json();const select=byId('model'),previous=select.value;select.replaceChildren();modelRows=new Map();
+  const data=await response.json();const select=byId('model'),previous=select.value||preferredDraftModel;select.replaceChildren();modelRows=new Map();
   const first=document.createElement('option');first.value='';first.textContent='사용할 모델을 선택할 수 있습니다.';select.append(first);
   const groups={};let usableModels=0;
   for(const row of data.models){
@@ -216,6 +235,7 @@ async function loadModels(){
    option.textContent=row.display_name+' · '+connectionLabel(row)+(row.permitted===true?'':' · '+permissionLabel(row));group.append(option);if(ready)usableModels++;
   }
   select.value=modelRows.has(previous)?previous:'';refreshModelSelection();
+  draftReady=true;switchDraftSlot();
   status(usableModels?'모든 등록 모델을 선택하여 상태를 확인할 수 있습니다. 질문 전송은 선택한 모델의 연결 설정과 사용 권한이 준비된 경우에만 가능합니다.':'모든 등록 모델을 선택하여 필요한 설정을 확인할 수 있습니다. 아직 질문을 전송할 수 있는 모델은 없습니다.');
  }catch(error){modelRows=new Map();refreshModelSelection();status(error.message||'모델 목록을 불러오지 못했습니다.',true);}
 }
@@ -250,12 +270,19 @@ function renderResult(result){
 byId('add-source').addEventListener('click',addSource);
 byId('attachments').addEventListener('change',selectAttachments);
 byId('voice-input').addEventListener('click',toggleVoice);
-byId('task').addEventListener('change',updateTask);byId('domain').addEventListener('change',updateTask);byId('model').addEventListener('change',()=>{clearHistory();refreshModelSelection();});
-byId('new-conversation').addEventListener('click',()=>{clearHistory();byId('result').hidden=true;byId('question').value='';status('새 튜터 대화를 시작할 수 있습니다.');});
+byId('task').addEventListener('change',()=>{updateTask();switchDraftSlot();});byId('domain').addEventListener('change',()=>{updateTask();switchDraftSlot();});byId('model').addEventListener('change',()=>{clearHistory();refreshModelSelection();switchDraftSlot();});
+byId('new-conversation').addEventListener('click',()=>{clearHistory();byId('result').hidden=true;byId('question').value='';if(draftSlot!==null)chatDrafts.delete(draftSlot);status('새 튜터 대화를 시작할 수 있습니다.');});
+byId('question').addEventListener('input',saveQuestionDraft);
+byId('question').addEventListener('compositionend',saveQuestionDraft);
+byId('clear-chat-draft').addEventListener('click',()=>{if(busy)return;byId('question').value='';if(draftSlot!==null)chatDrafts.delete(draftSlot);});
+globalThis.addEventListener?.('pagehide',saveQuestionDraft);
+globalThis.addEventListener?.('beforeunload',event=>{if(!saveQuestionDraft()&&byId('question').value){event.preventDefault();event.returnValue='';}});
+document.addEventListener?.('visibilitychange',()=>{if(document.hidden)saveQuestionDraft();});
 byId('draft-form').addEventListener('submit',async event=>{
  event.preventDefault();if(busy)return;
  const selected=modelRows.get(byId('model').value);
  if(!modelReady(selected)){refreshModelSelection();status(modelExplanation(selected),true);return;}
+ saveQuestionDraft();const submittedSlot=draftSlot,submittedText=byId('question').value;
  setBusy(true);byId('result').hidden=true;
  try{
   const task=byId('task').value,question=byId('question').value.trim();
@@ -273,10 +300,12 @@ byId('draft-form').addEventListener('submit',async event=>{
   const data=await response.json();if(!response.ok)throw new Error(data.detail?.message||'요청을 완료하지 못했습니다. 입력과 모델 연결을 확인해야 합니다.');
   renderResult(data);
   if(task==='tutor')saveTurn(question,data.draft.answer);
+  if(submittedSlot!==null)chatDrafts.delete(submittedSlot,submittedText);
+  if(draftSlot===submittedSlot&&byId('question').value===submittedText)byId('question').value='';
   status('선택한 모델의 응답을 받았습니다. 생성 결과와 근거는 별도로 검토해야 합니다.');
  }catch(error){status(error.message||'요청을 완료하지 못했습니다.',true);}finally{setBusy(false);}
 });
-addSource();setupVoice();updateTask();loadModels();
+addSource();setupVoice();restoreDraftSelection();updateTask();switchDraftSlot();loadModels();
 </script></body></html>'''
 
 
@@ -408,3 +437,4 @@ async function loadModels(){''',
     return html
 
 
+_HTML = with_draft_store(_HTML)
