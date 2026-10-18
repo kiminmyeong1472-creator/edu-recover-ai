@@ -63,6 +63,7 @@ from app.domains.medical.hospital_os_api import router as hospital_os_router
 from app.domains.medical.hospital_access_api import router as hospital_access_router, owner_router as hospital_access_owner_router
 from app.services.open_model_api import router as open_model_router
 from app.services.code_execution_api import router as code_execution_router
+from app.services.qrng_prepaid_api import router as qrng_router, owner_router as qrng_owner_router
 
 
 app = FastAPI(
@@ -100,6 +101,8 @@ app.include_router(hospital_access_router)
 app.include_router(hospital_access_owner_router)
 app.include_router(open_model_router)
 app.include_router(code_execution_router)
+app.include_router(qrng_router)
+app.include_router(qrng_owner_router)
 
 logger = logging.getLogger(__name__)
 
@@ -651,3 +654,4 @@ async def apply_trap(payload: ApplyTrapRequest) -> dict[str, Any]:
 
     result = detect_socratic_traps(payload.problems)
     return result.to_dict()
+

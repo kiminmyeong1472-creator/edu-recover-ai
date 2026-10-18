@@ -29,6 +29,7 @@ RUNTIME_DATABASES = (
     "classroom_tutor.sqlite3", "ai_tutor_training.sqlite3", "secret_vault.sqlite3",
     ACCOUNT_DATABASE,
     "liferecover/life.sqlite3", "liferecover/medical.sqlite3", "liferecover/legal.sqlite3",
+    "qrng/prepaid.sqlite3",
 )
 _METADATA_NAME = re.compile(r"[0-9a-f]{64}\.json\Z")
 _MEDIA_NAME = re.compile(r"[0-9a-f]{32}\.(?:png|jpg|mp3|wav|mp4|webm)\Z")
@@ -243,3 +244,4 @@ def merge_runtime_assets(registered: list[dict[str, Any]], inventory: RuntimeInv
     if len(merged) > MAX_RUNTIME_FILES:
         raise BackupStorageError("BACKUP_ASSET_COUNT_LIMIT_REACHED")
     return merged
+
