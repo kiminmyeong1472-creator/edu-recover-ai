@@ -10,11 +10,19 @@ from app.services.open_model_catalog import CHUTES_MODEL_CATALOG
 
 _HARNESS = r"""
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const elements=new Map(),requests=[],readers=[],confirmations=[];
-let allowSwitch=false,readerFailure=false,autoRead=true;
+const elements=new Map(),requests=[],readers=[],confirmations=[],clipboardWrites=[],fallbackWrites=[],fallbackNodes=[],responseQueue=[];
+let allowSwitch=false,readerFailure=false,autoRead=true,clipboardReject=false,execCopySucceeds=true,holdResponse=false,releaseResponse=null,holdClipboard=false,rejectClipboard=null;
+let activeElement=null,selectedText='',selectionRanges=[{label:'original selection',cloneRange(){return {...this}}}],focusCalls=[],selectionRestores=0;
+const selection={get rangeCount(){return selectionRanges.length},getRangeAt(index){return selectionRanges[index]},
+ removeAllRanges(){selectionRanges=[];selectedText='';selectionRestores++},addRange(range){selectionRanges.push(range)}};
+const clipboard={writeText:async text=>{clipboardWrites.push(text);if(holdClipboard)await new Promise((resolve,reject)=>{rejectClipboard=()=>reject(new Error('late clipboard rejection'))});if(clipboardReject)throw new Error('clipboard denied')}};
 function element(id,tag=''){
- if(!elements.has(id))elements.set(id,{value:'',disabled:false,hidden:false,children:[],dataset:{},tag,events:{},attrs:{},maxLength:-1,textContent:'',className:'',files:[],
-  addEventListener(type,handler){this.events[type]=handler},append(...children){this.children.push(...children)},
+ if(!elements.has(id))elements.set(id,{value:'',disabled:false,hidden:false,children:[],dataset:{},style:{},tag,events:{},attrs:{},maxLength:-1,textContent:'',className:'',files:[],parentNode:null,isConnected:true,
+  focus(){activeElement=this;focusCalls.push(this)},select(){selectedText=this.value;this.selectionStart=0;this.selectionEnd=this.value.length},
+  setSelectionRange(start,end,direction){this.selectionStart=start;this.selectionEnd=end;this.selectionDirection=direction;selectedText=this.value.slice(start,end)},
+  remove(){if(this.parentNode)this.parentNode.removeChild(this);this.isConnected=false},
+  appendChild(child){this.append(child);return child},removeChild(child){this.children=this.children.filter(node=>node!==child);child.parentNode=null;return child},
+  addEventListener(type,handler){this.events[type]=handler},append(...children){for(const child of children){child.parentNode=this;this.children.push(child)}},
   replaceChildren(){this.children=[]},setAttribute(name,value){this.attrs[name]=value},removeAttribute(name){delete this.attrs[name];if(name==='maxlength')this.maxLength=-1},
   querySelectorAll(selector){
    if(id==='draft-form')return [...elements.values()].filter(node=>['input','select','textarea','button'].includes(node.tag));
@@ -25,7 +33,7 @@ function element(id,tag=''){
 }
 for(const id of ['task','domain','model','question-format'])element(id,'select');
 for(const id of ['question-count','attachments'])element(id,'input');
-for(const id of ['generate','add-source','new-conversation','voice-input'])element(id,'button');
+for(const id of ['generate','add-source','new-conversation','voice-input','copy-answer','copy-conversation'])element(id,'button');
 element('question','textarea');element('task').value='direct';element('domain').value='education';
 element('question-count').value='5';element('question-format').value='short_answer';element('question').value='시험 질문';
 const rows=[
@@ -42,12 +50,18 @@ class Recognition{
  start(){this.starts++;if(this.onstart)this.onstart()}
  stop(){this.stops++;if(this.onend)this.onend()}
 }
-const context=vm.createContext({document:{getElementById:element,createElement:tag=>element(Symbol(),tag)},
+const document={getElementById:element,createElement:tag=>element(Symbol(),tag),body:element('body','body'),
+ get activeElement(){return activeElement},getSelection:()=>selection,
+ execCommand(command){assert.equal(command,'copy');fallbackWrites.push(selectedText);fallbackNodes.push({tag:activeElement.tag,readonly:'readonly' in activeElement.attrs||activeElement.readOnly===true,text:activeElement.value});return execCopySucceeds}};
+const context=vm.createContext({document,navigator:{clipboard},getSelection:()=>selection,window:{getSelection:()=>selection},
  FileReader:Reader,confirm:message=>{confirmations.push(message);return allowSwitch},
  ...(process.env.TEST_VOICE==='true'?{SpeechRecognition:Recognition}:{}),
  fetch:async(url,options)=>{
   if(url==='/owner/open-models/catalog')return {ok:true,json:async()=>({models:rows})};
-  requests.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>({task:'direct',model_key:JSON.parse(options.body).model_key,answer:'<script>untrusted</script>'})};
+  requests.push({url,body:JSON.parse(options.body)});
+  if(holdResponse)await new Promise(resolve=>{releaseResponse=resolve});
+  const response=responseQueue.length?responseQueue.shift():{task:'direct',model_key:JSON.parse(options.body).model_key,answer:'<script>untrusted</script>'};
+  return {ok:!response._error,json:async()=>response};
  },console});
 function run(code){return vm.runInContext(code,context)}
 function choose(key){element('model').value=key;element('model').events.change()}
@@ -56,6 +70,12 @@ function attach(files){element('attachments').files=files;element('attachments')
 function file(name,contents='file body',size=null){return {name,contents,size:size===null?Buffer.byteLength(contents):size}}
 function selectedNames(){return element('attachment-list').children.map(item=>item.children[0].textContent)}
 function switchTask(task){element('task').value=task;element('task').events.change()}
+function sourceText(text){element('sources').children[0].children[1].value=text}
+async function copyAnswer(){await element('copy-answer').events.click()}
+async function copyConversation(){await element('copy-conversation').events.click()}
+function tutor(answer){return {task:'tutor',model_key:'Proprietary model label',draft:{answer,answer_source_ids:[],follow_up_questions:[],uncertainties:[]}}}
+function assertCopyHidden(){assert.equal(element('result-copy-controls').hidden,true)}
+function assertNoPageText(text){for(const unwanted of ['EduRecover','사용 모델:','모델 답변 초안','검토 상태:','선택한 모델의 응답','연결 설정 필요'])assert.equal(text.includes(unwanted),false,unwanted)}
 function speechResult(transcript,isFinal=false){return Object.assign([{transcript}],{isFinal})}
 (async()=>{
  vm.runInContext(fs.readFileSync(0,'utf8'),context);await new Promise(resolve=>setImmediate(resolve));
@@ -237,6 +257,129 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  assert.equal(element('question-count').disabled,false);
  switchTask('direct');assert.equal(element('question').maxLength,-1);
  assert.equal(element('question-count').disabled,true);assert.equal(element('attachments').disabled,false);
+ """)
+
+    def test_copy_toolbar_is_separate_from_answer_and_shared_by_all_workspaces(self):
+        for html in [_HTML, chutes_workspace_html(), learning_workspace_html()]:
+            self.assertRegex(html, r'id="result-copy-controls"[^>]*hidden')
+            self.assertRegex(html, r'<button[^>]*type="button"[^>]*id="copy-answer"')
+            self.assertRegex(html, r'<button[^>]*type="button"[^>]*id="copy-conversation"')
+            self.assertIn('id="copy-status"', html)
+            self.assertNotIn('innerHTML', html)
+
+    def test_copy_answer_and_current_exchange_exclude_all_page_chrome(self):
+        self.run_workspace(r"""
+ assertCopyHidden();choose('DeepSeek-V4.1-Flash');
+ const question='첫 질문 <b>보존</b>\n둘째 줄';const answer='<script>untrusted</script>\n정확한 답변  공백';
+ element('question').value=question;
+ responseQueue.push({task:'direct',model_key:'Proprietary model label',answer});await submit();
+ assert.equal(element('result-copy-controls').hidden,false);
+ assert.equal(element('question').value,'');
+ element('question').value='응답 이후 새로 쓴 질문';element('question').events.input();
+ await copyAnswer();await copyConversation();
+ assert.deepEqual(clipboardWrites,[answer,'사용자: '+question+'\n\nAI: '+answer]);
+ clipboardWrites.forEach(assertNoPageText);assert.equal(fallbackWrites.length,0);assert.equal(requests.length,1);
+ assert.ok(element('result').children.some(node=>node.textContent===answer),'raw HTML stays text, never executes');
+ """)
+
+    def test_copy_uses_the_submitted_question_even_if_draft_changes_in_flight(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');element('question').value='보낸 원래 질문';
+ holdResponse=true;const pending=submit();await new Promise(resolve=>setImmediate(resolve));
+ element('question').value='전송 뒤 수정한 초안';holdResponse=false;releaseResponse();await pending;
+ await copyConversation();
+ assert.equal(clipboardWrites[0],'사용자: 보낸 원래 질문\n\nAI: <script>untrusted</script>');
+ assert.equal(element('question').value,'전송 뒤 수정한 초안');assert.equal(requests.length,1);
+ """)
+
+    def test_tutor_conversation_copies_previous_turns_and_current_raw_answer(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');switchTask('tutor');
+ element('question').value='첫 튜터 질문';responseQueue.push(tutor('첫 튜터 답변'));await submit();
+ element('question').value='두 번째 질문';responseQueue.push(tutor('두 번째 원문 답변'));await submit();
+ await copyAnswer();await copyConversation();
+ assert.equal(clipboardWrites[0],'두 번째 원문 답변');
+ assert.equal(clipboardWrites[1],'사용자: 첫 튜터 질문\n\nAI: 첫 튜터 답변\n\n사용자: 두 번째 질문\n\nAI: 두 번째 원문 답변');
+ assert.equal(requests.length,2);clipboardWrites.forEach(assertNoPageText);
+ assert.equal(requests[1].body.history.length,2,'copy never adds another tutor turn');
+ """)
+
+    def test_clipboard_denial_uses_only_temporary_readonly_text_and_restores_focus(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');await submit();
+ const field=element('question');field.value='남겨 둔 초안';field.focus();field.setSelectionRange(1,3,'forward');
+ const originalRange=selectionRanges[0];clipboardReject=true;await copyAnswer();
+ assert.deepEqual(fallbackWrites,['<script>untrusted</script>']);
+ assert.equal(document.body.children.length,0,'temporary textarea must be removed');
+ assert.equal(activeElement,field);assert.equal(field.selectionStart,1);assert.equal(field.selectionEnd,3);
+ assert.equal(selectionRanges[0].label,originalRange.label);assert.ok(selectionRestores>0);
+ assert.deepEqual(fallbackNodes,[{tag:'textarea',readonly:true,text:'<script>untrusted</script>'}]);
+ assert.equal(element('copy-status').className.includes('error'),false);
+ assert.equal(requests.length,1);
+ """)
+
+    def test_unsupported_clipboard_and_failed_fallback_never_report_success(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');await submit();delete context.navigator.clipboard;
+ await copyAnswer();assert.deepEqual(fallbackWrites,['<script>untrusted</script>']);
+ execCopySucceeds=false;await copyConversation();
+ assert.equal(fallbackWrites.length,2);assert.equal(document.body.children.length,0);
+ assert.match(element('copy-status').textContent,/실패|못했|수 없|직접/);
+ assert.equal(element('copy-status').className.includes('error'),true);
+ assert.equal(requests.length,1);
+ """)
+
+    def test_new_task_new_model_and_new_tutor_conversation_invalidate_old_copy(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');await submit();switchTask('tutor');assertCopyHidden();
+ await copyAnswer();assert.equal(clipboardWrites.length,0);
+ element('question').value='튜터 질문';responseQueue.push(tutor('튜터 답변'));await submit();
+ element('new-conversation').events.click();assertCopyHidden();await copyConversation();assert.equal(clipboardWrites.length,0);
+ element('question').value='새 튜터 질문';responseQueue.push(tutor('새 튜터 답변'));await submit();
+ choose('DeepSeek-V4-Pro');assertCopyHidden();await copyAnswer();assert.equal(clipboardWrites.length,0);
+ assert.equal(requests.length,3);
+ """)
+
+    def test_new_request_busy_and_failed_response_do_not_copy_the_previous_answer(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');await submit();element('question').value='다음 질문';
+ holdResponse=true;const pending=submit();await new Promise(resolve=>setImmediate(resolve));
+ assertCopyHidden();await copyAnswer();await copyConversation();assert.equal(clipboardWrites.length,0);
+ responseQueue.push({_error:true,detail:{message:'provider unavailable'}});holdResponse=false;releaseResponse();await pending;
+ assertCopyHidden();await copyAnswer();assert.equal(clipboardWrites.length,0);assert.equal(requests.length,2);
+ """)
+
+    def test_late_clipboard_rejection_after_model_change_never_falls_back_to_old_answer(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');await submit();holdClipboard=true;
+ const pending=copyAnswer();await new Promise(resolve=>setImmediate(resolve));
+ choose('DeepSeek-V4-Pro');assertCopyHidden();rejectClipboard();await pending;
+ assert.equal(fallbackWrites.length,0,'stale answer must not be selected after task context changes');
+ assert.equal(document.body.children.length,0);assert.equal(element('copy-status').textContent,'');assert.equal(requests.length,1);
+ """)
+
+    def test_copy_preserves_answer_content_that_matches_page_labels(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');
+ const answer='  EduRecover\n사용 모델: 원문 내용\n검토 상태: 실제 답변이 이 문장을 인용함\n<script>\u0000&lt;b&gt;';
+ responseQueue.push({task:'direct',model_key:'Proprietary model label',answer});await submit();await copyAnswer();
+ assert.equal(clipboardWrites[0],answer,'copy from the result payload, never delete matching answer words or parse its HTML');
+ assert.equal(requests.length,1);
+ """)
+
+    def test_structured_questions_and_source_review_copy_body_without_page_metadata(self):
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');switchTask('questions');sourceText('허가된 교재 원문');
+ element('question').value='문제 출제 요청';
+ responseQueue.push({task:'questions',model_key:'Proprietary model label',draft:{title:'문항 묶음',items:[{number:1,question:'문제 <img onerror=x>',options:['선지 가','선지 나'],answer:'선지 가',explanation:'교재에 따른 해설',source_ids:['S1']}],uncertainties:['불확실한 교재 판본']}});
+ await submit();await copyAnswer();const questions=clipboardWrites[0];
+ for(const needed of ['문항 묶음','문제 <img onerror=x>','선지 가','선지 나','교재에 따른 해설','S1','불확실한 교재 판본'])assert.ok(questions.includes(needed),needed);
+ assertNoPageText(questions);assert.equal(questions.includes('정답·해설 보기'),false);
+ switchTask('source_review');sourceText('새 검토 원문');element('question').value='검토 요청';
+ responseQueue.push({task:'source_review',domain:'education',model_key:'Proprietary model label',draft:{summary:'검토 요약',summary_source_ids:['S1'],points:[{text:'대조한 핵심',source_ids:['S1']}],questions:['추가 확인 질문'],uncertainties:['미확인 사실']}});
+ await submit();await copyAnswer();const review=clipboardWrites[1];
+ for(const needed of ['검토 요약','대조한 핵심','추가 확인 질문','미확인 사실'])assert.ok(review.includes(needed),needed);
+ assertNoPageText(review);assert.equal(requests.length,2);
  """)
 
     def test_file_validation_preserves_existing_selection_and_removes_individual_file(self):

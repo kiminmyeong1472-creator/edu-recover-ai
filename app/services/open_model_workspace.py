@@ -50,6 +50,10 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 <button type="submit" id="generate" disabled>튜터에게 질문하기</button>
 <p id="status" role="status" aria-live="polite"></p>
 </form></section><section id="result" hidden aria-live="polite"></section>
+<div id="result-copy-controls" hidden aria-label="대화 복사">
+<button type="button" id="copy-answer" disabled>답변만 복사</button>
+<button type="button" id="copy-conversation" class="secondary" disabled>질문·답변 복사</button>
+<p id="copy-status" role="status" aria-live="polite"></p></div>
 </main><script>
 const byId=id=>document.getElementById(id);
 const chatDrafts=globalThis.EduRecoverDraftStore.create({workspace:globalThis.location?.pathname||'/owner/open-models',onStatus:(message,error)=>{const field=byId('chat-draft-status');field.textContent=message;field.className=error?'error':'';}});
@@ -68,6 +72,7 @@ function restoreDraftSelection(){
  }catch(error){byId('chat-draft-status').textContent='문장 보관 상태를 확인하지 못했습니다. 기존 입력은 자동 전송하지 않습니다.';}
 }
 let sourceCount=0, busy=false, tutorHistory=[], modelRows=new Map(), attachmentFiles=[], currentTask='direct';
+let copyAnswerText='',copyConversationText='',copyEpoch=0,copyPending=false;
 let recognition=null, listening=false, voiceBase='';
 const MAX_ATTACHMENTS=4,MAX_ATTACHMENT_BYTES=8*1024*1024;
 const attachmentTypes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',txt:'text/plain',md:'text/plain',csv:'text/plain',json:'text/plain',py:'text/plain',js:'text/plain',html:'text/plain',css:'text/plain',yaml:'text/plain',yml:'text/plain'};
@@ -144,7 +149,7 @@ function historyInfo(){
  const turns=tutorHistory.filter(x=>x.role==='user').length;
  byId('history-info').textContent=turns?'이 대화에서 최근 '+turns+'회 질문과 답변을 함께 전달합니다. 대화는 이 화면의 메모리에만 보관됩니다.':'아직 전달할 이전 튜터 대화가 없습니다.';
 }
-function clearHistory(){tutorHistory=[];historyInfo();}
+function clearHistory(){tutorHistory=[];historyInfo();clearResultCopy();}
 function saveTurn(question,answer){
  // Explicitly labelled excerpts keep every message within the API bounds.
  const content=answer.length>4000?'[이전 답변의 앞부분 발췌] '+answer.slice(0,3950):answer;
@@ -153,13 +158,14 @@ function saveTurn(question,answer){
  historyInfo();
 }
 function setBusy(value){
- if(value)stopVoice();
+ if(value){stopVoice();clearResultCopy();}
  busy=value;
  for(const field of byId('draft-form').querySelectorAll('input,select,textarea,button'))field.disabled=value;
  if(!value)byId('add-source').disabled=sourceCount>=8;
  refreshModelSelection();
  setTaskInputState();
  updateVoiceButton();
+ refreshCopyButtons();
 }
 function setTaskInputState(){
  const task=byId('task').value;
@@ -242,7 +248,64 @@ async function loadModels(){
 function addText(parent,tag,text){const node=document.createElement(tag);node.textContent=text;parent.append(node);return node;}
 function references(ids){return ids.length?' ['+ids.join(', ')+']':'';}
 function renderList(box,title,items){if(!items.length)return;addText(box,'h2',title);const list=document.createElement('ul');for(const item of items)addText(list,'li',item);box.append(list);}
-function renderResult(result){
+function refreshCopyButtons(){
+ byId('copy-answer').disabled=busy||copyPending||!copyAnswerText;
+ byId('copy-conversation').disabled=busy||copyPending||!copyConversationText;
+}
+function clearResultCopy(){
+ copyEpoch++;copyPending=false;copyAnswerText='';copyConversationText='';
+ byId('result-copy-controls').hidden=true;byId('copy-status').textContent='';refreshCopyButtons();
+}
+function resultAnswerText(result){
+ const task=result.task||'source_review',draft=result.draft;
+ if(task==='direct')return typeof result.answer==='string'?result.answer:'';
+ const parts=[];
+ const list=(title,items)=>{if(items.length)parts.push(title+'\\n'+items.map(item=>'- '+item).join('\\n'));};
+ if(task==='tutor'){
+  parts.push(draft.answer+references(draft.answer_source_ids));list('이어서 생각해 볼 질문',draft.follow_up_questions);
+ }else if(task==='questions'){
+  parts.push(draft.title);
+  for(const item of draft.items){
+   parts.push(item.number+'. '+item.question);
+   if(item.options.length)parts.push(item.options.map((option,index)=>(index+1)+'. '+option).join('\\n'));
+   parts.push('정답: '+item.answer,'해설: '+item.explanation+references(item.source_ids));
+  }
+ }else{
+  parts.push(draft.summary+references(draft.summary_source_ids));
+  list('검토 내용',draft.points.map(point=>point.text+references(point.source_ids)));list('추가로 확인할 질문',draft.questions);
+ }
+ list('확인되지 않은 내용',draft.uncertainties);return parts.join('\\n\\n');
+}
+function copyTextSelection(text){
+ const active=document.activeElement,start=active?.selectionStart,end=active?.selectionEnd,direction=active?.selectionDirection;
+ const selection=globalThis.getSelection?.(),ranges=[];
+ if(selection)for(let i=0;i<selection.rangeCount;i++)ranges.push(selection.getRangeAt(i).cloneRange());
+ const field=document.createElement('textarea');field.value=text;field.setAttribute('readonly','');field.setAttribute('aria-hidden','true');
+ Object.assign(field.style,{position:'fixed',left:'-9999px',top:'0',opacity:'0'});
+ try{
+  document.body.append(field);field.focus();field.select();field.setSelectionRange(0,text.length);
+  if(document.execCommand?.('copy')!==true)throw new Error('clipboard_denied');
+ }finally{
+  field.remove();active?.focus?.({preventScroll:true});
+  if(typeof start==='number'&&typeof end==='number')active?.setSelectionRange?.(start,end,direction);
+  if(selection){selection.removeAllRanges();for(const range of ranges)selection.addRange(range);}
+ }
+}
+async function copyResult(kind){
+ const text=kind==='answer'?copyAnswerText:copyConversationText;
+ if(busy||copyPending||!text||byId('result-copy-controls').hidden)return;
+ const epoch=copyEpoch;copyPending=true;refreshCopyButtons();byId('copy-status').textContent='';
+ try{
+  if(globalThis.navigator?.clipboard?.writeText){
+   try{await globalThis.navigator.clipboard.writeText(text);}
+   catch(error){if(epoch!==copyEpoch)return;copyTextSelection(text);}
+  }else copyTextSelection(text);
+  if(epoch===copyEpoch){byId('copy-status').textContent=kind==='answer'?'답변만 복사했습니다.':'질문과 답변을 복사했습니다.';byId('copy-status').className='';}
+ }catch(error){if(epoch===copyEpoch){byId('copy-status').textContent='복사하지 못했습니다. 답변 부분을 직접 선택해 복사하십시오.';byId('copy-status').className='error';}}
+ finally{if(epoch===copyEpoch){copyPending=false;refreshCopyButtons();}}
+}
+function renderResult(result,question='',history=[]){
+ clearResultCopy();
  const box=byId('result');box.replaceChildren();box.hidden=false;
  const task=result.task||'source_review',draft=result.draft;
  addText(box,'h2',task==='direct'?'모델 답변 초안':task==='tutor'?'튜터 답변':task==='questions'?'문제·정답·해설 초안':result.domain==='medical'?'의료 근거 검토 초안':'교육 설명자료 초안');
@@ -266,7 +329,13 @@ function renderResult(result){
  }
  if(task!=='direct')renderList(box,'확인되지 않은 내용',draft.uncertainties);
  addText(box,'p','검토 상태: 생성 초안 · 공식 출처 대조 및 독립 AI 검증 미실시 · 사람의 검토 필요');
+ copyAnswerText=resultAnswerText(result);
+ const messages=task==='tutor'?history.map(item=>(item.role==='user'?'사용자: ':'AI: ')+item.content):[];
+ messages.push('사용자: '+question,'AI: '+copyAnswerText);copyConversationText=messages.join('\\n\\n');
+ byId('result-copy-controls').hidden=!copyAnswerText;refreshCopyButtons();
 }
+byId('copy-answer').addEventListener('click',()=>copyResult('answer'));
+byId('copy-conversation').addEventListener('click',()=>copyResult('conversation'));
 byId('add-source').addEventListener('click',addSource);
 byId('attachments').addEventListener('change',selectAttachments);
 byId('voice-input').addEventListener('click',toggleVoice);
@@ -298,7 +367,7 @@ byId('draft-form').addEventListener('submit',async event=>{
   status('선택한 모델에 요청하고 있습니다.');
   const response=await fetch(task==='direct'?'/owner/open-models/call':'/owner/open-models/draft',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await response.json();if(!response.ok)throw new Error(data.detail?.message||'요청을 완료하지 못했습니다. 입력과 모델 연결을 확인해야 합니다.');
-  renderResult(data);
+  renderResult(data,question,task==='tutor'?body.history:[]);
   if(task==='tutor')saveTurn(question,data.draft.answer);
   if(submittedSlot!==null)chatDrafts.delete(submittedSlot,submittedText);
   if(draftSlot===submittedSlot&&byId('question').value===submittedText)byId('question').value='';
