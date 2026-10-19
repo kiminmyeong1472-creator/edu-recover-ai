@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +21,11 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, m
 from app.services.owner_basic_auth import require_owner
 from app.services.open_model_api import _PrivateValidationRoute, _workspace_response
 from app.services.code_evaluations import get_case, public_cases
+from app.services.code_generation import (
+    CodeFile, CodeGenerationRequest, MAX_TOTAL_FILES_BYTES, generate_code, generation_status,
+)
+from app.services.control_plane import ProviderHeld
+from app.services.open_model_transport import OpenModelError
 from app.services import code_execution_runtime as runtime
 
 HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
@@ -30,23 +35,6 @@ _pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="code-workspace")
 _lock = threading.RLock()
 _active: dict[str, threading.Event] = {}
 _recovered: set[str] = set()
-MAX_TOTAL_FILES_BYTES = 512 * 1024
-
-class CodeFile(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    path: StrictStr = Field(min_length=1, max_length=240)
-    content: StrictStr = Field(max_length=128 * 1024)
-
-    @model_validator(mode="after")
-    def safe_path(self):
-        path = PurePosixPath(self.path)
-        if (path.is_absolute() or ".." in path.parts or "\\" in self.path
-                or self.path in {".", ""} or any(ord(c) < 32 for c in self.path)
-                or any(part in {"", ".", ".."} for part in self.path.split("/"))
-                or len(self.path.encode("utf-8")) > 240 or path.parts[0] == ".edurecover"
-                or len(self.content.encode("utf-8")) > 128 * 1024):
-            raise ValueError("Invalid project path")
-        return self
 
 class CodeRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -204,7 +192,22 @@ def coding_workspace():
 def status():
     return JSONResponse(runtime.runtime_status() | {"system_apply_available": False,
         "tools": ["file_read", "file_write", "file_list", "run_command"],
-        "code_isolation": "separate_vm_no_app_secrets"}, headers=HEADERS)
+        "code_isolation": "separate_vm_no_app_secrets",
+        "external_generation": generation_status()}, headers=HEADERS)
+
+@router.post("/generate")
+async def request_code_draft(request: CodeGenerationRequest):
+    try:
+        result = await generate_code(request)
+    except ProviderHeld:
+        raise HTTPException(423, {"code": "OPEN_MODEL_POLICY_HELD",
+            "message": "선택한 모델의 사용 설정을 확인하십시오."}, headers=HEADERS) from None
+    except OpenModelError as exc:
+        raise HTTPException(exc.http_status, {"code": exc.code, "message": str(exc)}, headers=HEADERS) from None
+    except Exception:
+        raise HTTPException(502, {"code": "CODE_GENERATION_FAILED",
+            "message": "AI 코드 초안을 받지 못했습니다. 코드는 실행하지 않았습니다."}, headers=HEADERS) from None
+    return JSONResponse(result, headers=HEADERS)
 
 @router.get("/evaluation-cases")
 def evaluation_cases():
