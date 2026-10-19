@@ -31,7 +31,9 @@ _HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "same-origin",
             "X-Content-Type-Options": "nosniff"}
 _AWS_ADDITIONAL_KEYS = {row["model_key"] for row in AWS_ADDITIONAL_MODEL_CATALOG}
 _CLOUD_SERVICE_KEYS = {row["model_key"] for row in CLOUD_SERVICE_MODEL_CATALOG}
-_LOGGER = logging.getLogger(__name__)
+# Uvicorn configures this logger at INFO in production; the root logger may
+# remain at WARNING and would otherwise discard startup readiness records.
+_LOGGER = logging.getLogger("uvicorn.error")
 _KNOWN_MODEL_KEYS = frozenset(row["model_key"] for row in (*MODEL_CATALOG, *CHUTES_MODEL_CATALOG))
 _DIRECT_DIAGNOSTIC_MODELS = ("DeepSeek-V4.1-Flash", "DeepSeek-V4-Pro")
 _CHUTES_DIAGNOSTIC_MODELS = tuple(row["model_key"] for row in CHUTES_MODEL_CATALOG
