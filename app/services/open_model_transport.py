@@ -61,6 +61,9 @@ from app.services.training_model_policy import permitted_model_catalog
 
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_INPUT_BYTES = 4 * 1024 * 1024
+# Configuration JSON remains independently bounded. User input is governed by
+# the HTTP request resource limit, never silently shortened to fit a model.
+MAX_PROMPT_BYTES = 48 * 1024 * 1024
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_IMAGES = 4
 CONNECT_TIMEOUT_SECONDS = 5
@@ -379,7 +382,7 @@ def catalog_status(*, route: str | None = None) -> list[dict[str, Any]]:
 
 
 def _http_token(binding: _Binding) -> str | None:
-    value = os.getenv(binding.api_key_env or "", "")
+    value = os.getenv(binding.api_key_env or "", "").strip()
     if not re.fullmatch(r"[A-Za-z0-9._~+/=-]{1,8192}", value):
         return None
     return value
@@ -536,8 +539,8 @@ def _bedrock_text(response: Any) -> str:
         if not isinstance(block["text"], str):
             raise _response_error()
         texts.append(block["text"])
-    text = "".join(texts).strip()
-    if not text:
+    text = "".join(texts)
+    if not text.strip():
         raise _response_error()
     return text
 
@@ -604,7 +607,7 @@ def _openai_text(result: Any, request_format: str) -> str:
         text = message.get("content")
     if not isinstance(text, str) or not text.strip():
         raise _response_error()
-    return text.strip()
+    return text
 
 
 def _invoke_http(
@@ -718,7 +721,7 @@ async def call_model(
             or (max_tokens is not None and (type(max_tokens) is not int or max_tokens < 1))):
         raise OpenModelError("모델에 전달할 요청 내용이 올바르지 않습니다.", "OPEN_MODEL_INPUT_INVALID", 400)
     try:
-        if len((instructions + prompt).encode("utf-8")) > MAX_INPUT_BYTES:
+        if len((instructions + prompt).encode("utf-8")) > MAX_PROMPT_BYTES:
             raise OpenModelError("모델에 전달할 요청 내용이 크기 제한을 초과했습니다.", "OPEN_MODEL_INPUT_INVALID", 400)
     except UnicodeError:
         raise OpenModelError("모델에 전달할 요청 내용이 올바르지 않습니다.", "OPEN_MODEL_INPUT_INVALID", 400) from None

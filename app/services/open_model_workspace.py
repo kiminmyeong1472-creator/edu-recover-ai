@@ -34,7 +34,7 @@ button.secondary{background:#e9eff8;color:#17437f}button:disabled{opacity:.5;cur
 <div id="direct-options"><p>앱에서 답변 토큰 수를 제한하지 않습니다. 모델 제공자의 처리 한도는 적용됩니다.</p></div>
 <div id="question-options" hidden><div class="grid"><div><label for="question-count">문항 수</label><input id="question-count" type="number" value="5" min="1" max="10"></div><div><label for="question-format">문제 형식</label><select id="question-format"><option value="short_answer">서답형</option><option value="multiple_choice">4지선다형</option></select></div></div></div>
 <label for="question" id="question-label">튜터에게 물어볼 내용</label>
-<textarea id="question" maxlength="4000" required placeholder="질문, 배우고 싶은 개념이나 출제 목적을 입력할 수 있습니다."></textarea>
+<textarea id="question" required placeholder="질문, 배우고 싶은 개념이나 출제 목적을 입력할 수 있습니다."></textarea>
 <p id="chat-draft-status" role="status" aria-live="polite">작성 중 문장은 이 브라우저에 보관합니다. 같은 화면으로 돌아오면 복원합니다. 첨부파일은 다시 선택해야 합니다.</p>
 <button type="button" id="clear-chat-draft" class="secondary">작성 중 문장 지우기</button>
 <div class="voice-controls"><button type="button" id="voice-input" class="secondary" aria-pressed="false">음성 입력 시작</button><p id="voice-status" role="status" aria-live="polite"></p></div>
@@ -109,12 +109,13 @@ function readAttachment(file){
 }
 function voiceStatus(text,error=false){byId('voice-status').textContent=text;byId('voice-status').className=error?'error':'';}
 function updateVoiceButton(){
- const button=byId('voice-input');button.disabled=busy||!recognition;button.textContent=listening?'음성 입력 중지':'음성 입력 시작';button.setAttribute('aria-pressed',String(listening));
+ const button=byId('voice-input');button.disabled=busy;button.textContent=listening?'음성 입력 중지':recognition?'음성 입력 시작':'키보드 음성 입력 안내';button.setAttribute('aria-pressed',String(listening));
 }
 function stopVoice(){if(recognition&&listening){listening=false;try{recognition.stop();}catch(error){voiceStatus('음성 입력을 마쳤습니다.');}updateVoiceButton();}}
 function setupVoice(){
+ try{
  const Recognition=globalThis.SpeechRecognition||globalThis.webkitSpeechRecognition;
- if(!Recognition){voiceStatus('이 브라우저는 음성 입력을 지원하지 않습니다. 질문을 직접 입력하십시오.');updateVoiceButton();return;}
+ if(!Recognition){voiceFallback();return;}
  recognition=new Recognition();recognition.lang='ko-KR';recognition.continuous=true;recognition.interimResults=true;
  recognition.onstart=()=>{if(busy){try{recognition.stop();}catch(error){}listening=false;updateVoiceButton();return;}listening=true;voiceStatus('듣고 있습니다. 음성 입력을 마치려면 중지하십시오. 자동으로 질문을 보내지 않습니다.');updateVoiceButton();};
  recognition.onresult=event=>{
@@ -122,16 +123,21 @@ function setupVoice(){
   // results is the current session snapshot, not new text to append. Rebuild
   // it so repeated final events and revised interim text cannot accumulate.
   const parts=[];for(let index=0;index<event.results.length;index++){const transcript=event.results[index]?.[0]?.transcript;if(typeof transcript==='string'&&transcript.trim())parts.push(transcript.trim());}
-  const transcript=parts.join(' '),text=voiceBase+(voiceBase&&transcript?'\\n':'')+transcript,field=byId('question');field.value=field.maxLength>0?text.slice(0,field.maxLength):text;saveQuestionDraft();
+  const transcript=parts.join(' '),text=voiceBase+(voiceBase&&transcript?'\\n':'')+transcript,field=byId('question');field.value=text;saveQuestionDraft();
  };
  recognition.onerror=event=>{listening=false;const messages={'not-allowed':'마이크 사용이 허용되지 않았습니다. 브라우저에서 마이크 권한을 확인하십시오.','service-not-allowed':'이 브라우저에서 음성 인식 서비스를 사용할 수 없습니다.','audio-capture':'사용 가능한 마이크를 찾지 못했습니다.','no-speech':'인식한 음성이 없습니다. 다시 시작하십시오.','network':'음성 인식 서비스에 연결하지 못했습니다.'};voiceStatus(messages[event.error]||'음성 입력이 중단되었습니다. 질문을 직접 입력하거나 다시 시작하십시오.',true);updateVoiceButton();};
  recognition.onend=()=>{listening=false;updateVoiceButton();if(!byId('voice-status').className.includes('error'))voiceStatus('음성 입력을 마쳤습니다. 내용을 확인한 뒤 질문을 보내십시오.');};
  voiceStatus('음성 인식은 브라우저가 제공하며, 인식을 위해 음성이 브라우저 제공업체로 전송될 수 있습니다. 마이크 사용을 허용한 뒤 시작하십시오. 녹음 파일 첨부는 지원하지 않습니다.');updateVoiceButton();
+ }catch(error){recognition=null;listening=false;voiceFallback();}
+}
+function voiceFallback(){
+ voiceStatus('브라우저 음성 인식을 사용할 수 없습니다. 질문란을 선택한 뒤 휴대폰 키보드의 마이크를 직접 실행하십시오.');updateVoiceButton();
 }
 function toggleVoice(){
- if(busy||!recognition)return;
+ if(busy)return;
+ if(!recognition){byId('question').focus();voiceFallback();return;}
  if(listening){stopVoice();return;}
- voiceBase=byId('question').value.trimEnd();
+ voiceBase=byId('question').value;
  try{listening=true;updateVoiceButton();recognition.start();}catch(error){listening=false;voiceStatus('음성 입력을 시작하지 못했습니다. 마이크 권한을 확인한 뒤 다시 시작하십시오.',true);updateVoiceButton();}
 }
 function addSource(){
@@ -139,7 +145,7 @@ function addSource(){
  sourceCount++;
  const wrap=document.createElement('div');wrap.className='source';
  const label=document.createElement('label');label.htmlFor='source-'+sourceCount;label.textContent='자료 '+sourceCount+' (S'+sourceCount+')';
- const field=document.createElement('textarea');field.id='source-'+sourceCount;field.dataset.sourceId='S'+sourceCount;field.maxLength=16000;
+ const field=document.createElement('textarea');field.id='source-'+sourceCount;field.dataset.sourceId='S'+sourceCount;
  field.placeholder='원문과 출처 이름·주소 등을 함께 입력할 수 있습니다.';
  field.addEventListener('input',clearHistory);
  wrap.append(label,field);byId('sources').append(wrap);byId('add-source').disabled=sourceCount>=8;
@@ -147,14 +153,11 @@ function addSource(){
 function status(text,error=false){byId('status').textContent=text;byId('status').className=error?'error':'';}
 function historyInfo(){
  const turns=tutorHistory.filter(x=>x.role==='user').length;
- byId('history-info').textContent=turns?'이 대화에서 최근 '+turns+'회 질문과 답변을 함께 전달합니다. 대화는 이 화면의 메모리에만 보관됩니다.':'아직 전달할 이전 튜터 대화가 없습니다.';
+ byId('history-info').textContent=turns?'이 대화에서 '+turns+'회 질문과 답변을 함께 전달합니다. 대화는 이 화면의 메모리에만 보관됩니다.':'아직 전달할 이전 튜터 대화가 없습니다.';
 }
 function clearHistory(){tutorHistory=[];historyInfo();clearResultCopy();}
 function saveTurn(question,answer){
- // Explicitly labelled excerpts keep every message within the API bounds.
- const content=answer.length>4000?'[이전 답변의 앞부분 발췌] '+answer.slice(0,3950):answer;
- tutorHistory.push({role:'user',content:question},{role:'assistant',content});
- while(tutorHistory.length>12||tutorHistory.reduce((n,x)=>n+x.content.length,0)>16000)tutorHistory.splice(0,2);
+ tutorHistory.push({role:'user',content:question},{role:'assistant',content:answer});
  historyInfo();
 }
 function setBusy(value){
@@ -188,12 +191,12 @@ function updateTask(){
  byId('domain-options').hidden=direct;byId('direct-options').hidden=!direct;
  byId('attachment-options').hidden=!direct;
  byId('sources').hidden=direct;byId('add-source').hidden=direct;
- if(direct)byId('question').removeAttribute('maxlength');else byId('question').maxLength=4000;
+ byId('question').removeAttribute('maxlength');
  byId('question-options').hidden=task!=='questions';
  byId('new-conversation').hidden=task!=='tutor';byId('history-info').hidden=task!=='tutor';
  byId('generate').textContent=direct?'선택한 모델에 질문하기':task==='tutor'?'튜터에게 질문하기':task==='questions'?'문제·정답·해설 만들기':'자료 검토 초안 만들기';
  byId('question-label').textContent=direct?'선택한 모델에 물어볼 내용':task==='tutor'?'튜터에게 물어볼 내용':task==='questions'?'출제할 과목·학년·범위·난이도':'설명하거나 검토할 내용';
- byId('domain-help').textContent=direct?'질문 한 개를 선택한 모델에 전달하고 답변을 그대로 표시합니다. 기본 학습 모델을 포함한 25개 모델에 사용할 수 있으며, 실제 호출에는 각 모델의 연결 설정과 인증 정보가 필요합니다.':task==='tutor'?'질문에 답하고 개념을 설명하며 후속 질문을 제안합니다. 이전 대화는 최대 12개 메시지·총 16,000자만 사용합니다.':task==='questions'?'교재 원문을 바탕으로 최대 10문항의 문제·정답·해설·근거 번호를 만듭니다. 교사의 검토 전에는 확정 답안이 아닙니다.':byId('domain').value==='medical'?'부작용·과잉진료 등 질문과 자료의 근거, 자료 사이의 차이, 의료진에게 확인할 질문을 정리합니다.':'교육 개념·설명·교수자료를 교사가 검토할 초안으로 정리합니다.';
+ byId('domain-help').textContent=direct?'질문 한 개를 선택한 모델에 전달하고 답변을 그대로 표시합니다. 기본 학습 모델을 포함한 25개 모델에 사용할 수 있으며, 실제 호출에는 각 모델의 연결 설정과 인증 정보가 필요합니다.':task==='tutor'?'질문에 답하고 개념을 설명하며 후속 질문을 제안합니다. 이 화면에서 나눈 이전 대화를 함께 전달합니다. 모델 제공자의 문맥 처리 한도는 적용됩니다.':task==='questions'?'교재 원문을 바탕으로 최대 10문항의 문제·정답·해설·근거 번호를 만듭니다. 교사의 검토 전에는 확정 답안이 아닙니다.':byId('domain').value==='medical'?'부작용·과잉진료 등 질문과 자료의 근거, 자료 사이의 차이, 의료진에게 확인할 질문을 정리합니다.':'교육 개념·설명·교수자료를 교사가 검토할 초안으로 정리합니다.';
  byId('task-notice').textContent=direct?'질문하기를 실행하면 입력한 질문과 첨부한 파일을 선택한 모델 하나에 전송합니다. 답변은 생성 초안이며 공식 출처 대조와 독립 AI 검증을 수행하지 않습니다.':'선택한 모델 하나에 입력한 내용만 전송합니다. 튜터는 자료 없이 질문할 수 있으며, 출처가 필요한 설명에는 자료를 함께 넣을 수 있습니다. 문제 출제와 자료 검토에는 원문이 필요합니다.';
  byId('result').hidden=true;clearHistory();
 }
@@ -226,11 +229,18 @@ function refreshModelSelection(){
  byId('model-readiness').textContent=modelExplanation(row);
  byId('attachment-capability').textContent=row?(row.supports_images===true?'선택한 모델은 사진 입력을 지원합니다.':'선택한 모델은 사진 입력이 확인되지 않아 사진을 전송하지 않습니다. 문서·텍스트 파일은 첨부할 수 있습니다.'):'사진을 첨부하려면 사진 입력을 지원하는 모델을 선택하십시오.';
 }
+async function readResponse(response){
+ const contentType=response.headers?.get?.('content-type')||'';
+ if(response.status===401||response.redirected&&(response.url||'').split(/[?#]/,1)[0].endsWith('/owner/login')||contentType.toLowerCase().includes('text/html')&&(response.url||'').split(/[?#]/,1)[0].endsWith('/owner/login'))throw new Error('관리자 로그인이 만료됐습니다. 입력한 문장은 보관했습니다. 다시 로그인한 뒤 전송하십시오.');
+ if(contentType&& !contentType.toLowerCase().includes('json'))throw new Error('서버가 예상한 응답 형식을 보내지 않았습니다. 입력한 문장은 보관했습니다. 잠시 뒤 다시 시도하십시오.');
+ try{return await response.json();}catch(error){throw new Error('서버 응답을 읽지 못했습니다. 입력한 문장은 보관했습니다. 서버 상태를 확인하십시오.');}
+}
 async function loadModels(){
  try{
   const response=await fetch('/owner/open-models/catalog',{credentials:'same-origin',cache:'no-store'});
-  if(!response.ok)throw new Error('모델 연결 정보를 불러오지 못했습니다. 관리자 로그인과 연결 설정을 확인해야 합니다.');
-  const data=await response.json();const select=byId('model'),previous=select.value||preferredDraftModel;select.replaceChildren();modelRows=new Map();
+  const data=await readResponse(response);
+  if(!response.ok)throw new Error(data.detail?.message||'모델 연결 정보를 불러오지 못했습니다. 관리자 로그인과 연결 설정을 확인해야 합니다.');
+  const select=byId('model'),previous=select.value||preferredDraftModel;select.replaceChildren();modelRows=new Map();
   const first=document.createElement('option');first.value='';first.textContent='사용할 모델을 선택할 수 있습니다.';select.append(first);
   const groups={};let usableModels=0;
   for(const row of data.models){
@@ -310,30 +320,75 @@ function renderResult(result,question='',history=[]){
  const task=result.task||'source_review',draft=result.draft;
  addText(box,'h2',task==='direct'?'모델 답변 초안':task==='tutor'?'튜터 답변':task==='questions'?'문제·정답·해설 초안':result.domain==='medical'?'의료 근거 검토 초안':'교육 설명자료 초안');
  addText(box,'p','사용 모델: '+result.model_key);
+ const answerRegion=document.createElement('div');answerRegion.id='result-answer';answerRegion.tabIndex=0;answerRegion.setAttribute('aria-label','현재 답변');box.append(answerRegion);
  if(task==='direct'){
-  addText(box,'p',result.answer);
+  addText(answerRegion,'p',result.answer);
  }else if(task==='tutor'){
-  addText(box,'p',draft.answer+references(draft.answer_source_ids));renderList(box,'이어서 생각해 볼 질문',draft.follow_up_questions);
+  addText(answerRegion,'p',draft.answer+references(draft.answer_source_ids));renderList(answerRegion,'이어서 생각해 볼 질문',draft.follow_up_questions);
  }else if(task==='questions'){
-  addText(box,'h2',draft.title);
+  addText(answerRegion,'h2',draft.title);
   for(const item of draft.items){
-   addText(box,'h2',item.number+'. '+item.question);
-   if(item.options.length){const options=document.createElement('ol');for(const option of item.options)addText(options,'li',option);box.append(options);}
+   addText(answerRegion,'h2',item.number+'. '+item.question);
+   if(item.options.length){const options=document.createElement('ol');for(const option of item.options)addText(options,'li',option);answerRegion.append(options);}
    const details=document.createElement('details');addText(details,'summary','정답·해설 보기');
-   addText(details,'p','정답: '+item.answer);addText(details,'p','해설: '+item.explanation+references(item.source_ids));box.append(details);
+   addText(details,'p','정답: '+item.answer);addText(details,'p','해설: '+item.explanation+references(item.source_ids));answerRegion.append(details);
   }
  }else{
-  addText(box,'p',draft.summary+references(draft.summary_source_ids));
-  const points=document.createElement('ul');for(const point of draft.points)addText(points,'li',point.text+references(point.source_ids));box.append(points);
-  renderList(box,'추가로 확인할 질문',draft.questions);
+  addText(answerRegion,'p',draft.summary+references(draft.summary_source_ids));
+  const points=document.createElement('ul');for(const point of draft.points)addText(points,'li',point.text+references(point.source_ids));answerRegion.append(points);
+  renderList(answerRegion,'추가로 확인할 질문',draft.questions);
  }
- if(task!=='direct')renderList(box,'확인되지 않은 내용',draft.uncertainties);
+ if(task!=='direct')renderList(answerRegion,'확인되지 않은 내용',draft.uncertainties);
  addText(box,'p','검토 상태: 생성 초안 · 공식 출처 대조 및 독립 AI 검증 미실시 · 사람의 검토 필요');
  copyAnswerText=resultAnswerText(result);
  const messages=task==='tutor'?history.map(item=>(item.role==='user'?'사용자: ':'AI: ')+item.content):[];
  messages.push('사용자: '+question,'AI: '+copyAnswerText);copyConversationText=messages.join('\\n\\n');
  byId('result-copy-controls').hidden=!copyAnswerText;refreshCopyButtons();
 }
+function editableTarget(node){
+ const target=node?.nodeType===3?node.parentElement:node;
+ return !!target?.closest?.('input,textarea,[contenteditable]:not([contenteditable="false"])');
+}
+function answerFocus(node,region){return !!node&&(node===region||region.contains?.(node));}
+function selectionInAnswer(selection,region){
+ if(!selection||!region)return false;
+ for(let index=0;index<selection.rangeCount;index++)try{if(selection.getRangeAt(index).intersectsNode(region))return true;}catch(error){}
+ return false;
+}
+function scopedAnswerSelection(selection,region){
+ const boundary=document.createRange();boundary.selectNodeContents(region);const parts=[];
+ for(let index=0;index<selection.rangeCount;index++){
+  const range=selection.getRangeAt(index).cloneRange();if(!range.intersectsNode(region))continue;
+  const coversStart=range.compareBoundaryPoints(0,boundary)<=0,coversEnd=range.compareBoundaryPoints(2,boundary)>=0;
+  if(coversStart&&coversEnd)return copyAnswerText;
+  if(coversStart)range.setStart(boundary.startContainer,boundary.startOffset);
+  if(coversEnd)range.setEnd(boundary.endContainer,boundary.endOffset);
+  if(!range.collapsed)parts.push(range.toString());
+ }
+ return parts.join('\\n');
+}
+function copyAnswerSelection(event){
+ const region=byId('result-answer'),selection=globalThis.getSelection?.();
+ if(!region||editableTarget(event.target)||editableTarget(document.activeElement))return;
+ const focused=answerFocus(event.target,region)||answerFocus(document.activeElement,region);
+ if(!focused&&!selectionInAnswer(selection,region))return;
+ // Cancel native whole-page copying even if the prior answer was invalidated.
+ event.preventDefault();
+ if(busy||!copyAnswerText||byId('result').hidden||byId('result-copy-controls').hidden)return;
+ let text='';try{text=selection?.rangeCount&&!selection.isCollapsed?scopedAnswerSelection(selection,region):copyAnswerText;}catch(error){byId('copy-status').textContent='답변만 복사 버튼을 실행하십시오.';return;}
+ if(!text)return;
+ if(event.clipboardData?.setData){event.clipboardData.setData('text/plain',text);return;}
+ if(globalThis.navigator?.clipboard?.writeText)globalThis.navigator.clipboard.writeText(text).catch(()=>{byId('copy-status').textContent='답변만 복사 버튼을 실행하십시오.';});
+}
+function selectAnswerText(event){
+ if(!(event.ctrlKey||event.metaKey)||event.altKey||String(event.key).toLowerCase()!=='a')return;
+ const region=byId('result-answer');
+ if(!region||editableTarget(event.target)||!(answerFocus(event.target,region)||answerFocus(document.activeElement,region)))return;
+ event.preventDefault();if(busy||!copyAnswerText||byId('result').hidden)return;
+ const range=document.createRange();range.selectNodeContents(region);const selection=globalThis.getSelection?.();selection?.removeAllRanges();selection?.addRange(range);
+}
+document.addEventListener?.('copy',copyAnswerSelection);
+document.addEventListener?.('keydown',selectAnswerText);
 byId('copy-answer').addEventListener('click',()=>copyResult('answer'));
 byId('copy-conversation').addEventListener('click',()=>copyResult('conversation'));
 byId('add-source').addEventListener('click',addSource);
@@ -354,19 +409,18 @@ byId('draft-form').addEventListener('submit',async event=>{
  saveQuestionDraft();const submittedSlot=draftSlot,submittedText=byId('question').value;
  setBusy(true);byId('result').hidden=true;
  try{
-  const task=byId('task').value,question=byId('question').value.trim();
-  const sources=Array.from(byId('sources').querySelectorAll('textarea')).filter(x=>x.value.trim()).map(x=>({source_id:x.dataset.sourceId,text:x.value.trim()}));
-  if(!question)throw new Error('질문이나 작업 목적을 입력해야 합니다.');
+  const task=byId('task').value,question=byId('question').value;
+  const sources=Array.from(byId('sources').querySelectorAll('textarea')).filter(x=>x.value.trim()).map(x=>({source_id:x.dataset.sourceId,text:x.value}));
+  if(!question.trim())throw new Error('질문이나 작업 목적을 입력해야 합니다.');
   if(task==='direct'&&attachmentFiles.some(file=>fileType(file).startsWith('image/'))&&selected.supports_images!==true)throw new Error('선택한 모델은 사진 입력을 지원하지 않습니다. 사진을 제거하거나 사진 입력을 지원하는 모델을 선택하십시오.');
   if(task!=='direct'&&task!=='tutor'&&!sources.length)throw new Error('문제 출제·자료 검토에는 원문을 한 개 이상 입력해야 합니다.');
-  if(task!=='direct'&&sources.reduce((total,x)=>total+x.text.length,0)>48000)throw new Error('자료 전체 길이는 48,000자 이내여야 합니다.');
   const body=task==='direct'?{model_key:byId('model').value,prompt:question,explicit_authorization:true}:{model_key:byId('model').value,task,domain:byId('domain').value,question,sources,explicit_authorization:true};
   if(task==='direct'&&attachmentFiles.length){status('첨부파일을 읽고 있습니다.');body.attachments=await Promise.all(attachmentFiles.map(readAttachment));}
   if(task==='tutor')body.history=tutorHistory;
   if(task==='questions'){body.question_count=Number(byId('question-count').value);body.question_format=byId('question-format').value;}
   status('선택한 모델에 요청하고 있습니다.');
   const response=await fetch(task==='direct'?'/owner/open-models/call':'/owner/open-models/draft',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const data=await response.json();if(!response.ok)throw new Error(data.detail?.message||'요청을 완료하지 못했습니다. 입력과 모델 연결을 확인해야 합니다.');
+  const data=await readResponse(response);if(!response.ok)throw new Error(data.detail?.message||'요청을 완료하지 못했습니다. 입력과 모델 연결을 확인해야 합니다.');
   renderResult(data,question,task==='tutor'?body.history:[]);
   if(task==='tutor')saveTurn(question,data.draft.answer);
   if(submittedSlot!==null)chatDrafts.delete(submittedSlot,submittedText);

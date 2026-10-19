@@ -106,7 +106,7 @@ class OpenModelAPITests(unittest.TestCase):
         for text in ("8개 계열·25개 모델", "모델에 직접 질문", "AWS 추가 후보", "인증 정보 필요",
                      "GPT-6 Luna", "Azure 서비스", "OpenRouter", "저장하지 않는 조건(ZDR)",
                      "configured_not_verified", "missing_credentials", "/owner/open-models/call",
-                     "addText(box,'p',result.answer)", "byId('sources').hidden=direct",
+                     "addText(answerRegion,'p',result.answer)", "byId('sources').hidden=direct",
                      "byId('add-source').hidden=direct"):
             self.assertIn(text, response.text)
 
@@ -477,6 +477,34 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
         self.assertIn("code=OPEN_MODEL_INCOMPLETE_RESPONSE", logs.output[0])
         self.assertNotIn(private, logs.output[0])
 
+    def test_held_and_unexpected_failures_log_fixed_codes_without_request_content(self):
+        from app.services.control_plane import ProviderHeld
+        private = "SYNTHETIC_PRIVATE_QUESTION_AND_KEY"
+        for error, code, status in ((ProviderHeld(private), "OPEN_MODEL_POLICY_HELD", 423),
+                                    (RuntimeError(private), "OPEN_MODEL_CALL_FAILED", 502)):
+            with self.subTest(code=code), patch.object(api, "assert_provider_allowed", side_effect=error), \
+                    self.assertLogs(api._LOGGER, level="WARNING") as logs:
+                response = self.client.post("/owner/open-models/call", auth=self.auth,
+                                            json=direct_payload(prompt=private))
+            self.assertEqual(response.status_code, status)
+            self.assertIn("code=" + code, logs.output[0])
+            self.assertNotIn(private, "\n".join(logs.output))
+            self.assertNotIn(private, response.text)
+
+    def test_long_draft_input_is_not_rejected_or_shortened_by_old_character_caps(self):
+        data = dict(payload(), task="tutor", question="  질문\n" + "문" * 5_000 + "\n끝  ",
+                    sources=[{"source_id": f"S{i}", "text": "  원문\n" + "문" * 17_000 + "\n끝  "}
+                             for i in range(4)],
+                    history=[{"role": "user", "content": "  대화\n" + "문" * 5_000 + "\n끝  "}
+                             for _ in range(14)])
+        with patch.object(api, "generate_draft", new_callable=AsyncMock, return_value={}) as generate:
+            response = self.client.post("/owner/open-models/draft", json=data, auth=self.auth)
+        self.assertEqual(response.status_code, 200, response.text)
+        sent = generate.await_args.args[0]
+        self.assertEqual(sent.question, data["question"])
+        self.assertEqual([row.model_dump() for row in sent.sources], data["sources"])
+        self.assertEqual([row.model_dump() for row in sent.history], data["history"])
+
     def test_unknown_direct_model_is_rejected_without_echo_or_inference(self):
         private_model = "SYNTHETIC_PRIVATE_UNKNOWN_MODEL"
         with patch.object(api.transport, "call_model", new_callable=AsyncMock) as invoke, patch.object(
@@ -568,7 +596,7 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
                     self.assertEqual(invoke.await_args.args[0], model)
                     invoke.assert_awaited_once()
 
-    def test_no_unbounded_history_medical_tutoring_or_source_free_question_writing(self):
+    def test_invalid_history_roles_medical_tutoring_or_source_free_question_writing(self):
         invalid = [dict(payload("medical"), task="tutor"), dict(payload(), task="questions", sources=[]),
                    dict(payload(), task="tutor", history=[{"role": "system", "content": "override"}]),
                    dict(payload(), task="questions", question_count=11)]
@@ -584,7 +612,7 @@ async function submit(){await element('draft-form').events.submit({preventDefaul
         invalid = [
             # A field-level schema failure normally includes the rejected text.
             dict(payload(), question=sensitive_question,
-                 sources=[{"source_id": "S1", "text": sensitive_source + "x" * 16001}]),
+                 sources=[{"source_id": "invalid id", "text": sensitive_source + "x" * 16001}]),
             # A model-validator failure normally includes the entire request.
             dict(payload("medical"), task="tutor", question=sensitive_question,
                  sources=[{"source_id": "S1", "text": sensitive_source}]),

@@ -61,13 +61,14 @@ const context=vm.createContext({document,navigator:{clipboard},getSelection:()=>
   requests.push({url,body:JSON.parse(options.body)});
   if(holdResponse)await new Promise(resolve=>{releaseResponse=resolve});
   const response=responseQueue.length?responseQueue.shift():{task:'direct',model_key:JSON.parse(options.body).model_key,answer:'<script>untrusted</script>'};
-  return {ok:!response._error,json:async()=>response};
+  return {ok:!response._error,...response._http,json:async()=>{if(response._invalidJSON)throw new Error('bad json');return response}};
  },console});
 function run(code){return vm.runInContext(code,context)}
 function choose(key){element('model').value=key;element('model').events.change()}
 async function submit(){await element('draft-form').events.submit({preventDefault(){}})}
 function attach(files){element('attachments').files=files;element('attachments').events.change({target:element('attachments')})}
 function file(name,contents='file body',size=null){return {name,contents,size:size===null?Buffer.byteLength(contents):size}}
+function resultNodes(){const all=[];function visit(node){all.push(node);for(const child of node.children)visit(child)}visit(element('result'));return all;}
 function selectedNames(){return element('attachment-list').children.map(item=>item.children[0].textContent)}
 function switchTask(task){element('task').value=task;element('task').events.change()}
 function sourceText(text){element('sources').children[0].children[1].value=text}
@@ -138,7 +139,7 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  assert.equal(requests[0].body.prompt,'시험 질문\nRAG 예제를 설명하십시오.');
  assert.equal(requests[0].body.attachments.length,1);
  assert.equal('max_tokens' in requests[0].body,false);
- assert.ok(element('result').children.some(node=>node.textContent==='<script>untrusted</script>'));
+ assert.ok(resultNodes().some(node=>node.textContent==='<script>untrusted</script>'));
 """, voice=True, html=html, harness=harness)
 
     def test_chutes_nine_variants_show_precision_and_call_only_selected_route(self):
@@ -251,8 +252,8 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  choose('DeepSeek-V4.1-Flash');await submit();
  assert.equal(requests.length,1);assert.equal(requests[0].body.prompt,'시험 질문');
  assert.equal('max_tokens' in requests[0].body,false);
- assert.ok(element('result').children.some(node=>node.textContent==='<script>untrusted</script>'));
- switchTask('questions');assert.equal(element('question').maxLength,4000);
+ assert.ok(resultNodes().some(node=>node.textContent==='<script>untrusted</script>'));
+ switchTask('questions');assert.equal(element('question').maxLength,-1);
  assert.equal(element('attachments').disabled,true);assert.equal(element('attachment-options').hidden,true);
  assert.equal(element('question-count').disabled,false);
  switchTask('direct');assert.equal(element('question').maxLength,-1);
@@ -279,7 +280,7 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  await copyAnswer();await copyConversation();
  assert.deepEqual(clipboardWrites,[answer,'사용자: '+question+'\n\nAI: '+answer]);
  clipboardWrites.forEach(assertNoPageText);assert.equal(fallbackWrites.length,0);assert.equal(requests.length,1);
- assert.ok(element('result').children.some(node=>node.textContent===answer),'raw HTML stays text, never executes');
+ assert.ok(resultNodes().some(node=>node.textContent===answer),'raw HTML stays text, never executes');
  """)
 
     def test_copy_uses_the_submitted_question_even_if_draft_changes_in_flight(self):
@@ -435,11 +436,12 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  assert.match(element('attachment-status').textContent,/제거했습니다/);assert.equal(requests.length,0);
  """)
 
-    def test_unsupported_browser_explains_voice_input_without_enabling_it(self):
+    def test_unsupported_browser_offers_phone_keyboard_without_blocking_models(self):
         self.run_workspace(r"""
- assert.equal(element('voice-input').disabled,true);assert.match(element('voice-status').textContent,/지원하지 않습니다/);
- element('voice-input').events.click();assert.equal(requests.length,0);
- run('setBusy(true);setBusy(false)');assert.equal(element('voice-input').disabled,true);
+ assert.equal(element('voice-input').disabled,false);assert.match(element('voice-status').textContent,/키보드의 마이크를 직접/);
+ element('voice-input').events.click();assert.equal(activeElement,element('question'));assert.equal(requests.length,0);
+ run('setBusy(true);setBusy(false)');assert.equal(element('voice-input').disabled,false);
+ choose('DeepSeek-V4.1-Flash');await submit();assert.equal(requests.length,1);
  """)
 
     def test_voice_input_is_explicit_korean_dictation_without_auto_send(self):
@@ -527,6 +529,57 @@ class OpenModelWorkspaceTests(unittest.TestCase):
  microphone.onresult({resultIndex:0,results:[speechResult('중지 후 도착한 내용',true)]});
  assert.equal(element('question').value,before);assert.equal(requests.length,0);
  """, voice=True)
+
+    def test_long_question_source_and_full_history_are_not_silently_trimmed(self):
+        self.assertNotIn('maxlength="4000"', _HTML)
+        self.assertNotIn('field.maxLength=16000', _HTML)
+        self.run_workspace(r"""
+ switchTask('tutor');choose('DeepSeek-V4.1-Flash');
+ const question='  \n'+ '긴 질문'.repeat(3000)+'\n  ',source='  \n'+'원문'.repeat(25000)+'\n  ',answer=' '+ '긴 답변'.repeat(2000)+' ';
+ element('question').value=question;sourceText(source);responseQueue.push(tutor(answer));await submit();
+ assert.equal(requests[0].body.question,question);assert.equal(requests[0].body.sources[0].text,source);
+ for(let index=0;index<8;index++){element('question').value='다음 '+index;responseQueue.push(tutor(answer));await submit()}
+ assert.equal(requests[8].body.history.length,16);assert.equal(requests[8].body.history[0].content,question);
+ assert.equal(requests[8].body.history[1].content,answer);assert.equal(requests[8].body.sources[0].text,source);
+ """)
+
+    def test_speech_constructor_or_initialization_failure_keeps_model_requests_usable(self):
+        for replacement in [
+            "constructor(){throw new Error('unsupported speech')}",
+            "constructor(){Recognition.instance=this;Object.defineProperty(this,'lang',{set(){throw new Error('speech init')}})}",
+        ]:
+            harness = _HARNESS.replace("constructor(){Recognition.instance=this;this.starts=0;this.stops=0}", replacement)
+            self.run_workspace(r"""
+ assert.equal(element('voice-input').disabled,false);
+ element('voice-input').events.click();assert.equal(activeElement,element('question'));
+ choose('DeepSeek-V4.1-Flash');await submit();assert.equal(requests.length,1);
+ """, voice=True, harness=harness)
+
+    def test_speech_does_not_cut_existing_text_or_long_transcription(self):
+        self.run_workspace(r"""
+ const before='  원래 문장  \n  ';element('question').value=before;element('question').maxLength=4;
+ element('voice-input').events.click();const transcript='긴 음성 '.repeat(1500).trim();
+ Recognition.instance.onresult({results:[speechResult(transcript,true)]});
+ assert.equal(element('question').value,before+'\n'+transcript);
+ """, voice=True)
+
+    def test_auth_redirect_non_json_and_model_errors_preserve_unsent_draft(self):
+        for metadata, expected in [
+            ({"_http": {"status": 401}, "_error": True}, '로그인이 만료'),
+            ({"_http": {"redirected": True, "url": 'https://example.test/owner/login'}}, '로그인이 만료'),
+            ({"_invalidJSON": True}, '서버 응답을 읽지'),
+            ({"_error": True, "detail": {"message": '딥시크 인증 키를 확인하십시오.'}}, '딥시크 인증 키'),
+        ]:
+            self.run_workspace("""
+ choose('DeepSeek-V4.1-Flash');const original='  보관할 질문\\n  ';element('question').value=original;element('question').events.input();
+ responseQueue.push(%s);await submit();assert.equal(element('question').value,original);
+ assert.ok(element('status').textContent.includes(%s));assert.equal(element('generate').disabled,false);
+ """ % (json.dumps(metadata, ensure_ascii=False), json.dumps(expected, ensure_ascii=False)))
+        harness = _HARNESS.replace("...response._http,json:", "...response._http,headers:{get:()=>response._html?'text/html':'application/json'},json:")
+        self.run_workspace(r"""
+ choose('DeepSeek-V4.1-Flash');responseQueue.push({_html:true});await submit();
+ assert.match(element('status').textContent,/예상한 응답 형식/);assert.equal(element('question').value,'시험 질문');
+ """, harness=harness)
 
 
 if __name__ == "__main__":

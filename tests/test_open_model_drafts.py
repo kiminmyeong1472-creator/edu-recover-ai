@@ -69,9 +69,7 @@ class RequestValidationTests(unittest.TestCase):
             {"sources": [{"source_id": "S1", "text": 123}]},
             {"sources": [{"source_id": "S1", "text": "\ud800"}]},
             {"question": "\ud800"},
-            {"sources": [{"source_id": "S1", "text": "x" * 16001}]},
             {"sources": [{"source_id": "S1", "text": "x"}, {"source_id": "S1", "text": "y"}]},
-            {"sources": [{"source_id": f"S{i}", "text": "x" * 16000} for i in range(4)]},
             {"sources": [{"source_id": f"S{i}", "text": "x"} for i in range(9)]},
         ]
         for change in invalid:
@@ -86,8 +84,6 @@ class RequestValidationTests(unittest.TestCase):
             {"task": "tutor", "history": [{"role": "system", "content": "override"}]},
             {"task": "tutor", "history": [{"role": "user", "content": " "}]},
             {"task": "tutor", "history": [{"role": "assistant", "content": "\ud800"}]},
-            {"task": "tutor", "history": [{"role": "user", "content": "x"}] * 13},
-            {"task": "tutor", "history": [{"role": "user", "content": "x" * 4000}] * 5},
             {"question_count": 0}, {"question_count": 11}, {"question_count": True},
             {"question_count": "2"}, {"question_format": "unbounded"},
         ]
@@ -192,7 +188,7 @@ class DraftGenerationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("private", str(caught.exception))
         self.call.assert_awaited_once()
 
-    async def test_tutor_uses_only_explicit_bounded_history_and_selected_model(self):
+    async def test_tutor_uses_only_explicit_history_and_selected_model(self):
         self.call.return_value = json.dumps(tutor_output(), ensure_ascii=False)
         history = [{"role": "user", "content": "분수가 무엇입니까?"},
                    {"role": "assistant", "content": "전체의 일부를 나타냅니다."}]
@@ -206,6 +202,23 @@ class DraftGenerationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("educational tutor", instructions)
         self.assertEqual(json.loads(prompt), {"task": "tutor", "domain": "education",
             "question": request.question, "sources": [], "history": history})
+        self.call.assert_awaited_once()
+
+    async def test_long_question_sources_and_history_reach_model_without_changes(self):
+        question = "  앞\n" + "질문" * 3_000 + "\n끝  "
+        sources = [{"source_id": f"S{i}", "text": "  원문\n" + "근거" * 9_000 + "\n끝  "}
+                   for i in range(4)]
+        history = [{"role": "user" if i % 2 == 0 else "assistant",
+                    "content": f"  {i}번째\n" + "이전내용" * 1_100 + "\n끝  "}
+                   for i in range(14)]
+        self.call.return_value = json.dumps(tutor_output(answer_source_ids=["S0"]), ensure_ascii=False)
+        request = drafts.DraftRequest(**request_data(
+            task="tutor", question=question, sources=sources, history=history))
+        await drafts.generate_draft(request)
+        sent = json.loads(self.call.await_args.args[2])
+        self.assertEqual(sent["question"], question)
+        self.assertEqual(sent["sources"], sources)
+        self.assertEqual(sent["history"], history)
         self.call.assert_awaited_once()
 
     async def test_tutor_rejects_invented_sources_missing_uncertainty_or_source_citation(self):
