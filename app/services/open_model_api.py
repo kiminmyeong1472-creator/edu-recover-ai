@@ -18,7 +18,8 @@ from app.services.open_model_attachments import (
 )
 from app.services.control_plane import ProviderHeld, assert_provider_allowed, evaluate_provider
 from app.services.open_model_catalog import (
-    AWS_ADDITIONAL_MODEL_CATALOG, CLOUD_SERVICE_MODEL_CATALOG, model_family,
+    AWS_ADDITIONAL_MODEL_CATALOG, CHUTES_MODEL_CATALOG, CLOUD_SERVICE_MODEL_CATALOG,
+    MODEL_CATALOG, model_family,
 )
 from app.services.open_model_drafts import DraftRequest, generate_draft
 from app.services.open_model_transport import OpenModelError, catalog_status
@@ -31,6 +32,63 @@ _HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "same-origin",
 _AWS_ADDITIONAL_KEYS = {row["model_key"] for row in AWS_ADDITIONAL_MODEL_CATALOG}
 _CLOUD_SERVICE_KEYS = {row["model_key"] for row in CLOUD_SERVICE_MODEL_CATALOG}
 _LOGGER = logging.getLogger(__name__)
+_KNOWN_MODEL_KEYS = frozenset(row["model_key"] for row in (*MODEL_CATALOG, *CHUTES_MODEL_CATALOG))
+_DIRECT_DIAGNOSTIC_MODELS = ("DeepSeek-V4.1-Flash", "DeepSeek-V4-Pro")
+_CHUTES_DIAGNOSTIC_MODELS = tuple(row["model_key"] for row in CHUTES_MODEL_CATALOG
+                                  if row["family"] == "deepseek")
+_READINESS_STATES = frozenset({"not_configured", "missing_credentials", "disabled", "configured_not_verified"})
+_PERMISSION_STATES = frozenset({"ALLOWED", "HOLD", "BLOCKED", "RESTRICTED_VERIFY_ONLY",
+                                "OWNER_PERMISSION_REQUIRED", "CONTROL_CONFIG_INVALID"})
+_DIAGNOSTIC_CODES = frozenset({
+    "OPEN_MODEL_ACCESS_DENIED", "OPEN_MODEL_AUTHENTICATION_FAILED", "OPEN_MODEL_CONFIG_INVALID",
+    "OPEN_MODEL_CREDENTIALS_UNAVAILABLE", "OPEN_MODEL_DISABLED", "OPEN_MODEL_IMAGE_INVALID",
+    "OPEN_MODEL_IMAGE_UNSUPPORTED", "OPEN_MODEL_INCOMPLETE_RESPONSE", "OPEN_MODEL_INPUT_INVALID",
+    "OPEN_MODEL_INPUT_TOO_LARGE", "OPEN_MODEL_INSUFFICIENT_BALANCE", "OPEN_MODEL_INVOCATION_FAILED",
+    "OPEN_MODEL_NOT_CONFIGURED", "OPEN_MODEL_NOT_READY", "OPEN_MODEL_OUTPUT_LIMIT_REACHED",
+    "OPEN_MODEL_QUOTA_EXCEEDED", "OPEN_MODEL_REQUEST_REJECTED", "OPEN_MODEL_RESOURCE_NOT_FOUND",
+    "OPEN_MODEL_RESPONSE_INVALID", "OPEN_MODEL_RESPONSE_TOO_LARGE", "OPEN_MODEL_ROUTE_UNKNOWN",
+    "OPEN_MODEL_RUNTIME_UNAVAILABLE", "OPEN_MODEL_SDK_UNAVAILABLE", "OPEN_MODEL_SERVICE_UNAVAILABLE",
+    "OPEN_MODEL_TIMEOUT", "OPEN_MODEL_UNKNOWN", "OPEN_MODEL_POLICY_HELD", "OPEN_MODEL_CALL_FAILED",
+    "OPEN_MODEL_DRAFT_FAILED", "DRAFT_REQUEST_FAILED", "INVALID_DRAFT_OUTPUT", "INVALID_DRAFT_REQUEST",
+    "OWNER_PROVIDER_HELD", "UNKNOWN_DRAFT_MODEL",
+})
+
+
+def _log_failure(model_key: str, route: str | None, code: str) -> None:
+    # Neither exception messages nor arbitrary request identifiers belong in logs.
+    _LOGGER.warning("open_model_call_failed model=%s route=%s code=%s",
+                    model_key if model_key in _KNOWN_MODEL_KEYS else "unregistered",
+                    route if route in {"chutes", "learning"} else "main",
+                    code if code in _DIAGNOSTIC_CODES else "OPEN_MODEL_CALL_FAILED")
+
+
+def log_open_model_readiness() -> None:
+    """Log fixed configuration states only, without making a model request.
+
+    Startup diagnostics cannot establish a successful invocation. Explicit owner
+    policy checks still run before every request and are never relaxed here.
+    """
+    for route in (None, "learning", "chutes"):
+        try:
+            rows = {row["model_key"]: row for row in catalog_status(route=route)}
+        except Exception:
+            rows = {}
+            config_invalid = True
+        else:
+            config_invalid = False
+        try:
+            permission = evaluate_provider("deepseek", "generate").state
+        except Exception:
+            permission = "CONTROL_CONFIG_INVALID"
+        if permission not in _PERMISSION_STATES:
+            permission = "CONTROL_CONFIG_INVALID"
+        models = _CHUTES_DIAGNOSTIC_MODELS if route == "chutes" else _DIRECT_DIAGNOSTIC_MODELS
+        for model_key in models:
+            state = rows.get(model_key, {}).get("readiness_state", "not_configured")
+            if config_invalid or state not in _READINESS_STATES:
+                state = "config_invalid"
+            _LOGGER.info("open_model_readiness model=%s route=%s state=%s permission=%s basis=config_only",
+                         model_key, route or "main", state, permission)
 
 
 class DirectCallRequest(BaseModel):
@@ -163,15 +221,18 @@ async def open_model_draft(request: DraftRequest) -> JSONResponse:
     try:
         result = await generate_draft(request)
     except ProviderHeld:
+        _log_failure(request.model_key, None, "OPEN_MODEL_POLICY_HELD")
         raise HTTPException(status_code=423,
                             detail={"code": "OPEN_MODEL_POLICY_HELD",
                                     "message": "선택한 모델의 사용 설정을 확인해야 합니다."},
                             headers=_HEADERS) from None
     except OpenModelError as exc:
+        _log_failure(request.model_key, None, exc.code)
         raise HTTPException(status_code=exc.http_status,
                             detail={"code": exc.code, "message": str(exc)},
                             headers=_HEADERS) from None
     except Exception:
+        _log_failure(request.model_key, None, "OPEN_MODEL_DRAFT_FAILED")
         raise HTTPException(status_code=502,
                             detail={"code": "OPEN_MODEL_DRAFT_FAILED",
                                     "message": "초안을 만들지 못했습니다. 연결 설정과 응답 형식을 확인해야 합니다."},
@@ -214,16 +275,18 @@ async def _direct_call_response(
             **call_options,
         )
     except ProviderHeld:
+        _log_failure(request.model_key, route, "OPEN_MODEL_POLICY_HELD")
         raise HTTPException(status_code=423,
                             detail={"code": "OPEN_MODEL_POLICY_HELD",
                                     "message": "선택한 모델의 사용 설정을 확인하십시오."},
                             headers=_HEADERS) from None
     except OpenModelError as exc:
-        _LOGGER.warning("open_model_call_failed code=%s", exc.code)
+        _log_failure(request.model_key, route, exc.code)
         raise HTTPException(status_code=exc.http_status,
                             detail={"code": exc.code, "message": str(exc)},
                             headers=_HEADERS) from None
     except Exception:
+        _log_failure(request.model_key, route, "OPEN_MODEL_CALL_FAILED")
         raise HTTPException(status_code=502,
                             detail={"code": "OPEN_MODEL_CALL_FAILED",
                                     "message": "모델 응답을 받지 못했습니다. 연결 설정을 확인하십시오."},

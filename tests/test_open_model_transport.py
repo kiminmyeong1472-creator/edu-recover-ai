@@ -279,6 +279,27 @@ class CatalogTests(unittest.TestCase):
 
 
 class InvocationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_response_whitespace_and_code_indentation_are_preserved(self):
+        text = "    print('첫줄 들여쓰기')\n\n마지막\n  "
+        self.assertEqual(transport._bedrock_text(bedrock_output(text=text)), text)
+        self.assertEqual(transport._openai_text(sagemaker_output(text=text), "chat"), text)
+        self.assertEqual(transport._openai_text(
+            {"choices": [{"text": text, "finish_reason": "stop"}]}, "completion"), text)
+        body = ShortReadBody(json.dumps(sagemaker_output(text=text)).encode())
+        self.assertEqual(transport._sagemaker_text({"Body": body}), text)
+        self.assertTrue(body.closed)
+
+    async def test_prompt_above_config_limit_is_forwarded_in_full(self):
+        prompt = "  첫줄\n" + "가" * (transport.MAX_INPUT_BYTES // 3 + 1) + "\n마지막  "
+        self.assertGreater(len(prompt.encode("utf-8")), transport.MAX_INPUT_BYTES)
+        self.assertLess(len(prompt.encode("utf-8")), transport.MAX_PROMPT_BYTES)
+        client = FakeClient(bedrock_output())
+        with patch.dict(os.environ, environment(), clear=True), patch.object(
+                transport, "_new_client", return_value=client):
+            await transport.call_model(MODEL, "  지시\n  ", prompt)
+        self.assertEqual(client.calls[0][1]["messages"][0]["content"][0]["text"], prompt)
+        self.assertEqual(client.calls[0][1]["system"][0]["text"], "  지시\n  ")
+
     async def test_bedrock_sends_only_the_documented_text_fields(self):
         client = FakeClient(bedrock_output())
         with patch.dict(os.environ, environment(), clear=True), patch.object(transport, "_new_client", return_value=client):
@@ -371,7 +392,7 @@ class InvocationTests(unittest.IsolatedAsyncioTestCase):
     async def test_input_invalid_before_client_creation(self):
         cases = [(MODEL, "", "prompt", 2), (MODEL, "system", "", 2),
                  (MODEL, "system", "prompt", True), (MODEL, "system", "prompt", 0),
-                 (MODEL, "system", "x" * (transport.MAX_INPUT_BYTES + 1), 2),
+                 (MODEL, "system", "x" * (transport.MAX_PROMPT_BYTES + 1), 2),
                  ("unknown", "system", "prompt", 2)]
         for model, system, prompt, count in cases:
             with self.subTest(model=model, count=count), patch.object(transport, "_new_client") as client:
@@ -482,6 +503,15 @@ def http_environment(binding=None, enabled="true"):
 
 
 class LunaAzureTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_outer_key_whitespace_is_trimmed_without_changing_prompt(self):
+        env = {"EDURECOVER_OPEN_MODELS_ENABLED": "true", "DEEPSEEK_API_KEY": " \t direct-private-token\r\n"}
+        prompt = "  원문\n끝  "
+        with patch.dict(os.environ, env, clear=True), patch.object(
+                transport, "post_json", return_value=sagemaker_output()) as post:
+            await transport.call_model("DeepSeek-V4.1-Flash", "지시", prompt, route="learning")
+        self.assertEqual(post.call_args.args[2], "direct-private-token")
+        self.assertEqual(post.call_args.args[1]["messages"][1]["content"], prompt)
+
     async def test_preset_routes_luna_only_to_azure_without_relaxing_zdr(self):
         for strict_zdr in ("true", "false"):
             with self.subTest(strict_zdr=strict_zdr), patch.dict(os.environ, {
@@ -738,7 +768,7 @@ class HTTPTransportTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(transport, "post_json", return_value=response) as post, \
                 patch.object(transport, "_new_client") as sdk:
             answer = await transport.call_model(key, "instructions", "prompt", max_tokens=100)
-        self.assertEqual("최종 결과", answer)
+        self.assertEqual(" 최종 결과 ", answer)
         post.assert_called_once_with(binding["endpoint_url"], {
             "model": binding["model_id"], "max_tokens": 100, "stream": False,
             "prompt": "instructions\n\nprompt",
@@ -746,7 +776,7 @@ class HTTPTransportTests(unittest.IsolatedAsyncioTestCase):
         sdk.assert_not_called()
 
     async def test_missing_or_invalid_credentials_never_call_http_or_aws(self):
-        for token in (None, "", "secret\r\nHeader: value", " leading-space", "x" * 8193):
+        for token in (None, "", " \t\n", "secret\r\nHeader: value", "embedded space", "x" * 8193):
             env = http_environment()
             if token is None:
                 env.pop("SELECTED_MODEL_API_KEY")
@@ -929,7 +959,7 @@ class UnboundedOutputTransportTests(unittest.IsolatedAsyncioTestCase):
             transport, "post_json", return_value=sagemaker_output(answer)
         ):
             actual = await transport.call_model(MODEL, "instructions", "write code", max_tokens=None)
-        self.assertEqual(answer.strip(), actual)
+        self.assertEqual(answer, actual)
 
     def test_output_limit_failures_are_distinct_from_other_incomplete_answers(self):
         for reason in ("length", "max_tokens", "model_context_window_exceeded"):
