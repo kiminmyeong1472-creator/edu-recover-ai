@@ -1,6 +1,9 @@
 """Configuration diagnostics must never invoke providers or expose private input."""
 
 import os
+from pathlib import Path
+import subprocess
+import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -10,6 +13,33 @@ from app.services import open_model_transport as transport
 
 
 class OpenModelReadinessTests(unittest.TestCase):
+    def test_startup_records_reach_the_default_production_log_handler(self):
+        # assertLogs changes logger levels, so it cannot catch records silently
+        # discarded by the real Uvicorn configuration. Exercise that in a fresh
+        # process with the default root WARNING level and no private environment.
+        root = Path(__file__).resolve().parents[1]
+        script = """
+import copy
+import logging
+import logging.config
+from uvicorn.config import LOGGING_CONFIG
+logging.getLogger().setLevel(logging.WARNING)
+logging.config.dictConfig(copy.deepcopy(LOGGING_CONFIG))
+from app.services.open_model_api import log_open_model_readiness
+log_open_model_readiness()
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=root, capture_output=True,
+            text=True, timeout=30,
+            env={"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(root),
+                 "PYTHONNOUSERSITE": "1"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        records = [line for line in result.stderr.splitlines()
+                   if "open_model_readiness model=" in line]
+        self.assertEqual(len(records), 6, result.stderr)
+        self.assertTrue(all("basis=config_only" in line for line in records))
+
     def test_startup_diagnostics_use_configuration_only_without_network_or_secrets(self):
         secret = "SYNTHETIC_PRIVATE_KEY"
         env = {"EDURECOVER_OPEN_MODELS_ENABLED": "true", "EDURECOVER_DEEPSEEK_DIRECT_ENABLED": "true",
