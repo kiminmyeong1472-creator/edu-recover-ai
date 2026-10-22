@@ -1,0 +1,19 @@
+{
+  "apk": "/workspace/scratch/87d711058fd3/native-liferevolve/LifeRevolve_0_3_0_20261022.apk",
+  "bytes": 975332,
+  "sha256": "01375693a3a3c50e14c9362801074f9e78b4635ad5039dbfccc404bc31169af5",
+  "java_assertions": 26,
+  "invalid_build_configs_rejected": 4,
+  "signature_verified": true,
+  "compile_sdk": 35,
+  "min_sdk": 34,
+  "target_sdk": 35,
+  "package": "kr.edurecover.liferevolve",
+  "version_code": 1,
+  "version_name": "0.3.0",
+  "platform_origin": "https://edurecover-prod-production.up.railway.app",
+  "device_tests_executed": false,
+  "emulator_tests_executed": false,
+  "independent_source_review": "two lifecycle races corrected; no new critical blocker found; device tests not run",
+  "asset_sha256": "b162001f66840541fb41692740a977b47d4262e6ba351456fe69c8ccd7c43865"
+}
