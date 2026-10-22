@@ -1,0 +1,8 @@
+.android-sdk/
+.signing/
+build/
+*.apk
+*.idsig
+build-log.txt
+__pycache__/
+app/src/main/res/drawable-nodpi/companion.png

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f3eb">
+  <title>화면 자료 · 생활의 혁명</title>
+  <link rel="stylesheet" href="/life/assets/life.css">
+  <script src="/life/assets/screen.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로</a>
+  <div class="site-shell screen-shell">
+    <header class="site-header"><a class="brand" href="/life" aria-label="생활의 혁명 홈"><span class="brand-mark" aria-hidden="true">L<span>↗</span></span><span>생활의 혁명<small>LifeRevolve</small></span></a><nav class="header-nav" aria-label="주요 메뉴"><a href="/life">← 홈으로</a><a href="/life/privacy">개인정보</a></nav></header>
+    <main id="main">
+      <section class="workspace-heading"><div><p class="eyebrow">SCREEN LIBRARY</p><h1>화면을 모으는<br class="mobile-break"> 작은 작업실.</h1><p>선택한 화면의 원본을 확인하고 보관하십시오.</p></div><img src="/life/assets/companion.png" width="1536" height="1024" alt="탁자에서 노트북과 휴대폰을 사용하는 AI 캐릭터" class="workspace-companion"></section>
+      <div class="workspace-grid">
+        <section class="upload-panel panel" aria-labelledby="upload-title">
+          <div class="panel-title"><span class="step-number">01</span><div><h2 id="upload-title">보관할 화면 선택</h2><p>사진을 선택해도 바로 전송되지 않습니다.</p></div></div>
+          <div class="file-select"><span class="file-symbol" aria-hidden="true">▧</span><label class="button button-primary" for="screen-file">화면 파일 선택 <span aria-hidden="true">＋</span></label><input class="accessible-file" id="screen-file" type="file" accept="image/png,image/jpeg,image/webp"><p>PNG · JPG · WebP · <span id="file-limit">한 장당 최대 8MB</span></p></div>
+          <div id="selection" class="selection" hidden><div class="selection-heading"><strong id="selected-name"></strong><button class="button-reset" id="clear-selection" type="button">선택 해제</button></div><button class="preview-button" id="preview-selection" type="button" aria-label="선택한 화면 확대"><img id="selected-preview" alt="선택한 화면 미리보기"></button><p class="selection-detail" id="selected-detail"></p><button class="button button-primary button-full" type="button" id="save-screen">플랫폼에 저장 <span aria-hidden="true">↑</span></button></div>
+          <p class="feedback" id="feedback" role="status" aria-live="polite">화면 파일을 선택하십시오.</p><a class="login-recovery" href="/life/auth/login" id="login-recovery" hidden>다시 로그인하기 →</a>
+          <div class="capture-guide"><h3>휴대폰 앱에서 가져오려면</h3><ol><li>앱의 화면 취득을 시작하고 공유를 허용하십시오.</li><li>원하는 화면을 본 뒤 취득을 종료하십시오.</li><li>여기에서 <b>화면 파일 선택</b>을 열고 저장한 화면을 선택하십시오.</li></ol><p>이 웹 화면 자체는 휴대폰 화면을 자동 취득하지 않습니다.</p></div>
+        </section>
+        <section class="saved-panel panel" aria-labelledby="saved-title"><div class="panel-title"><span class="step-number">02</span><div><h2 id="saved-title">내가 보관한 화면 <span class="count-badge" id="saved-count">0</span></h2><p>저장된 과거 자료를 다시 확인합니다.</p></div><button class="button-reset refresh-button" type="button" id="refresh-screens" aria-label="보관한 화면 새로고침">↻</button></div><p class="library-status" id="library-status" role="status" aria-live="polite">보관한 화면을 불러오는 중입니다.</p><div class="empty-library" id="empty-library" hidden><span aria-hidden="true">▤</span><h3>첫 화면을 보관해 보십시오.</h3><p>화면 파일을 선택하고<br>‘플랫폼에 저장’을 선택하면 여기에 표시됩니다.</p></div><div class="saved-grid" id="saved-screens"></div></section>
+      </div>
+      <aside class="workspace-note"><strong>원본 화면 보관 단계입니다.</strong><p>저장 완료는 이미지 보관을 뜻합니다. 글자 읽기와 AI 분석은 실행하지 않으며, 문서 전체의 내용 확보율과 95% 목표 달성 여부는 아직 측정하지 않았습니다.</p></aside>
+    </main>
+    <footer class="site-footer"><a class="footer-wordmark" href="/life">LifeRevolve<span>생활의 혁명</span></a><p>내가 선택한 화면, 내 공간에.</p><a href="/life/privacy">개인정보</a></footer>
+  </div>
+  <dialog class="image-dialog" id="image-dialog" aria-labelledby="dialog-title"><div class="dialog-toolbar"><h2 id="dialog-title">원본 화면 보기</h2><button type="button" class="button button-small button-outline" id="close-dialog">닫기 ×</button></div><p class="dialog-hint">화면을 확대하거나 스크롤하여 확인하십시오.</p><div class="full-image-scroll"><img id="full-image" alt="선택한 원본 화면"></div></dialog>
+</body>
+</html>

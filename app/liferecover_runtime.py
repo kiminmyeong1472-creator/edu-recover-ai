@@ -17,9 +17,13 @@ from app.platform_core.persistent_domain_store import (
     storage_status,
 )
 from app.services.owner_basic_auth import require_owner
+from app.liferevolve_screen import router as screen_router, page_html, PAGE_HEADERS, non_screen_life_resources
+from app.liferevolve_release import router as release_router
 
 
 router = APIRouter(tags=["life-recover-runtime"])
+router.include_router(screen_router)
+router.include_router(release_router)
 
 
 class ResourceWrite(BaseModel):
@@ -40,35 +44,8 @@ def life_home(request: Request) -> HTMLResponse:
             raise
         auth_text = "로그인이 필요합니다."
 
-    html = f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>생활의 회복 · Life Recover</title>
-<style>
-body{{margin:0;font-family:system-ui,-apple-system,'Noto Sans KR',sans-serif;background:#f5f7fa;color:#172b45}}
-main{{max-width:760px;margin:auto;padding:20px}}header{{padding:20px 0}}h1{{margin:0 0 6px}}
-.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}}
-.card{{display:block;background:#fff;padding:18px;border-radius:16px;box-shadow:0 4px 18px #0000000d;
-color:#172b45;text-decoration:none;min-height:155px}}
-.card:active{{transform:scale(.99)}}.card b{{font-size:18px}}.card p{{font-weight:500;line-height:1.65}}
-.badge{{font-size:13px;color:#53677e}}.login{{display:inline-block;margin-top:5px;color:#1457b8;text-decoration:none;font-weight:700}}
-</style></head><body><main>
-<header><h1>생활의 회복</h1><div>Life Recover</div><p class='badge'>{auth_text}</p>
-<a class='login' href='/life/auth/login'>로그인</a></header>
-<div class='grid'>
-<a class='card' href='/life/daily'><b>일상</b><p>일정·활동·문서·지원사업</p></a>
-<a class='card' href='/life/medical'><b>의료</b><p>약물패스포트·치료목적·안전확인</p></a>
-<a class='card' href='/life/legal'><b>법률</b><p>사건 타임라인·증거·기한관리</p></a>
-<a class='card' href='/life/privacy'><b>개인정보</b><p>동의·공유범위·내 정보 사용이력</p></a>
-</div></main></body></html>"""
-    return HTMLResponse(
-        html,
-        headers={
-            "Cache-Control":"no-store",
-            "Referrer-Policy":"no-referrer",
-            "X-Content-Type-Options":"nosniff",
-            "Content-Security-Policy":"default-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
-        },
-    )
+    html = page_html("home.html").replace("{{AUTH_TEXT}}", auth_text)
+    return HTMLResponse(html, headers=PAGE_HEADERS)
 
 
 def _page_user_or_login(request: Request) -> str | RedirectResponse:
@@ -108,7 +85,7 @@ def daily_page(request: Request):
     user = _page_user_or_login(request)
     if isinstance(user, RedirectResponse):
         return user
-    items = list_resources(domain="life", subject_id=user)
+    items = non_screen_life_resources(user)
     return _section_page(
         title="일상",
         subtitle="일정 · 활동 · 문서 · 지원사업",
@@ -377,6 +354,8 @@ def me(request: Request) -> dict[str, str]:
 @router.post("/life/api/resources")
 def save_resource(payload: ResourceWrite, request: Request) -> dict[str, str]:
     account_id = require_life_user(request)
+    if payload.kind.strip().lower().startswith("liferevolve_screen_"):
+        raise HTTPException(status_code=403, detail="screen_resource_requires_dedicated_api")
     if payload.kind.strip().lower().startswith("hospital_os_"):
         raise HTTPException(status_code=403, detail="hospital_resource_requires_dedicated_api")
     resource_id = put_resource(
@@ -391,7 +370,8 @@ def save_resource(payload: ResourceWrite, request: Request) -> dict[str, str]:
 @router.get("/life/api/resources/{domain}")
 def resources(domain: Literal["life","medical","legal"], request: Request) -> dict:
     account_id = require_life_user(request)
-    return {"resources": [item for item in list_resources(domain=domain, subject_id=account_id)
+    items = non_screen_life_resources(account_id) if domain == "life" else list_resources(domain=domain, subject_id=account_id)
+    return {"resources": [item for item in items
                           if not item["kind"].startswith("hospital_os_")]}
 
 
@@ -399,7 +379,7 @@ def resources(domain: Literal["life","medical","legal"], request: Request) -> di
 def resource(domain: Literal["life","medical","legal"], resource_id: str, request: Request) -> dict:
     account_id = require_life_user(request)
     item = get_resource(domain=domain, subject_id=account_id, resource_id=resource_id)
-    if not item or item["kind"].startswith("hospital_os_"):
+    if not item or item["kind"].startswith(("hospital_os_", "liferevolve_screen_")):
         raise HTTPException(status_code=404, detail="resource_not_found")
     return item
 
@@ -407,4 +387,5 @@ def resource(domain: Literal["life","medical","legal"], resource_id: str, reques
 @router.get("/owner/liferecover-storage-status")
 def owner_storage_status(_: None = Depends(require_owner)) -> dict:
     return storage_status()
+
 

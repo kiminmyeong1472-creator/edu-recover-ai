@@ -9,8 +9,10 @@ client = TestClient(app, base_url="https://testserver")
 def test_life_page_is_wired_into_main_app():
     response = client.get("/life")
     assert response.status_code == 200
-    assert "생활의 회복" in response.text
-    assert "Life Recover" in response.text
+    assert "생활의 혁명" in response.text
+    assert "LifeRevolve" in response.text
+    assert "/life/screen" in response.text
+    assert "/life/daily" in response.text
 
 
 def test_life_private_api_requires_authentication():
