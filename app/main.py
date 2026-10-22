@@ -103,8 +103,8 @@ app.include_router(hospital_access_owner_router)
 app.include_router(open_model_router)
 app.include_router(code_execution_router)
 app.include_router(media_router)
-app.add_event_handler("startup", start_media_worker)
-app.add_event_handler("shutdown", stop_media_worker)
+app.router.add_event_handler("startup", start_media_worker)
+app.router.add_event_handler("shutdown", stop_media_worker)
 
 logger = logging.getLogger(__name__)
 
