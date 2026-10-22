@@ -64,6 +64,9 @@ from app.domains.medical.hospital_access_api import router as hospital_access_ro
 from app.services.open_model_api import router as open_model_router, log_open_model_readiness
 from app.services.code_execution_api import router as code_execution_router
 from app.services.media_api import router as media_router, start_media_worker, stop_media_worker
+from app.services.accessibility_api import (
+    router as accessibility_router, start_accessibility_cleanup, stop_accessibility_cleanup,
+)
 
 
 app = FastAPI(
@@ -103,6 +106,9 @@ app.include_router(hospital_access_owner_router)
 app.include_router(open_model_router)
 app.include_router(code_execution_router)
 app.include_router(media_router)
+app.include_router(accessibility_router)
+app.router.add_event_handler("startup", start_accessibility_cleanup)
+app.router.add_event_handler("shutdown", stop_accessibility_cleanup)
 app.router.add_event_handler("startup", start_media_worker)
 app.router.add_event_handler("shutdown", stop_media_worker)
 
@@ -273,6 +279,7 @@ async def owner_platform(_: None = Depends(require_owner)) -> HTMLResponse:
               '<a href="/owner/open-models" style="display:inline-block;padding:12px 16px">선정 25개 모델 호출·수업·출제</a>'
               '<a href="/owner/code-workspace" style="display:inline-block;padding:12px 16px">코딩 도구 · 실행 · 모델별 시험</a>'
               '<a href="/owner/media" style="display:inline-block;padding:12px 16px">뉴스·강의 음성·영상 전사</a>'
+              '<a href="/owner/accessibility" style="display:inline-block;padding:12px 16px">점자 · 수어 입력과 영상 표시</a>'
               '</nav>',
             1,
         ),

@@ -1,0 +1,3 @@
+# Optional only: configure a verified local .task model separately.
+# Hand landmarks classify registered motion patterns, not complete KSL sentences.
+mediapipe>=0.10,<1
