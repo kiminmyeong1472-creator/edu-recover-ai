@@ -1,0 +1,3 @@
+# Optional SDK host only. Keep outside production requirements.txt.
+# This pins the interface verified for dreamkeeper_claude_sdk.py.
+claude-agent-sdk==0.2.170
