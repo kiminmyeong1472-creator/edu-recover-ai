@@ -1,0 +1,33 @@
+name: Media transcription tests
+on:
+  pull_request:
+    paths:
+      - 'app/services/media_*'
+      - 'tests/test_media_pipeline.py'
+      - 'tests/test_media_ui.js'
+      - 'deployment/media/**'
+      - '.github/workflows/media-transcription-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install media and test tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg tesseract-ocr tesseract-ocr-eng tesseract-ocr-kor
+          python -m pip install 'fastapi>=0.115,<1' 'httpx>=0.27,<1' 'httpx2>=2,<3' 'pytest>=8,<10'
+      - name: Test local decoding, OCR, authorization and job recovery
+        run: |
+          python -m pytest tests/test_media_pipeline.py -q
+          node tests/test_media_ui.js
