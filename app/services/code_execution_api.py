@@ -197,6 +197,12 @@ def _work(request: CodeRunRequest, record: dict, event: threading.Event):
 
 @router.get("")
 def coding_workspace():
+    # Default: one-button runner. The full editor stays at /advanced.
+    from app.services.code_execution_workspace import code_execution_simple_html
+    return _workspace_response(code_execution_simple_html())
+
+@router.get("/advanced")
+def coding_workspace_advanced():
     from app.services.code_execution_workspace import code_execution_workspace_html
     return _workspace_response(code_execution_workspace_html())
 
