@@ -48,3 +48,19 @@ class DetachedExecTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("setsid") and shutil.which("timeout"), "needs coreutils")
+class LostProcessTests(unittest.TestCase):
+    def test_killed_background_shell_is_reported_not_timed_out(self):
+        s = DetachedExecTests.session(None)
+        with self.assertRaises(rt.CodeExecutionError) as caught:
+            s._exec("kill -9 $(cat $(dirname $0)/pid); sleep 2", 120)
+        self.assertEqual(caught.exception.code, "CODE_EXECUTION_PROCESS_LOST")
+
+
+    def test_early_kill_signal_is_not_called_timeout(self):
+        s = DetachedExecTests.session(None)
+        with self.assertRaises(rt.CodeExecutionError) as caught:
+            s._exec("kill -9 $$", 120)
+        self.assertEqual(caught.exception.code, "CODE_EXECUTION_PROCESS_LOST")

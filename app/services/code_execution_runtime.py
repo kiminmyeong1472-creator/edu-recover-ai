@@ -550,17 +550,23 @@ class RailwayCodeSession:
         start = ("mkdir -p %s && printf %%s %s | base64 -d > %s/cmd && "
                  "S=$(command -v setsid || true); T=$(command -v timeout >/dev/null 2>&1 && echo 'timeout -s KILL %d' || true); "
                  "$S nohup /bin/sh -c \"$T /bin/sh %s/cmd > %s/out 2> %s/err; "
-                 "echo \\$? > %s/rc.tmp; mv %s/rc.tmp %s/rc\" > /dev/null 2>&1 < /dev/null & echo started"
-                 ) % (job, script, job, timeout, job, job, job, job, job, job)
+                 "echo \\$? > %s/rc.tmp; mv %s/rc.tmp %s/rc\" > /dev/null 2>&1 < /dev/null & "
+                 "echo $! > %s/pid; echo started"
+                 ) % (job, script, job, timeout, job, job, job, job, job, job, job)
         begun = self._data(_EXEC, {**self._vars(), "command": start, "timeoutSec": 30}, "sandboxExec")
         if begun.get("exitCode") != 0 or "started" not in str(begun.get("stdout")):
             raise CodeExecutionError("REMOTE_FAILED")
-        deadline = self._clock() + timeout + 15
+        started = self._clock()
+        deadline = started + timeout + 15
         misses = 0
         while True:
             self._sleep(3.0)
             try:
-                check = self._data(_EXEC, {**self._vars(), "command": "cat %s/rc 2>/dev/null || true" % job,
+                # Report the exit code, or "gone" when the background shell
+                # died without writing one (killed or out of memory).
+                probe = ("cat %s/rc 2>/dev/null && exit 0; sleep 1; cat %s/rc 2>/dev/null && exit 0; "
+                         "kill -0 $(cat %s/pid 2>/dev/null) 2>/dev/null || echo gone") % (job, job, job)
+                check = self._data(_EXEC, {**self._vars(), "command": probe,
                                            "timeoutSec": 20}, "sandboxExec")
             except CodeExecutionError as error:
                 # Reading a status file is safe to repeat after a brief hiccup.
@@ -570,6 +576,8 @@ class RailwayCodeSession:
                     raise
                 check = {}
             code = str(check.get("stdout") or "").strip()
+            if code == "gone":
+                raise CodeExecutionError("PROCESS_LOST")
             if code:
                 break
             if self._clock() >= deadline:
@@ -579,6 +587,10 @@ class RailwayCodeSession:
         except ValueError:
             raise CodeExecutionError("RESPONSE_INVALID") from None
         if exit_code in (124, 137):
+            # 137 is also an out-of-memory kill; only call it a timeout when
+            # the time limit was actually reached.
+            if self._clock() - started < timeout - 2:
+                raise CodeExecutionError("PROCESS_LOST")
             return {"timedOut": True}
         out = self._data(_EXEC, {**self._vars(), "command": "head -c 15000 %s/out" % job,
                                  "timeoutSec": 20}, "sandboxExec")
