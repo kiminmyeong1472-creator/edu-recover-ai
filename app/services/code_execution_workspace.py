@@ -137,6 +137,7 @@ h2{font-size:18px;margin:14px 0 6px}a{color:#a5c8ff}.small{font-size:14px}[hidde
 <script>
 (()=>{'use strict';
 const API='/owner/code-workspace',MAX_FILE=128*1024,MAX_TOTAL=512*1024,DONE=new Set(['completed','failed','cancelled','interrupted']);
+const REASONS={ACCESS_DENIED:'레일웨이가 열쇠를 거부함 (열쇠가 틀렸거나 권한 부족)',FEATURE_UNAVAILABLE:'레일웨이 임시 컴퓨터 기능이 꺼져 있음',SERVICE_UNAVAILABLE:'레일웨이에 연결하지 못함',REQUEST_REJECTED:'레일웨이가 요청을 거절함 (환경 번호 등 설정 확인)',START_FAILED:'임시 컴퓨터가 켜지지 않음',START_TIMEOUT:'임시 컴퓨터가 제때 켜지지 않음',ISOLATION_FAILED:'격리 확인 실패',TIMEOUT:'시간 초과',FAILED:'실행 실패'};
 const $=id=>document.getElementById(id);let files=[],ready=false,busy=false,autoCommand=true;
 function say(text,kind){const el=$('status');el.textContent=text;el.className=kind||'';}
 function sync(){$('run').disabled=!ready||busy||(!files.length&&!$('command').value.trim());}
@@ -158,7 +159,8 @@ async function pick(){busy=true;sync();try{const chosen=Array.from($('pick').fil
 function show(run){const state=run.status,done=DONE.has(state),ok=state==='completed'&&(run.exit_code===0||run.exit_code==null);
  $('result').hidden=false;$('result-title').textContent=done?(ok?'결과 · 성공':'결과 · 확인 필요'+(run.exit_code!=null?' (종료 코드 '+run.exit_code+')':'')):'결과 · 실행 중';
  $('stdout').textContent=run.stdout||(done?'(출력 없음)':'실행 중입니다…');const err=run.stderr||'';$('stderr').textContent=err;$('stderr-box').hidden=!err;
- say(run.message||'',done?(ok?'good':'error'):'');return done;}
+ const why=run.error_code?(REASONS[String(run.error_code).replace('CODE_EXECUTION_','')]||'기타 오류'):'';
+ say((run.message||'')+(why?'\n실패 원인: '+why+' ('+run.error_code+')':''),done?(ok?'good':'error'):'');return done;}
 async function poll(id){for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,2000));
  try{if(show(await req(API+'/runs/'+encodeURIComponent(id))))return;}catch(e){say('결과를 다시 확인하고 있습니다: '+e.message);}}
  say('결과 확인 시간이 지났습니다. 고급 화면의 기록에서 확인하십시오.','error');}

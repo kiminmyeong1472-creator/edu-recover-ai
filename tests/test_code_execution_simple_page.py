@@ -35,6 +35,10 @@ eval(src);
  // 큰 파일 거부
  el('pick').files=[{name:'big.py',text:async()=>'x'.repeat(130*1024)}];await el('pick').handlers.change();
  assert(el('status').className==='error'&&el('status').textContent.includes('너무 큽니다'),'큰 파일 거부');
+ // 실패 원인 표시
+ global.fetch=async(url,opt={})=>{let d;if(url.endsWith('/runs')&&opt.method==='POST')d={id:'r2',status:'failed',error_code:'CODE_EXECUTION_ACCESS_DENIED',message:'실행을 완료하지 못했습니다.'};else d={configured:true};return {ok:true,status:200,json:async()=>d};};
+ el('pick').files=[{name:'a.py',text:async()=>'print(1)'}];await el('pick').handlers.change();await el('run').handlers.click();for(let i=0;i<5;i++)await tick();
+ assert(el('status').textContent.includes('열쇠를 거부'),'실패 원인 표시: '+el('status').textContent);
  console.log('모든 화면 시험 통과');})();
 '''
 
