@@ -695,13 +695,22 @@ class RailwayCodeSession:
         if not self.sandbox_id or self.cleanup_status["confirmed"]:
             return
         try:
-            result = self._data(_DESTROY, self._vars(), "sandboxDestroy")
-            deadline = self._clock() + 30
-            while result.get("status") != "DESTROYED":
-                if result.get("status") != "DESTROYING" or self._clock() >= deadline:
+            # Railway may answer sandboxDestroy with null (already gone) and
+            # the status query with null once the VM no longer exists.
+            data = self._graphql(_DESTROY, self._vars())
+            if not isinstance(data, dict):
+                raise CodeExecutionError("RESPONSE_INVALID")
+            result = data.get("sandboxDestroy") or {"status": "DESTROYED"}
+            deadline = self._clock() + 60
+            while result.get("status") not in ("DESTROYED", "FAILED"):
+                if result.get("status") not in ("DESTROYING", "RUNNING", "CREATING") \
+                        or self._clock() >= deadline:
                     raise CodeExecutionError("CLEANUP_UNCONFIRMED")
-                self._sleep(0.5)
-                result = self._data(_GET, self._vars(), "sandbox")
+                self._sleep(1.0)
+                data = self._graphql(_GET, self._vars())
+                if not isinstance(data, dict):
+                    raise CodeExecutionError("RESPONSE_INVALID")
+                result = data.get("sandbox") or {"status": "DESTROYED"}
             self.cleanup_status = {"confirmed": True, "status": "destroyed"}
             self._closed = True
         except BaseException:
@@ -709,9 +718,24 @@ class RailwayCodeSession:
             raise CodeExecutionError("CLEANUP_UNCONFIRMED") from None
 
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+        # When the run already failed, report that first cause; a cleanup
+        # problem is still kept in cleanup_status instead of hiding it.
         try:
             if self._ready and self._snapshot is None:
                 self.snapshot()
+        except BaseException:
+            if exc_type is None:
+                self._destroy_keep_first()
+                raise
         finally:
+            if exc_type is not None:
+                self._destroy_keep_first()
+        if exc_type is None:
             self._destroy()
         return False
+
+    def _destroy_keep_first(self) -> None:
+        try:
+            self._destroy()
+        except CodeExecutionError:
+            pass
