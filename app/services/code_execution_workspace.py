@@ -137,7 +137,7 @@ h2{font-size:18px;margin:14px 0 6px}a{color:#a5c8ff}.small{font-size:14px}[hidde
 <script>
 (()=>{'use strict';
 const API='/owner/code-workspace',MAX_FILE=128*1024,MAX_TOTAL=512*1024,DONE=new Set(['completed','failed','cancelled','interrupted']);
-const REASONS={ACCESS_DENIED:'레일웨이가 열쇠를 거부함 (열쇠가 틀렸거나 권한 부족)',FEATURE_UNAVAILABLE:'레일웨이 임시 컴퓨터 기능이 꺼져 있음',SERVICE_UNAVAILABLE:'레일웨이에 연결하지 못함',REQUEST_REJECTED:'레일웨이가 요청을 거절함 (환경 번호 등 설정 확인)',START_FAILED:'임시 컴퓨터가 켜지지 않음',START_TIMEOUT:'임시 컴퓨터가 제때 켜지지 않음',ISOLATION_FAILED:'격리 확인 실패',TIMEOUT:'시간 초과',FAILED:'실행 실패'};
+const REASONS={ACCESS_DENIED:'레일웨이가 열쇠를 거부함 (열쇠가 틀렸거나 권한 부족)',FEATURE_UNAVAILABLE:'레일웨이 임시 컴퓨터 기능이 꺼져 있음',SERVICE_UNAVAILABLE:'레일웨이에 연결하지 못함',REQUEST_REJECTED:'레일웨이가 요청을 거절함 (기타 사유)',PLAN_LIMIT:'레일웨이 요금제·사용 한도 때문에 거절됨',ENVIRONMENT_INVALID:'환경 번호(RAILWAY_ENVIRONMENT_ID)가 열쇠와 맞지 않음',SCHEMA_MISMATCH:'레일웨이 요청 형식이 바뀜 (코드 수정 필요)',START_FAILED:'임시 컴퓨터가 켜지지 않음',START_TIMEOUT:'임시 컴퓨터가 제때 켜지지 않음',ISOLATION_FAILED:'격리 확인 실패',TIMEOUT:'시간 초과',FAILED:'실행 실패'};
 const $=id=>document.getElementById(id);let files=[],ready=false,busy=false,autoCommand=true;
 function say(text,kind){const el=$('status');el.textContent=text;el.className=kind||'';}
 function sync(){$('run').disabled=!ready||busy||(!files.length&&!$('command').value.trim());}

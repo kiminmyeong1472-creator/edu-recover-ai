@@ -105,6 +105,26 @@ def runtime_status() -> dict[str, Any]:
     }
 
 
+# Railway answers many refusals with HTTP 200 plus GraphQL errors. Only a
+# fixed category is kept; the upstream text itself is never stored or shown.
+_REJECTION_RULES = (
+    ("ACCESS_DENIED", ("not authorized", "unauthorized", "forbidden",
+                       "permission", "invalid token", "token is invalid")),
+    ("PLAN_LIMIT", ("limit", "exceed", "maximum", "quota", "upgrade", "plan",
+                    "trial", "credit", "billing", "payment")),
+    ("ENVIRONMENT_INVALID", ("environment", "not found", "does not exist")),
+    ("SCHEMA_MISMATCH", ("cannot query field", "unknown argument", "unknown type",
+                         "is not defined", "validation", "expected type")),
+)
+
+
+def _classify_rejection(text: str) -> str:
+    for code, needles in _REJECTION_RULES:
+        if any(needle in text for needle in needles):
+            return code
+    return "REQUEST_REJECTED"
+
+
 def _graphql_request(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     token, header_name = _credentials()
     if (not token or len(token) > 8192
@@ -155,7 +175,7 @@ def _graphql_request(query: str, variables: dict[str, Any]) -> dict[str, Any]:
             text = str(result["errors"]).lower()
             if "project_sandboxes" in text or ("sandbox" in text and "not enabled" in text):
                 raise CodeExecutionError("FEATURE_UNAVAILABLE")
-            raise CodeExecutionError("REQUEST_REJECTED")
+            raise CodeExecutionError(_classify_rejection(text))
         if not isinstance(result.get("data"), dict):
             raise CodeExecutionError("RESPONSE_INVALID")
         return result["data"]
