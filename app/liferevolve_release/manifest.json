@@ -1,0 +1,11 @@
+{
+  "version_name": "0.3.0",
+  "version_code": 1,
+  "package": "kr.edurecover.liferevolve",
+  "size_bytes": 975332,
+  "sha256": "01375693a3a3c50e14c9362801074f9e78b4635ad5039dbfccc404bc31169af5",
+  "platform_origin": "https://edurecover-prod-production.up.railway.app",
+  "minimum_android_api": 34,
+  "device_tests_executed": false,
+  "signature_verified": true
+}
