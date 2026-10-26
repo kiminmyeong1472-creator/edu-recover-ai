@@ -72,7 +72,12 @@
       lastInput={product_name:el('photoName').value,oliveyoung_url:el('photoUrl').value,
         raw_text:data.read_ingredients.join('\n'),complete:false,expected_count:null,
         reading_source:'photo_ocr',explicit_consent:true};
-      el('photoRead').textContent=`사진에서 읽은 성분 ${data.read_ingredients.length}개: `+data.read_ingredients.join(', ');
+      const dropped=(data.tidy_dropped||[]);
+      el('photoRead').textContent=`사진에서 읽은 성분 ${data.tidied_ingredients.length}개: `
+        +data.tidied_ingredients.join(', ')
+        +(data.tidy_applied?' · 줄바꿈으로 끊긴 이름을 이어 붙였습니다.':'')
+        +(dropped.length?` · 원문에 없어 버린 이름 ${dropped.length}개: `+dropped.join(', '):'')
+        +(data.korean_ocr_available?'':' · 한글 인식 자료가 설치되어 있지 않습니다.');
       showOutcome(data);
       status('사진을 읽어 바로 대조했습니다. 읽은 범위 안에서만 판정했습니다.');
       await loadHistory();
