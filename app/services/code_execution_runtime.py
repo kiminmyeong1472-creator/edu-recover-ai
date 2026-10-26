@@ -466,6 +466,7 @@ class RailwayCodeSession:
         self.snapshot_truncated = False
         self.cleanup_status = {"confirmed": False, "status": "not_created"}
         self.tools: dict[str, bool] = {}
+        self.phase = "create"
 
     def _data(self, query: str, variables: dict, field: str) -> dict:
         data = self._graphql(query, variables)
@@ -502,6 +503,7 @@ class RailwayCodeSession:
             if result.get("networkIsolation") != "ISOLATED":
                 raise CodeExecutionError("ISOLATION_FAILED")
             self._ready = True
+            self.phase = "bootstrap"
             try:
                 prepared = self._exec(_BOOTSTRAP, 180)
                 if prepared["stdout"].strip() != "ready":
@@ -510,6 +512,7 @@ class RailwayCodeSession:
                 if error.code == "CODE_EXECUTION_REMOTE_FAILED":
                     raise CodeExecutionError("TOOLS_MISSING") from None
                 raise
+            self.phase = "preflight"
             preflight = self._remote({"action": "preflight"})
             self.tools = preflight.get("tools", {})
             # Only python3 is essential; other tools are reported, not required.
@@ -688,6 +691,7 @@ class RailwayCodeSession:
                     raise CodeExecutionError("RESPONSE_INVALID")
             return {"path": path, "bytes": len(raw)}
         if name == "run_command":
+            self.phase = "run"
             argv = args.get("argv")
             if (not isinstance(argv, list) or not 1 <= len(argv) <= 64
                     or any(not isinstance(item, str) or "\x00" in item or len(item) > 8192 for item in argv)
@@ -712,6 +716,7 @@ class RailwayCodeSession:
         raise CodeExecutionError("TOOL_INVALID")
 
     def seed(self, files: list[dict[str, Any]]) -> None:
+        self.phase = "upload"
         if not isinstance(files, list) or len(files) > MAX_FILES:
             raise CodeExecutionError("FILES_TOO_MANY")
         total, paths = 0, set()
@@ -744,6 +749,7 @@ class RailwayCodeSession:
     def snapshot(self) -> list[dict[str, Any]]:
         if self._snapshot is not None:
             return [dict(item) for item in self._snapshot]
+        self.phase = "export"
         listing = self.execute("file_list", {"path": "."})
         self.snapshot_truncated = listing["truncated"]
         saved, total = [], 0
@@ -769,7 +775,17 @@ class RailwayCodeSession:
         try:
             # Railway may answer sandboxDestroy with null (already gone) and
             # the status query with null once the VM no longer exists.
-            data = self._graphql(_DESTROY, self._vars())
+            self.phase = "cleanup"
+            try:
+                data = self._graphql(_DESTROY, self._vars())
+            except CodeExecutionError:
+                # A refused destroy is fine when the VM is already gone.
+                data = self._graphql(_GET, self._vars())
+                gone = not isinstance(data, dict) or not data.get("sandbox") or \
+                    data["sandbox"].get("status") in ("DESTROYED", "DESTROYING", "FAILED")
+                if not gone:
+                    raise
+                data = {"sandboxDestroy": data.get("sandbox") if isinstance(data, dict) else None}
             if not isinstance(data, dict):
                 raise CodeExecutionError("RESPONSE_INVALID")
             result = data.get("sandboxDestroy") or {"status": "DESTROYED"}

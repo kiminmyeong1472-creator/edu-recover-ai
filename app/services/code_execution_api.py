@@ -165,7 +165,12 @@ def _work(request: CodeRunRequest, record: dict, event: threading.Event):
                 record["evaluation"] = {"case_id": case["id"], "suite": "EduRecover 자체 시험", "version": "2026-10-17.1", "status": "passed" if passed else "failed", "exit_code": code, "stdout": result.get("stdout", ""), "stderr": result.get("stderr", ""), "official_benchmark_score": None}
                 if not passed:
                     record.update(status="failed", message="자체 시험에서 통과하지 못한 항목이 있습니다.")
-            record["files"] = [f for f in session.snapshot() if f["path"] != ".edurecover_check.py"]
+            try:
+                record["files"] = [f for f in session.snapshot() if f["path"] != ".edurecover_check.py"]
+            except Exception as export_error:
+                # The command already ran; losing the file copy must not hide its result.
+                record["file_export_state"] = "failed"
+                record["file_export_error"] = getattr(export_error, "code", "CODE_EXECUTION_FAILED")
             record["file_export_truncated"] = getattr(session, "snapshot_truncated", False)
             if event.is_set():
                 record.update(status="cancelled", message="사용자가 실행을 중단했습니다.")
@@ -176,6 +181,7 @@ def _work(request: CodeRunRequest, record: dict, event: threading.Event):
         if event.is_set() or str(exc) == "CODE_RUN_CANCELLED":
             record.update(status="cancelled", message="사용자가 실행을 중단했습니다.")
         else:
+            record["failed_step"] = getattr(session, "phase", "start") if session is not None else "start"
             record.update(status="failed", error_code=code,
                           message="실행을 완료하지 못했습니다. 실행 환경 설정과 기록을 확인하십시오.")
     finally:

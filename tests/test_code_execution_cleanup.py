@@ -46,3 +46,15 @@ class CleanupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RefusedDestroyTests(unittest.TestCase):
+    def test_refused_destroy_of_gone_vm_counts_as_destroyed(self):
+        class Refuse(Fake):
+            def __call__(self, query, variables):
+                if query == rt._DESTROY:
+                    raise rt.CodeExecutionError("REQUEST_REJECTED")
+                return super().__call__(query, variables)
+        s = session(Refuse(None))
+        s._destroy()
+        self.assertTrue(s.cleanup_status["confirmed"])

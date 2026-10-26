@@ -160,7 +160,7 @@ function show(run){const state=run.status,done=DONE.has(state)||!ACTIVE.has(stat
  $('result').hidden=false;$('result-title').textContent=done?(ok?'결과 · 성공':'결과 · 확인 필요'+(run.exit_code!=null?' (종료 코드 '+run.exit_code+')':'')):'결과 · 실행 중';
  $('stdout').textContent=run.stdout||(done?'(출력 없음)':'실행 중입니다…');const err=run.stderr||'';$('stderr').textContent=err;$('stderr-box').hidden=!err;
  const why=run.error_code?(REASONS[String(run.error_code).replace('CODE_EXECUTION_','')]||'기타 오류'):'';
- say((run.message||'')+(why?'\n실패 원인: '+why+' ('+run.error_code+')':''),done?(ok?'good':'error'):'');return done;}
+ const STEPS={start:'시작',create:'임시 컴퓨터 만들기',bootstrap:'도구 준비',preflight:'도구 확인',upload:'파일 올리기',run:'명령 실행',export:'결과 파일 받기',cleanup:'임시 컴퓨터 정리'};const step=run.failed_step?'\n실패 단계: '+(STEPS[run.failed_step]||run.failed_step):'';const exp=run.file_export_state==='failed'?'\n(결과 파일은 받아 오지 못했습니다)':'';say((run.message||'')+(why?'\n실패 원인: '+why+' ('+run.error_code+')':'')+step+exp,done?(ok?'good':'error'):'');return done;}
 async function poll(id){for(let i=0;i<360;i++){await new Promise(r=>setTimeout(r,2000));
  try{if(show(await req(API+'/runs/'+encodeURIComponent(id))))return;}catch(e){say('결과를 다시 확인하고 있습니다: '+e.message);}}
  say('결과 확인 시간이 지났습니다. 고급 화면의 기록에서 확인하십시오.','error');}
