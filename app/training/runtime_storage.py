@@ -38,6 +38,9 @@ def prepare_runtime_storage():
              "contains_personal_data": True, "provenance_complete": True, "sqlite_snapshot": True},
             {"asset_id": "private-teaching-assets", "source": "secret_vault.sqlite3", "kind": "PRODUCT_DESIGN",
              "owner_marked_trade_secret": True, "provenance_complete": True, "sqlite_snapshot": True},
+            {"asset_id": "logical-responsibility-state", "source": "logical_responsibility.sqlite3",
+             "kind": "CONTROL_STATE", "contains_personal_data": False,
+             "provenance_complete": True, "sqlite_snapshot": True},
         ])
     for key, value in {
         "EDURECOVER_BACKUP_MANIFEST": str(manifest.resolve()),
