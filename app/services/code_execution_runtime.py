@@ -49,29 +49,38 @@ _EXEC = """mutation EduRecoverCodeExec($environmentId: String!, $id: String!,
 _DESTROY = """mutation EduRecoverCodeDestroy($environmentId: String!, $id: String!) {
  sandboxDestroy(environmentId: $environmentId, id: $id) { id status }
 }"""
-_BOOTSTRAP = "env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/root LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive /bin/bash -c " + shlex.quote(r'''
-set -eu
+_BOOTSTRAP = "env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive /bin/sh -c " + shlex.quote(r'''
+# Best effort: install what is missing with whatever package manager exists.
+# Only python3 is required (the file helper runs on it); the rest is optional.
 missing=""
-for pair in "python3:python3 python3-venv python3-pip python3-pytest" "git:git" "node:nodejs" "npm:npm" "gcc:build-essential"; do
-  tool=${pair%%:*}; packages=${pair#*:}
-  if ! command -v "$tool" >/dev/null 2>&1; then missing="$missing $packages"; fi
+for pair in "python3:python3" "bash:bash" "git:git" "node:nodejs" "npm:npm" "gcc:gcc"; do
+  tool=${pair%%:*}; pkg=${pair#*:}
+  command -v "$tool" >/dev/null 2>&1 || missing="$missing $pkg"
 done
 if command -v python3 >/dev/null 2>&1 && ! python3 -m pytest --version >/dev/null 2>&1; then
-  missing="$missing python3-venv python3-pip python3-pytest"
-fi
-if command -v python3 >/dev/null 2>&1 && ! python3 -I -c 'import venv, ensurepip' >/dev/null 2>&1; then
-  missing="$missing python3-venv python3-pip"
+  missing="$missing python3-pytest"
 fi
 if [ -n "$missing" ]; then
-  if [ "$(id -u)" = 0 ]; then
-    apt-get update -qq >/dev/null 2>&1
-    apt-get install -y -qq $missing >/dev/null 2>&1
-  elif command -v sudo >/dev/null 2>&1; then
-    sudo -n apt-get update -qq >/dev/null 2>&1
-    sudo -n apt-get install -y -qq $missing >/dev/null 2>&1
-  else exit 72; fi
+  run=""
+  if [ "$(id -u)" = 0 ]; then run=""; elif command -v sudo >/dev/null 2>&1; then run="sudo -n"; else run="none"; fi
+  if [ "$run" != "none" ]; then
+    if command -v apt-get >/dev/null 2>&1; then
+      $run apt-get update -qq >/dev/null 2>&1 || true
+      for pkg in $missing; do $run apt-get install -y -qq --no-install-recommends "$pkg" >/dev/null 2>&1 || true; done
+    elif command -v apk >/dev/null 2>&1; then
+      for pkg in $missing; do
+        case "$pkg" in python3-pytest) pkg=py3-pytest;; esac
+        $run apk add --no-cache "$pkg" >/dev/null 2>&1 || true
+      done
+    elif command -v dnf >/dev/null 2>&1; then
+      for pkg in $missing; do $run dnf install -y -q "$pkg" >/dev/null 2>&1 || true; done
+    fi
+  fi
 fi
-python3 -m pytest --version >/dev/null 2>&1
+if command -v python3 >/dev/null 2>&1 && ! python3 -m pytest --version >/dev/null 2>&1; then
+  python3 -m pip install -q pytest >/dev/null 2>&1 || python3 -m pip install -q --break-system-packages pytest >/dev/null 2>&1 || true
+fi
+command -v python3 >/dev/null 2>&1 || { echo "no-python3"; exit 72; }
 printf 'ready\n'
 ''')
 
@@ -503,8 +512,8 @@ class RailwayCodeSession:
                 raise
             preflight = self._remote({"action": "preflight"})
             self.tools = preflight.get("tools", {})
-            if not isinstance(self.tools, dict) or not all(self.tools.get(name) is True
-                    for name in ("python3", "bash", "git", "node", "npm", "gcc", "pytest")):
+            # Only python3 is essential; other tools are reported, not required.
+            if not isinstance(self.tools, dict) or self.tools.get("python3") is not True:
                 raise CodeExecutionError("TOOLS_MISSING")
             return self
         except BaseException:
@@ -539,8 +548,9 @@ class RailwayCodeSession:
         job = "/tmp/edurecover-job-%d" % self._jobs
         script = base64.b64encode(command.encode("utf-8")).decode("ascii")
         start = ("mkdir -p %s && printf %%s %s | base64 -d > %s/cmd && "
-                 "setsid nohup /bin/sh -c 'timeout -s KILL %d /bin/sh %s/cmd > %s/out 2> %s/err; "
-                 "echo $? > %s/rc.tmp; mv %s/rc.tmp %s/rc' > /dev/null 2>&1 < /dev/null & echo started"
+                 "S=$(command -v setsid || true); T=$(command -v timeout >/dev/null 2>&1 && echo 'timeout -s KILL %d' || true); "
+                 "$S nohup /bin/sh -c \"$T /bin/sh %s/cmd > %s/out 2> %s/err; "
+                 "echo \\$? > %s/rc.tmp; mv %s/rc.tmp %s/rc\" > /dev/null 2>&1 < /dev/null & echo started"
                  ) % (job, script, job, timeout, job, job, job, job, job, job)
         begun = self._data(_EXEC, {**self._vars(), "command": start, "timeoutSec": 30}, "sandboxExec")
         if begun.get("exitCode") != 0 or "started" not in str(begun.get("stdout")):
