@@ -87,9 +87,12 @@ def compare_formula(store, *, product_name, raw_text, allergens, complete=False,
     for value in values:
         canonical, conflict = store.canonical(value)
         ambiguous |= conflict
-        if canonical and store.known(value) and norm(value) not in UNKNOWN_NAMES:
+        known = store.known(value)
+        if canonical and known and norm(value) not in UNKNOWN_NAMES:
             normalized.add(canonical)
-        elif norm(value) not in UNKNOWN_NAMES and value not in unresolved:
+        elif not known and norm(value) not in UNKNOWN_NAMES and value not in unresolved:
+            # Unreadable, not merely conflicting: a name the dictionary never carried.
+            # A conflicting name is known and is handled as a synonym conflict below.
             unresolved.append(value)
     dictionary = store.dictionary_loaded()
     if not dictionary:
