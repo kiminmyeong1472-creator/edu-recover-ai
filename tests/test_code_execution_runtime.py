@@ -42,6 +42,9 @@ class FakeRailway:
         if "sandboxExec" in query:
             if self.fail_exec:
                 raise runtime.CodeExecutionError("SERVICE_UNAVAILABLE")
+            detached = self._detached(variables["command"])
+            if detached is not None:
+                return detached
             if variables["command"] == runtime._BOOTSTRAP:
                 return {"sandboxExec": {"exitCode": 72 if self.fail_bootstrap else 0,
                         "stdout": "ready\n", "stderr": "", "timedOut": False, "truncated": False}}
@@ -70,6 +73,28 @@ class FakeRailway:
         raise AssertionError("Unknown query")
 
 
+    def _detached(self, text: str):
+        """Mirror the background-job protocol used for long commands."""
+        import re
+        jobs = self.__dict__.setdefault("jobs", {})
+        started = re.match(r"mkdir -p (\S+) && printf %s (\S+) \| base64 -d", text)
+        if started:
+            inner = base64.b64decode(started.group(2)).decode()
+            answer = self("sandboxExec", {**self.calls[-1][1], "command": inner})["sandboxExec"]
+            self.calls.pop()
+            jobs[started.group(1)] = answer
+            return {"sandboxExec": {"exitCode": 0, "stdout": "started\n", "stderr": "",
+                                    "truncated": False, "timedOut": False}}
+        for job, answer in jobs.items():
+            if text.startswith("cat %s/rc" % job):
+                return {"sandboxExec": {"exitCode": 0, "stdout": "%d\n" % answer["exitCode"],
+                                        "stderr": "", "truncated": False, "timedOut": False}}
+            if text.startswith("head -c 15000 %s/out" % job):
+                return {"sandboxExec": {"exitCode": 0, "stdout": answer["stdout"], "stderr": "",
+                                        "truncated": False, "timedOut": False}}
+        return None
+
+
 class RuntimeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -79,6 +104,7 @@ class RuntimeTests(unittest.TestCase):
         self.temp.cleanup()
 
     def session(self, **kwargs) -> runtime.RailwayCodeSession:
+        kwargs.setdefault("sleep", lambda _: None)
         return runtime.RailwayCodeSession(graphql=self.fake, environment_id="test-environment", **kwargs)
 
     def assert_code(self, code: str):
