@@ -406,7 +406,9 @@ def test_missing_dictionary_is_named_not_treated_as_unreadable(store):
     result=compare_formula(store,product_name='시험 제품',raw_text='정제수, 글리세린',
         allergens=['리모넨'],complete=False,oliveyoung_link=link)
     assert result['requires_user_review'] is False
-    assert '표준 성분명 사전 미반입' in result['issues']
+    assert result['dictionary_loaded'] is False
+    # The missing dictionary must not become a reason to withhold on its own.
+    assert '표준 성분명 사전 미반입' not in result['issues']
 
 
 def test_known_rejects_a_name_the_dictionary_never_carried(store):

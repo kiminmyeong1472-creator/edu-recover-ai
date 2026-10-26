@@ -91,10 +91,12 @@ def compare_formula(store, *, product_name, raw_text, allergens, complete=False,
             normalized.add(canonical)
         elif norm(value) not in UNKNOWN_NAMES and value not in unresolved:
             unresolved.append(value)
-    if not store.dictionary_loaded():
-        # Without the dictionary every name would look unreadable; say so instead.
+    dictionary = store.dictionary_loaded()
+    if not dictionary:
+        # Without the dictionary every name would look unreadable. Report that
+        # plainly instead, and do not turn it into a reason to withhold: the
+        # exact-name comparison still works, only mangled-name detection is off.
         unresolved = []
-        issues.append('표준 성분명 사전 미반입')
     matches = []
     for original in allergens:
         canonical, conflict = store.canonical(original)
@@ -121,6 +123,7 @@ def compare_formula(store, *, product_name, raw_text, allergens, complete=False,
             'registered_allergens':list(allergens),'matches':matches,'issues':issues,
             'incomplete_ingredients':incomplete,
             'unresolved_ingredients':unresolved,'requires_user_review':needs_review,
+            'dictionary_loaded':dictionary,
             'reading_source':reading_source,'user_review':user_review if reviewed else None,
             'review_notice':(REVIEW_NOTICE.format(count=len(unresolved)) if needs_review else ''),
             'incomplete_notice':INCOMPLETE_NOTICE.format(count=parsed['confirmed_count']) if incomplete else '',
