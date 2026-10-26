@@ -125,8 +125,81 @@ def _classify_rejection(text: str) -> str:
     return "REQUEST_REJECTED"
 
 
+_PROJECT_TOKEN_ENV = """query EduRecoverTokenEnvironment { projectToken { environmentId } }"""
+# Index of the token/header pair Railway last accepted, and the environment a
+# project token is actually scoped to when it differs from the service's own.
+_accepted: dict[str, Any] = {"candidate": None, "environment": None}
+
+
+def _candidates() -> list[tuple[str, str]]:
+    """Every way the configured tokens could be valid, preferred order first.
+
+    A token pasted into the wrong variable (account token in RAILWAY_TOKEN, or a
+    stale RAILWAY_TOKEN shadowing a fresh RAILWAY_API_TOKEN) is otherwise
+    refused as "Not Authorized" even though the token itself is fine.
+    """
+    project = os.environ.get("RAILWAY_TOKEN", "")
+    account = os.environ.get("RAILWAY_API_TOKEN", "")
+    found: list[tuple[str, str]] = []
+    for pair in ((project, "project-access-token"), (account, "Authorization"),
+                 (project, "Authorization"), (account, "project-access-token")):
+        if pair[0] and pair not in found:
+            found.append(pair)
+    return found
+
+
+def _with_environment(variables: dict[str, Any], environment: str) -> dict[str, Any]:
+    out = dict(variables)
+    if "environmentId" in out:
+        out["environmentId"] = environment
+    if isinstance(out.get("input"), dict) and "environmentId" in out["input"]:
+        out["input"] = {**out["input"], "environmentId": environment}
+    return out
+
+
 def _graphql_request(query: str, variables: dict[str, Any]) -> dict[str, Any]:
-    token, header_name = _credentials()
+    candidates = _candidates()
+    if not candidates:
+        raise CodeExecutionError("NOT_CONFIGURED")
+    if _accepted["environment"]:
+        variables = _with_environment(variables, _accepted["environment"])
+    start = _accepted["candidate"] if _accepted["candidate"] is not None else 0
+    order = [i for i in range(len(candidates)) if i == start] + [
+        i for i in range(len(candidates)) if i != start]
+    denied: CodeExecutionError | None = None
+    for index in order:
+        token, header_name = candidates[index]
+        try:
+            data = _graphql_send(query, variables, token, header_name)
+            _accepted["candidate"] = index
+            return data
+        except CodeExecutionError as error:
+            if error.code != "CODE_EXECUTION_ACCESS_DENIED":
+                raise
+            denied = error
+        if header_name == "project-access-token" and not _accepted["environment"]:
+            # A project token only works in its own environment; ask Railway
+            # which one that is and retry there (the request ran nowhere yet).
+            try:
+                scoped = _graphql_send(_PROJECT_TOKEN_ENV, {}, token, header_name)
+                environment = (scoped.get("projectToken") or {}).get("environmentId")
+            except CodeExecutionError:
+                environment = None
+            if isinstance(environment, str) and _ID.fullmatch(environment):
+                moved = _with_environment(variables, environment)
+                if moved != variables:
+                    try:
+                        data = _graphql_send(query, moved, token, header_name)
+                        _accepted.update(candidate=index, environment=environment)
+                        return data
+                    except CodeExecutionError as error:
+                        if error.code != "CODE_EXECUTION_ACCESS_DENIED":
+                            raise
+    raise denied or CodeExecutionError("ACCESS_DENIED")
+
+
+def _graphql_send(query: str, variables: dict[str, Any], token: str,
+                  header_name: str) -> dict[str, Any]:
     if (not token or len(token) > 8192
             or any(ord(ch) <= 32 or ord(ch) >= 127 for ch in token)):
         raise CodeExecutionError("NOT_CONFIGURED")
