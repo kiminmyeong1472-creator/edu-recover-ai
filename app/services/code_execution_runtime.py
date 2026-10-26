@@ -31,6 +31,7 @@ MAX_TOTAL_BYTES = 512 * 1024
 MAX_COMMAND_SECONDS = 300
 MAX_SESSION_SECONDS = 600
 MAX_RESPONSE_BYTES = 128 * 1024
+_DIRECT_EXEC_SECONDS = 45
 _CHUNK_BYTES = 4096
 _ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
@@ -515,8 +516,11 @@ class RailwayCodeSession:
             raise CodeExecutionError("SESSION_INVALID")
         if self._clock() + timeout > self._deadline:
             raise CodeExecutionError("SESSION_TIMEOUT")
-        result = self._data(_EXEC, {**self._vars(), "command": command,
-                                  "timeoutSec": timeout}, "sandboxExec")
+        if timeout > _DIRECT_EXEC_SECONDS:
+            result = self._exec_detached(command, timeout)
+        else:
+            result = self._data(_EXEC, {**self._vars(), "command": command,
+                                      "timeoutSec": timeout}, "sandboxExec")
         if result.get("timedOut"):
             raise CodeExecutionError("TIMEOUT")
         if result.get("truncated"):
@@ -524,6 +528,52 @@ class RailwayCodeSession:
         if result.get("exitCode") != 0 or not isinstance(result.get("stdout"), str):
             raise CodeExecutionError("REMOTE_FAILED")
         return result
+
+    def _exec_detached(self, command: str, timeout: int) -> dict:
+        """Run a long command in the background and poll with short requests.
+
+        One HTTPS request held open for minutes is cut by proxies in front of
+        Railway (seen as a 5xx), so long work never rides a single request.
+        """
+        self._jobs = getattr(self, "_jobs", 0) + 1
+        job = "/tmp/edurecover-job-%d" % self._jobs
+        script = base64.b64encode(command.encode("utf-8")).decode("ascii")
+        start = ("mkdir -p %s && printf %%s %s | base64 -d > %s/cmd && "
+                 "setsid nohup /bin/sh -c 'timeout -s KILL %d /bin/sh %s/cmd > %s/out 2> %s/err; "
+                 "echo $? > %s/rc.tmp; mv %s/rc.tmp %s/rc' > /dev/null 2>&1 < /dev/null & echo started"
+                 ) % (job, script, job, timeout, job, job, job, job, job, job)
+        begun = self._data(_EXEC, {**self._vars(), "command": start, "timeoutSec": 30}, "sandboxExec")
+        if begun.get("exitCode") != 0 or "started" not in str(begun.get("stdout")):
+            raise CodeExecutionError("REMOTE_FAILED")
+        deadline = self._clock() + timeout + 15
+        misses = 0
+        while True:
+            self._sleep(3.0)
+            try:
+                check = self._data(_EXEC, {**self._vars(), "command": "cat %s/rc 2>/dev/null || true" % job,
+                                           "timeoutSec": 20}, "sandboxExec")
+            except CodeExecutionError as error:
+                # Reading a status file is safe to repeat after a brief hiccup.
+                misses += 1
+                if error.code not in ("CODE_EXECUTION_SERVICE_UNAVAILABLE",
+                                      "CODE_EXECUTION_TIMEOUT") or misses > 3:
+                    raise
+                check = {}
+            code = str(check.get("stdout") or "").strip()
+            if code:
+                break
+            if self._clock() >= deadline:
+                return {"timedOut": True}
+        try:
+            exit_code = int(code)
+        except ValueError:
+            raise CodeExecutionError("RESPONSE_INVALID") from None
+        if exit_code in (124, 137):
+            return {"timedOut": True}
+        out = self._data(_EXEC, {**self._vars(), "command": "head -c 15000 %s/out" % job,
+                                 "timeoutSec": 20}, "sandboxExec")
+        return {"exitCode": exit_code, "stdout": out.get("stdout") or "",
+                "stderr": "", "truncated": bool(out.get("truncated")), "timedOut": False}
 
     def _remote(self, payload: dict, timeout: int = 15) -> dict:
         encoded = base64.b64encode(json.dumps(payload, ensure_ascii=True).encode()).decode()
