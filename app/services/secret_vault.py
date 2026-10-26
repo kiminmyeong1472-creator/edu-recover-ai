@@ -30,7 +30,7 @@ def digest(text: str) -> str:
 
 
 def state_root() -> Path:
-    return Path(os.getenv("EDURECOVER_CLASSROOM_STATE_DIR", ".edurecover_classroom_state"))
+    return Path(os.getenv("EDURECOVER_CLASSROOM_STATE_DIR") or os.getenv("RAILWAY_VOLUME_MOUNT_PATH") or ".edurecover_classroom_state")
 
 
 class VaultError(ValueError):

@@ -1,0 +1,50 @@
+/* Exercise the rendered controls, request methods and untrusted-text display. */
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {JSDOM} = require('jsdom');
+const root = path.resolve(__dirname,'..');
+const dom = new JSDOM(fs.readFileSync(path.join(root,'app/static/rug.html'),'utf8'),
+  {url:'https://testserver/life/rug',runScripts:'outside-only'});
+const w=dom.window, d=w.document, requests=[];
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+const raw='<img src=x onerror=alert(1)>, 리모넨';
+const scope='이 결과는 확인된 성분 2개 범위 안에서만 분석한 것입니다. 일부 성분이 확인되지 않아 모든 성분을 검토하지는 못했습니다. 제조사에 전성분을 문의해 받아 오시면 다시 검토해 드리겠습니다.';
+w.fetch=async (url,options)=>{
+  requests.push({url,options});
+  let body={};
+  if(url.endsWith('/allergens'))body={allergens:['리모넨']};
+  if(url.endsWith('/history'))body={history:[]};
+  if(url.endsWith('/rag/status'))body={retrieval:'BM25',sources:{FDA:{verified_fulltext_docs:1,chunks:2,latest_checked_on:'2026-10-26'}}};
+  if(url.endsWith('/formula/preview'))body={normalization:[{original:raw,normalized:'fixture'}],ingredients:['<img src=x onerror=alert(1)>','리모넨'],confirmed_count:2};
+  if(url.endsWith('/analyze'))body={status:'HOLD',message:'등록 성분 일치',matches:['리모넨'],incomplete_notice:scope,issues:['일부 성분 미확인'],changes:null};
+  if(url.endsWith('/rag/search'))body={state:'EVIDENCE_FOUND',search_mode:'BM25',sentences:[{text:'<script>alert(1)</script>',citation:{url:'https://www.fda.gov/cosmetics',source_name:'FDA',title:'Fixture',checked_on:'2026-10-26'}}]};
+  return {ok:true,status:200,json:async()=>body};
+};
+w.eval(fs.readFileSync(path.join(root,'app/static/rug_ui.js'),'utf8'));
+(async()=>{
+  await tick();
+  d.getElementById('productName').value='Synthetic product';
+  d.getElementById('formula').value=raw;
+  d.getElementById('consent').checked=true;
+  d.getElementById('analyze').click();await tick();
+  assert(!requests.some(r=>r.url.endsWith('/analyze')),'analysis must require a preview');
+  d.getElementById('preview').click();await tick();
+  assert.equal(d.querySelectorAll('#normalization img').length,0,'raw text must not become HTML');
+  d.getElementById('analyze').click();await tick();
+  assert.equal(d.getElementById('scopeNotice').textContent,scope);
+  assert.equal(d.getElementById('matchNames').textContent,'일치한 등록 성분: 리모넨');
+  const submitted=requests.find(r=>r.url.endsWith('/analyze'));
+  assert.equal(submitted.options.method,'POST');
+  assert.equal(JSON.parse(submitted.options.body).raw_text,raw);
+  assert.equal(d.querySelectorAll('input[type=file][accept*="image"]').length,0);
+  d.getElementById('question').value='fragrance allergens';
+  d.getElementById('search').click();await tick();
+  assert.equal(d.querySelectorAll('#answer script').length,0);
+  assert(d.querySelector('#answer a').textContent.includes('2026-10-26'));
+  assert(requests.every(r=>!r.url.includes('?')),'personal queries must not enter URLs');
+  assert(requests.filter(r=>r.url.endsWith('/rag/search')).every(r=>r.options.method==='POST'));
+  dom.window.close();
+  process.stdout.write('RuG controls, scope notice, POST search and text escaping passed.\n');
+})().catch(error=>{console.error(error);process.exitCode=1;dom.window.close();});

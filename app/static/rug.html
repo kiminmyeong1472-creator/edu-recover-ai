@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RuG 화장품 알레르겐 대조</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,'Noto Sans KR',sans-serif;color:#182f45;background:#f3f6f8}main{max-width:860px;margin:auto;padding:20px}section{background:#fff;padding:22px;border-radius:12px;margin:18px 0}h1{font-size:1.6rem}h2{font-size:1.15rem}p{line-height:1.65}label{display:block;margin:12px 0 6px}input,textarea,button{font:inherit}input:not([type=checkbox]),textarea{width:100%;padding:12px;border:1px solid #8d9da9;border-radius:6px}textarea{min-height:110px}button{padding:11px 16px;background:#124e85;color:#fff;border:0;border-radius:6px;margin:8px 8px 0 0;cursor:pointer}button:disabled{opacity:.5}table{width:100%;border-collapse:collapse;margin-top:12px}td,th{border:1px solid #d9d9d9;text-align:left;padding:8px;word-break:break-word}a{color:#124e85}small{line-height:1.6}#scopeNotice{white-space:pre-wrap;font-weight:600}#status{white-space:pre-wrap}li{padding:6px 0;overflow-wrap:anywhere}.muted{color:#4d626f}.warning{color:#9b331b}.inline{display:flex;gap:8px;align-items:center}.inline label{margin:0}#answer p{white-space:pre-wrap}details{margin:8px 0}
+</style><script src="/life/rug/app.js" defer></script></head><body><main>
+<a href="/life">생활의 회복</a><h1>RuG 화장품 알레르겐 대조</h1>
+<p>올리브영 판매 화장품의 전성분 목록과 등록하신 성분을 대조합니다. 피부상태나 질병을 진단하지 않습니다.</p>
+<p id="status" role="status" aria-live="polite">불러오는 중입니다.</p>
+<section><h2>1 등록한 알레르겐</h2><label for="allergens">피하려는 성분을 한 줄에 하나씩 입력하십시오.</label>
+<textarea id="allergens" maxlength="8000"></textarea><button id="saveAllergens" type="button">등록 성분 저장</button><p id="registered" class="muted"></p></section>
+<section><h2>2 분석된 전성분 입력</h2>
+<label for="productName">제품명</label><input id="productName" maxlength="200" required>
+<label for="productUrl">올리브영 상품 주소 선택 입력</label><input id="productUrl" type="url" maxlength="2048">
+<p class="muted">판매 확인 자료가 없으면 확인한 성분의 대조 결과를 표시하고 최종 판정을 보류합니다.</p>
+<label for="formula">성분 분석이 끝난 전성분 목록을 붙여 넣으십시오.</label><textarea id="formula" maxlength="100000"></textarea>
+<label for="formulaFile">텍스트 또는 CSV 파일</label><input id="formulaFile" type="file" accept=".txt,.csv,text/plain,text/csv">
+<small>쉼표나 줄바꿈으로 나눕니다. CSV는 성분 한 열만 사용하십시오. 원문과 나눈 결과를 확인한 뒤 잘못 나뉜 성분을 수정하십시오.</small>
+<label for="expectedCount">제품에 표시된 전성분 개수 알고 있는 경우</label><input id="expectedCount" type="number" min="0" max="400">
+<p class="inline"><input id="complete" type="checkbox"><label for="complete">표시된 전성분을 모두 입력했습니다.</label></p>
+<button id="preview" type="button">입력 내용 확인</button>
+<div id="previewArea" hidden><h3>원문과 정규화 결과</h3><table><thead><tr><th>입력된 성분명</th><th>비교에 쓰는 이름</th></tr></thead><tbody id="normalization"></tbody></table>
+<label for="corrected">잘못 나뉜 성분을 고치십시오 한 줄에 하나</label><textarea id="corrected"></textarea></div>
+<p class="inline"><input id="consent" type="checkbox"><label for="consent">입력한 전성분과 대조 이력을 내 계정에 암호화 저장하는 데 동의합니다.</label></p>
+<button id="analyze" type="button">등록 성분 대조 및 재검토</button></section>
+<section id="resultArea" hidden><h2>대조 결과</h2><p id="result"></p><p id="matchNames"></p><p id="scopeNotice" class="warning"></p>
+<ul id="issues"></ul><p id="changes"></p><p class="muted">이 결과는 입력하신 목록과 등록 성분을 대조한 결과입니다. 제품의 안전성을 보장하지 않습니다.</p></section>
+<section><h2>3 공식 근거 찾기</h2><p id="retrieval" class="muted"></p>
+<label for="question">확인할 성분명과 내용을 입력하십시오.</label><input id="question" maxlength="240"><button id="search" type="button">근거 검색</button>
+<div id="answer"></div><details><summary>출처별 동기화 상태</summary><ul id="sourceStatus"></ul></details></section>
+<section><h2>내 분석 이력</h2><button id="loadHistory" type="button">이력 새로고침</button><ul id="history"></ul></section>
+</main></body></html>
