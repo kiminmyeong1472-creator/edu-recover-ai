@@ -136,8 +136,8 @@ h2{font-size:18px;margin:14px 0 6px}a{color:#a5c8ff}.small{font-size:14px}[hidde
 </main>
 <script>
 (()=>{'use strict';
-const API='/owner/code-workspace',MAX_FILE=128*1024,MAX_TOTAL=512*1024,DONE=new Set(['completed','failed','cancelled','interrupted']);
-const REASONS={ACCESS_DENIED:'레일웨이가 열쇠를 거부함 (두 열쇠 칸·두 방식 모두 시도했으나 거부 — 열쇠 자체가 틀렸거나 만료됨)',FEATURE_UNAVAILABLE:'레일웨이 임시 컴퓨터 기능이 꺼져 있음',SERVICE_UNAVAILABLE:'레일웨이에 연결하지 못함',REQUEST_REJECTED:'레일웨이가 요청을 거절함 (기타 사유)',PLAN_LIMIT:'레일웨이 요금제·사용 한도 때문에 거절됨',ENVIRONMENT_INVALID:'환경 번호(RAILWAY_ENVIRONMENT_ID)가 열쇠와 맞지 않음',SCHEMA_MISMATCH:'레일웨이 요청 형식이 바뀜 (코드 수정 필요)',START_FAILED:'임시 컴퓨터가 켜지지 않음',START_TIMEOUT:'임시 컴퓨터가 제때 켜지지 않음',ISOLATION_FAILED:'격리 확인 실패',TIMEOUT:'시간 초과',FAILED:'실행 실패',CLEANUP_UNCONFIRMED:'임시 컴퓨터 정리 확인 실패',TOOLS_MISSING:'임시 컴퓨터에 파이썬 등 도구 설치 실패',REMOTE_FAILED:'임시 컴퓨터 안의 보조 프로그램 오류',RESPONSE_INVALID:'레일웨이 응답 형식이 예상과 다름',RESPONSE_TOO_LARGE:'레일웨이 응답이 너무 큼',SESSION_TIMEOUT:'전체 실행 시간 초과',SESSION_INVALID:'실행 세션 오류',NOT_CONFIGURED:'열쇠 또는 환경 번호가 설정되지 않음',FILES_TOO_LARGE:'파일이 너무 큼',FILES_TOO_MANY:'파일이 너무 많음',PATH_INVALID:'파일 이름 오류',COMMAND_INVALID:'실행 명령 오류',INPUT_INVALID:'입력 형식 오류',INPUT_TOO_LARGE:'입력이 너무 큼',TOOL_INVALID:'도구 요청 오류'};
+const API='/owner/code-workspace',MAX_FILE=128*1024,MAX_TOTAL=512*1024,DONE=new Set(['completed','failed','cancelled','interrupted']),ACTIVE=new Set(['queued','running','cancelling']);
+const REASONS={ACCESS_DENIED:'레일웨이가 열쇠를 거부함 (두 열쇠 칸·두 방식 모두 시도했으나 거부 — 열쇠 자체가 틀렸거나 만료됨)',FEATURE_UNAVAILABLE:'레일웨이 임시 컴퓨터 기능이 꺼져 있음',SERVICE_UNAVAILABLE:'레일웨이에 연결하지 못함',REQUEST_REJECTED:'레일웨이가 요청을 거절함 (기타 사유)',PLAN_LIMIT:'레일웨이 요금제·사용 한도 때문에 거절됨',ENVIRONMENT_INVALID:'환경 번호(RAILWAY_ENVIRONMENT_ID)가 열쇠와 맞지 않음',SCHEMA_MISMATCH:'레일웨이 요청 형식이 바뀜 (코드 수정 필요)',START_FAILED:'임시 컴퓨터가 켜지지 않음',START_TIMEOUT:'임시 컴퓨터가 제때 켜지지 않음',ISOLATION_FAILED:'격리 확인 실패',TIMEOUT:'시간 초과',FAILED:'실행 실패',CLEANUP_UNCONFIRMED:'임시 컴퓨터 정리 확인 실패',TOOLS_MISSING:'임시 컴퓨터에 파이썬 등 도구 설치 실패',REMOTE_FAILED:'임시 컴퓨터 안의 보조 프로그램 오류',RESPONSE_INVALID:'레일웨이 응답 형식이 예상과 다름',RESPONSE_TOO_LARGE:'레일웨이 응답이 너무 큼',SESSION_TIMEOUT:'전체 실행 시간 초과',SESSION_INVALID:'실행 세션 오류',NOT_CONFIGURED:'열쇠 또는 환경 번호가 설정되지 않음',FILES_TOO_LARGE:'파일이 너무 큼',FILES_TOO_MANY:'파일이 너무 많음',PATH_INVALID:'파일 이름 오류',COMMAND_INVALID:'실행 명령 오류',INPUT_INVALID:'입력 형식 오류',INPUT_TOO_LARGE:'입력이 너무 큼',TOOL_INVALID:'도구 요청 오류',PROCESS_LOST:'작업이 중간에 강제로 끝남 (메모리 부족 등)'};
 const $=id=>document.getElementById(id);let files=[],ready=false,busy=false,autoCommand=true;
 function say(text,kind){const el=$('status');el.textContent=text;el.className=kind||'';}
 function sync(){$('run').disabled=!ready||busy||(!files.length&&!$('command').value.trim());}
@@ -156,12 +156,12 @@ async function pick(){busy=true;sync();try{const chosen=Array.from($('pick').fil
  const list=$('file-names');list.replaceChildren(...files.map(f=>{const li=document.createElement('li');li.textContent=f.path;return li;}));
  if(autoCommand)$('command').value=defaultCommand();say(files.length?'파일 '+files.length+'개 준비됨. 실행을 누르세요.':'파일을 고르세요.');}
  catch(e){files=[];$('file-names').replaceChildren();say(e.message,'error');}finally{busy=false;sync();}}
-function show(run){const state=run.status,done=DONE.has(state),ok=state==='completed'&&(run.exit_code===0||run.exit_code==null);
+function show(run){const state=run.status,done=DONE.has(state)||!ACTIVE.has(state),ok=state==='completed'&&(run.exit_code===0||run.exit_code==null);
  $('result').hidden=false;$('result-title').textContent=done?(ok?'결과 · 성공':'결과 · 확인 필요'+(run.exit_code!=null?' (종료 코드 '+run.exit_code+')':'')):'결과 · 실행 중';
  $('stdout').textContent=run.stdout||(done?'(출력 없음)':'실행 중입니다…');const err=run.stderr||'';$('stderr').textContent=err;$('stderr-box').hidden=!err;
  const why=run.error_code?(REASONS[String(run.error_code).replace('CODE_EXECUTION_','')]||'기타 오류'):'';
  say((run.message||'')+(why?'\n실패 원인: '+why+' ('+run.error_code+')':''),done?(ok?'good':'error'):'');return done;}
-async function poll(id){for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,2000));
+async function poll(id){for(let i=0;i<360;i++){await new Promise(r=>setTimeout(r,2000));
  try{if(show(await req(API+'/runs/'+encodeURIComponent(id))))return;}catch(e){say('결과를 다시 확인하고 있습니다: '+e.message);}}
  say('결과 확인 시간이 지났습니다. 고급 화면의 기록에서 확인하십시오.','error');}
 async function run(){if(busy||!ready)return;const command=$('command').value.trim();if(!command){say('실행할 파일을 고르세요.','error');return;}
