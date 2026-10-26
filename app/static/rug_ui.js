@@ -3,6 +3,7 @@
   const el = id => document.getElementById(id);
   const status = text => { el('status').textContent = text; };
   let previewRaw = null;
+  let lastInput = null;
   async function api(path, data) {
     const options = {credentials:'same-origin',cache:'no-store'};
     if (data !== undefined) Object.assign(options, {method:'POST',headers:{'Content-Type':'application/json','X-Rug-Consent':'1'},body:JSON.stringify(data)});
@@ -31,12 +32,28 @@
     const data=await api('history');
     list('history',data.history.map(r=>`${r.product_name} · ${r.checked_at} · ${r.status} · 확인한 성분 ${r.confirmed_count}개`));
   }
+  function showReview(data){
+    const need = data.requires_user_review;
+    el('reviewArea').hidden = !need;
+    el('reviewNotice').textContent = need ? data.review_notice : '';
+    list('unresolvedList', need ? data.unresolved_ingredients : []);
+    if (need) el('reviewCorrected').value = data.ingredients.join('\n');
+  }
+  async function resend(reviewed){
+    if(!lastInput) throw Error('먼저 분석을 실행하십시오.');
+    const data = await api('analyze', Object.assign({}, lastInput, {
+      corrected_ingredients: el('reviewCorrected').value.split(/\n/).filter(v=>v.trim()),
+      reviewed_names: reviewed}));
+    showOutcome(data);
+    status(data.requires_user_review ? '아직 확인되지 않은 이름이 남아 있습니다.' : '확인하신 내용으로 대조했습니다.');
+    await loadHistory();
+  }
   function showOutcome(data){
     el('result').textContent=data.message+(data.status==='HOLD'?' · 최종 판정 보류':'');
     el('matchNames').textContent=data.matches.length?'일치한 등록 성분: '+data.matches.join(', '):'';
     el('scopeNotice').textContent=data.incomplete_notice;list('issues',data.issues);
     el('changes').textContent=data.changes?`이전 결과와 재검토했습니다. 추가된 성분: ${data.changes.ingredients_added.join(', ')||'없음'} / 제외된 성분: ${data.changes.ingredients_removed.join(', ')||'없음'} / 새로 일치한 등록 성분: ${data.changes.matches_added.join(', ')||'없음'}`:'처음 저장한 분석입니다.';
-    el('resultArea').hidden=false;
+    el('resultArea').hidden=false; showReview(data);
   }
   async function sendPhoto(input){
     const file=input.files[0]; if(!file)return;
@@ -52,6 +69,9 @@
       if(response.status===401){location.assign('/life/auth/login');return;}
       const data=await response.json();
       if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'사진을 읽지 못했습니다. 다시 촬영해 주십시오.');
+      lastInput={product_name:el('photoName').value,oliveyoung_url:el('photoUrl').value,
+        raw_text:data.read_ingredients.join('\n'),complete:false,expected_count:null,
+        reading_source:'photo_ocr',explicit_consent:true};
       el('photoRead').textContent=`사진에서 읽은 성분 ${data.read_ingredients.length}개: `+data.read_ingredients.join(', ');
       showOutcome(data);
       status('사진을 읽어 바로 대조했습니다. 읽은 범위 안에서만 판정했습니다.');
@@ -87,11 +107,15 @@
     if(!el('consent').checked)throw Error('암호화 저장 동의를 확인하십시오.');
     if(previewRaw!==el('formula').value)throw Error('입력 내용 확인을 먼저 실행하십시오.');
     const count=el('expectedCount').value;
-    const data=await api('analyze',{product_name:el('productName').value,oliveyoung_url:el('productUrl').value,
-      raw_text:el('formula').value,corrected_ingredients:el('corrected').value.split(/\n/).filter(v=>v.trim()),
-      complete:el('complete').checked,expected_count:count===''?null:Number(count),explicit_consent:true});
+    lastInput={product_name:el('productName').value,oliveyoung_url:el('productUrl').value,
+      raw_text:el('formula').value,complete:el('complete').checked,
+      expected_count:count===''?null:Number(count),reading_source:'typed',explicit_consent:true};
+    const data=await api('analyze',Object.assign({},lastInput,
+      {corrected_ingredients:el('corrected').value.split(/\n/).filter(v=>v.trim())}));
     showOutcome(data); status('대조 결과와 확인 범위를 표시했습니다.');await loadHistory();
   });
+  button('applyCorrection',()=>resend(el('unresolvedList').textContent?Array.from(el('unresolvedList').children).map(li=>li.textContent):[]));
+  button('keepAsIs',()=>resend(Array.from(el('unresolvedList').children).map(li=>li.textContent)));
   button('search',async()=>{
     const data=await api('rag/search',{q:el('question').value});el('answer').replaceChildren();
     if(data.state==='NO_EVIDENCE'){const p=document.createElement('p');p.textContent=data.answer;el('answer').append(p);}

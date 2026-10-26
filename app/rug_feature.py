@@ -86,6 +86,8 @@ class AnalyzeRequest(FormulaInput):
     complete: bool = False
     expected_count: int | None = Field(default=None,ge=0,le=400)
     previous_review_id: str | None = Field(default=None,max_length=100)
+    reviewed_names: list[str] | None = Field(default=None,max_length=400)
+    reading_source: str = Field(default='typed',pattern='^(typed|photo_ocr)$')
     explicit_consent: bool
 
     @field_validator('product_name')
@@ -117,9 +119,13 @@ class SearchInput(BaseModel):
 
 def _run_analysis(subject,payload):
     store = _store()
+    # The confirmation time is stamped by the server; a client cannot backdate it.
+    review = ({'confirmed_at':now_iso(),'reviewed_names':payload.reviewed_names}
+              if payload.reviewed_names else None)
     outcome = compare_formula(store,product_name=payload.product_name,raw_text=payload.raw_text,
         allergens=_allergens(subject),complete=payload.complete,expected_count=payload.expected_count,
-        corrected=payload.corrected_ingredients,oliveyoung_link=payload.oliveyoung_url)
+        corrected=payload.corrected_ingredients,oliveyoung_link=payload.oliveyoung_url,
+        reading_source=payload.reading_source,user_review=review)
     with resource_transaction('life'):
         previous = None
         if payload.previous_review_id:
@@ -223,13 +229,13 @@ async def analyze_photo(request: Request,photo: UploadFile = File(...),
         del image
     try:
         payload = AnalyzeRequest(raw_text='\n'.join(label['ingredients']),product_name=product_name,
-            oliveyoung_url=oliveyoung_url,complete=False,explicit_consent=True)
+            oliveyoung_url=oliveyoung_url,complete=False,reading_source='photo_ocr',explicit_consent=True)
         outcome = _run_analysis(subject,payload)
     except (ValueError,TypeError) as exc:
         raise HTTPException(422,str(exc)) from None
     outcome['input_source'] = 'photo'
     outcome['read_ingredients'] = label['ingredients']
-
+    outcome['ocr_text'] = label['text'][:20000]
     outcome['ocr_language'] = label['language']
     outcome['korean_ocr_available'] = label['korean_available']
     return outcome

@@ -315,12 +315,15 @@ def test_sync_failure_recorded_without_fake_documents(store,monkeypatch):
     assert result['coverage']['sources']['FDA']['last_sync']['state']=='failed'
 
 
-def test_ui_has_only_ingredient_input_and_required_notice_order():
+def test_ui_takes_label_photo_and_text_but_never_a_receipt():
     html=(ROOT/'app/static/rug.html').read_text()
     assert html.index('id="result"')<html.index('id="scopeNotice"')
-    for forbidden in ('capture=','image/*','pickReceipt','OCR','영수증'):
+    # The ingredient label may be photographed; a purchase receipt may not.
+    for forbidden in ('pickReceipt','영수증','receipt'):
         assert forbidden not in html
     assert 'id="formulaFile"' in html and 'id="normalization"' in html
+    assert 'id="photoShot"' in html and 'id="photoPick"' in html
+    assert 'id="unresolvedList"' in html and 'id="keepAsIs"' in html
 
 
 def test_main_includes_rug_once():
@@ -339,7 +342,7 @@ def test_scripts_and_navigation_have_no_capture_payload():
     assert not (ROOT/'app/life_media_capture.py').exists()
     assert not (ROOT/'app/static/life_media_capture.js').exists()
     source=(ROOT/'app/rug_feature.py').read_text()
-    assert '/receipt' not in source and '_ocr_' not in source
+    assert '/receipt' not in source and 'receipt' not in source
 
 
 def test_html_scripts_removed():
@@ -364,3 +367,58 @@ def test_partial_group_variant_cannot_claim_complete(store):
 
 def test_customer_json_has_no_store_headers(client):
     assert client.get('/life/api/rug/history').headers['cache-control']=='no-store'
+
+
+def test_unreadable_name_is_kept_and_blocks_a_verdict(store):
+    """Recognition can mangle an allergen; a mangled name must not read as absent."""
+    ingest(store,'KCIA','표준 성분명 목록입니다. 정제수 글리세린 리모넨. '*12,url=SOURCES['KCIA']['url'])
+    for name in ('정제수','글리세린','리모넨'):
+        store.add_alias(name,name,'KCIA',SOURCES['KCIA']['url'])
+    store.import_product(product(ingredients=['정제수','글리세린','리모넨']))
+    link='https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=SYNTHETIC_ONLY'
+    mangled=compare_formula(store,product_name='시험 제품',raw_text='정제수, 글리세린, F|GUl',
+        allergens=['리모넨'],complete=False,oliveyoung_link=link,reading_source='photo_ocr')
+    assert mangled['unresolved_ingredients']==['F|GUl']
+    assert mangled['requires_user_review'] is True
+    assert mangled['status']=='NEEDS_USER_REVIEW' and mangled['presence']=='HOLD'
+    assert '발견되지 않' not in mangled['message']
+
+    corrected=compare_formula(store,product_name='시험 제품',raw_text='정제수, 글리세린, F|GUl',
+        allergens=['리모넨'],complete=False,oliveyoung_link=link,reading_source='photo_ocr',
+        corrected=['정제수','글리세린','리모넨'])
+    assert corrected['matches']==['리모넨'] and corrected['requires_user_review'] is False
+
+    kept=compare_formula(store,product_name='시험 제품',raw_text='정제수, 글리세린, F|GUl',
+        allergens=['리모넨'],complete=False,oliveyoung_link=link,reading_source='photo_ocr',
+        user_review={'confirmed_at':'2026-10-26T12:00:00Z','reviewed_names':['F|GUl']})
+    assert kept['status']!='NEEDS_USER_REVIEW' and kept['user_review']['reviewed_names']==['F|GUl']
+
+    for sham in ({'confirmed_at':'','reviewed_names':[]},
+                 {'confirmed_at':'2026-10-26T12:00:00Z','reviewed_names':['다른 이름']}):
+        assert compare_formula(store,product_name='시험 제품',raw_text='정제수, 글리세린, F|GUl',
+            allergens=['리모넨'],complete=False,oliveyoung_link=link,
+            user_review=sham)['status']=='NEEDS_USER_REVIEW'
+
+
+def test_missing_dictionary_is_named_not_treated_as_unreadable(store):
+    store.import_product(product(ingredients=['정제수']))
+    link='https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=SYNTHETIC_ONLY'
+    result=compare_formula(store,product_name='시험 제품',raw_text='정제수, 글리세린',
+        allergens=['리모넨'],complete=False,oliveyoung_link=link)
+    assert result['requires_user_review'] is False
+    assert '표준 성분명 사전 미반입' in result['issues']
+
+
+def test_known_rejects_a_name_the_dictionary_never_carried(store):
+    ingest(store,'KCIA','표준 성분명 목록입니다. 정제수 리모넨. '*12,url=SOURCES['KCIA']['url'])
+    store.add_alias('리모넨','리모넨','KCIA',SOURCES['KCIA']['url'])
+    assert store.known('리모넨') is True
+    assert store.known('F|GUl') is False
+    # canonical() falls back to the input, so it cannot make this distinction.
+    assert store.canonical('F|GUl')[0] is not None
+
+
+def test_ocr_module_keeps_numeric_locants_and_drops_label_prefix():
+    from app.rug_ocr import _split
+    assert _split('전성분: 정제수, 글리세린, 1,2-헥산다이올') == ['정제수','글리세린','1,2-헥산다이올']
+    assert _split('Ingredients: Water, Limonene') == ['Water','Limonene']
