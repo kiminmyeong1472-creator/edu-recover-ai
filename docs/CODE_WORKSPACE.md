@@ -35,3 +35,41 @@
 - https://docs.railway.com/guides/code-execution-sandboxes
 - https://github.com/railwayapp/railway-ts-sdk/blob/97fdb4f61d351319d5633c2c92a86ca2ff0062d8/src/graphql/operations/sandbox.graphql
 - https://chutes.ai/docs/guides/agents-and-tools
+
+
+## 외부 AI 코드 초안 요청과 별도 실행 승인
+
+이 추가 기능은 에이전트나 도구 호출 지원 없이 기존 `call_model`을 한 번 호출합니다. 화면에서 **외부 AI에 코드만 요청 · 확인 후 실행**을 선택하면, 선택한 AI에 현재 편집기의 모든 파일과 요청을 보내는 승인 항목이 나타납니다. 코드 요청은 VM 생성, 명령 실행, 패키지 설치 또는 운영 반영을 수행하지 않습니다.
+
+- 기본값은 꺼짐입니다. 대표님의 활성화 승인 이후 운영자가 `EDURECOVER_CODE_GENERATION_ENABLED=true`로 설정합니다. `false`로 되돌리면 이후 초안 요청을 차단합니다. 이미 받은 코드와 실행 기록을 삭제하지 않습니다.
+- 사용 허용과 연결 설정을 갖춘 정확한 기존 모델 및 `learning` 또는 `chutes` 경로만 사용합니다. 요청에 새 URL, 인증 키, 제공자 또는 설치 명령을 넣을 수 없습니다. 기존 27개 목록·Chutes 변형·OpenRouter 경로는 변경하지 않습니다.
+- `POST /owner/code-workspace/generate`에는 관리자 인증과 정확한 불리언 `explicit_authorization: true`가 필요합니다. 요청은 `model_key`, `route`, `prompt`, `files`, 선택적 `max_tokens`를 받습니다. 기본 출력 한도는 4096, 허용 범위는 256~8192 토큰입니다. 토큰은 모델이 처리하는 글 조각이며 요금의 계산 단위입니다.
+- 한 번의 추론 시도만 합니다. 실패 시 다른 회사·모델로 자동 전환하거나 자동 재시도하지 않습니다. 한 번의 요청과 출력 제한은 원화·달러 총비용 상한이 아닙니다. 실제 요금은 제공자 계정에서 확인합니다.
+- AI 응답은 `{"summary":"설명","files":[{"path":"main.py","content":"print(2)"}]}` 형식만 받습니다. 명령 필드는 허용하지 않습니다. 중복 JSON 키, 경로 이탈, 예약 디렉터리, 중복 파일, 크기·개수 초과는 전체 초안을 거절합니다.
+- 변경 파일을 기존 편집 파일과 합친 뒤 최대 40개, 파일당 UTF-8 128 KiB, 합계 512 KiB를 다시 검사합니다. 각 파일의 SHA256과 초안 확인값을 반환합니다.
+- 성공하면 편집기에 초안을 불러오고 **직접 코드 입력**으로 전환합니다. 실행 명령은 AI가 바꾸지 않습니다. 전송 승인과 실행 승인 선택은 모두 해제합니다. 사용자가 파일과 명령을 다시 검토하고 별도로 **코드 실행**을 눌러야 기존 격리 실행기로 넘어갑니다.
+- 초안은 브라우저 편집 상태에만 있고 새 실행 기록으로 저장되지 않습니다. 창을 새로 열기 전에 필요한 내용을 보관합니다. 실행 후 결과 파일은 기존 실행 기록과 다운로드 기능으로 보관할 수 있습니다.
+
+### 연결 범위
+
+현재 통신 구현은 OpenAI 호환 chat/completion, AWS Bedrock Converse, SageMaker 엔드포인트입니다. 제공자의 텍스트 생성이 가능하고 요구한 JSON 파일 형식으로 응답해야 합니다. 회사의 기능 지원과 이 계정의 실제 연결 성공은 별개입니다. Anthropic Messages, Gemini 원래 API, OpenAI Responses 원래 형식은 이 변경에서 새 어댑터를 설치하지 않습니다. 기존에 승인된 호환 경로가 있으면 그 경로를 사용할 수 있습니다.
+
+AWS CloudShell 공식 FAQ는 프로그램 상호작용 API를 지원하지 않는다고 명시합니다. 따라서 CloudShell을 상시 원격 실행 API로 연결하지 않습니다. CloudShell에서 사람이 파일·명령을 수동 실행하는 사용법과 현재 격리 실행기를 구분합니다. AWS 런타임 전환은 기존 6순위 작업에 맞춰 별도로 검토합니다.
+
+### 변경 파일과 검증
+
+- `app/services/code_generation.py`: 요청 승인·파일 검증·한 번의 외부 호출·미실행 초안·SHA256.
+- `app/services/code_execution_api.py`: 관리자 전용 초안 API와 활성화 상태. 기존 실행 입력의 파일 검사를 공유합니다.
+- `app/services/code_execution_workspace.py`: 코드 요청 버튼, 별도 전송 승인, 검토 후 실행 승인.
+- `tests/test_code_generation.py`: 승인·비활성화·응답 오류·제공자 오류·파일 합계·인증·VM 미생성 시험.
+- `tests/test_code_execution_workspace.py`: 실제 화면 JavaScript로 승인 분리·오류 시 편집 내용 유지·자동 실행 방지 시험.
+
+오프라인 검증: `python3 -m unittest discover -s tests -p 'test_code*.py'`. 외부 API와 VM은 시험용 응답으로 대체하며 유료 추론·운영 반영 성공을 뜻하지 않습니다.
+
+공식 자료 확인일: 2026년 10월 17일 한국 시간.
+- OpenAI 도구 호출: https://developers.openai.com/api/docs/guides/function-calling
+- Claude 도구: https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview
+- Gemini 도구 호출: https://ai.google.dev/gemini-api/docs/function-calling
+- AWS Bedrock: https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use-client-side.html
+- AWS CloudShell: https://aws.amazon.com/cloudshell/faqs/
+- OpenRouter: https://openrouter.ai/docs/guides/features/tool-calling

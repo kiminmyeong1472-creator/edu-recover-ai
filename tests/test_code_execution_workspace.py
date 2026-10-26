@@ -12,7 +12,7 @@ _HARNESS = r"""
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const elements=new Map(),requests=[],timers=new Map(),blobs=[];let timerId=0;
 let configured=process.env.CONFIGURED!=='false',runReply={id:'run-1',status:'running'},statusReply={id:'run-1',status:'running'};
-let pollFails=false,createFails=false;
+let pollFails=false,createFails=false,generationFails=false;let generateReply={model_key:'DeepSeek-V4.1-Flash',route:'learning',execution_state:'not_executed',requires_execution_authorization:true,files:[{path:'main.py',content:'print(7)'}],manifest:[],draft_sha256:'draft-hash'};
 function element(id,tag=''){
  if(!elements.has(id))elements.set(id,{value:'',disabled:false,hidden:false,checked:false,files:[],children:[],events:{},textContent:'',className:'',tag,
   addEventListener(type,callback){this.events[type]=callback},append(...children){this.children.push(...children)},replaceChildren(){this.children=[]},click(){if(this.events.click)return this.events.click()}});
@@ -28,9 +28,10 @@ const context=vm.createContext({document:{getElementById:element,createElement:t
  fetch:async(url,options={})=>{
   requests.push({url,options,body:options.body?JSON.parse(options.body):null});
   let data,ok=true,status=200;
-  if(url==='/owner/code-workspace/status')data={configured,message:configured?'분리된 환경 연결됨':'분리된 실행 환경 설정 필요'};
+  if(url==='/owner/code-workspace/status')data={configured,external_generation:{enabled:true},message:configured?'분리된 환경 연결됨':'분리된 실행 환경 설정 필요'};
   else if(url==='/owner/open-models/learning/catalog')data={models:modelRows};
   else if(url==='/owner/open-models/chutes/catalog')data={models:[{model_key:'DeepSeek-V3.2',display_name:'DeepSeek-V3.2 · Chutes',configured:true,enabled:true,permitted:true}]};
+  else if(url==='/owner/code-workspace/generate'){if(generationFails){ok=false;status=502;data={detail:{message:'초안 요청 실패'}}}else data=generateReply;}
   else if(url==='/owner/code-workspace/evaluation-cases')data={cases:caseRows};
   else if(url==='/owner/code-workspace/runs'&&options.method==='POST'){if(createFails){ok=false;status=503;data={detail:{message:'실행 환경을 사용할 수 없습니다.'}}}else data=runReply;}
   else if(url==='/owner/code-workspace/runs')data={runs:[{id:'run-1',status:'interrupted',created_at:1792224000,model_key:'DeepSeek-V4.1-Flash',evaluation_case:'sum'}]};
@@ -59,6 +60,49 @@ class CodeExecutionWorkspaceTests(unittest.TestCase):
             env=dict(os.environ, CONFIGURED=str(configured).lower()),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_external_draft_needs_transmission_approval_then_fresh_execution_approval(self):
+        self.run_workspace(r"""
+element('mode').value='generate';event('mode','change');element('model').value='DeepSeek-V4.1-Flash';event('model','change');
+element('prompt').value='7을 출력하십시오.';element('authorize').checked=true;
+await event('run');assert.equal(runRequests().length,0);await event('generate-code');
+assert.equal(requests.some(item=>item.url.endsWith('/generate')),false);
+assert.match(element('draft-status').textContent,/승인/);
+element('generate-authorize').checked=true;await event('generate-code');
+const calls=requests.filter(item=>item.url.endsWith('/generate'));assert.equal(calls.length,1);
+assert.equal(calls[0].body.model_key,'DeepSeek-V4.1-Flash');assert.equal(calls[0].body.route,'learning');
+assert.equal('command' in calls[0].body,false);assert.equal(element('command').value,'python3 main.py');
+assert.equal(element('code').value,'print(7)');assert.equal(element('mode').value,'manual');
+assert.equal(element('authorize').checked,false);assert.equal(element('generate-authorize').checked,false);
+assert.equal(runRequests().length,0);await event('run');assert.equal(runRequests().length,0);
+element('authorize').checked=true;await event('run');assert.equal(runRequests().length,1);
+assert.equal('model_key' in runRequests()[0].body,false);
+""")
+
+    def test_draft_failure_preserves_editor_and_does_not_retry(self):
+        self.run_workspace(r"""
+element('mode').value='generate';event('mode','change');element('model').value='DeepSeek-V4.1-Flash';event('model','change');
+edits('code','print(3)');element('prompt').value='고치십시오.';element('generate-authorize').checked=true;generationFails=true;
+await event('generate-code');assert.equal(element('code').value,'print(3)');assert.equal(runRequests().length,0);
+assert.equal(element('generate-authorize').checked,false);assert.match(element('draft-status').textContent,/실패/);
+assert.equal(requests.filter(item=>item.url.endsWith('/generate')).length,1);
+""")
+
+    def test_draft_can_be_requested_without_a_configured_execution_vm(self):
+        self.run_workspace(r"""
+element('mode').value='generate';event('mode','change');element('model').value='DeepSeek-V4.1-Flash';event('model','change');
+element('prompt').value='초안만 작성하십시오.';element('generate-authorize').checked=true;await event('generate-code');
+assert.equal(requests.filter(item=>item.url.endsWith('/generate')).length,1);
+assert.equal(element('run').disabled,true);assert.equal(runRequests().length,0);
+""", configured=False)
+
+    def test_feature_disabled_and_edits_clear_external_transmission_approval(self):
+        self.run_workspace(r"""
+element('mode').value='generate';event('mode','change');element('model').value='DeepSeek-V4.1-Flash';event('model','change');
+element('generate-authorize').checked=true;edits('code','print(5)');assert.equal(element('generate-authorize').checked,false);
+element('generate-authorize').checked=true;event('model-route','change');assert.equal(element('generate-authorize').checked,false);
+run('generationEnabled=false');await event('generate-code');assert.equal(requests.some(item=>item.url.endsWith('/generate')),false);
+""")
 
     def test_manual_execution_requires_explicit_review_and_has_no_model_call(self):
         self.run_workspace(r"""
