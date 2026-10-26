@@ -28,6 +28,7 @@ DATABASES = (
     "classroom_tutor.sqlite3", "ai_tutor_training.sqlite3", "secret_vault.sqlite3",
     "liferecover/life.sqlite3", "liferecover/medical.sqlite3",
     "liferecover/legal.sqlite3", "liferecover/accounts.sqlite3",
+    "qrng/prepaid.sqlite3",
 )
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
@@ -288,3 +289,4 @@ def log_storage_inventory():
     except Exception:
         logger.warning("storage_inventory=UNAVAILABLE")
         return {"root_status": "unavailable", "read_only": True}
+
