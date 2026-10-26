@@ -8,6 +8,9 @@ import unicodedata
 
 from app.rug_engine import INCOMPLETE_NOTICE, digest, norm, oliveyoung_url
 
+REVIEW_NOTICE = ('읽어 들인 이름 가운데 표준 성분명으로 확인되지 않은 것이 {count}개 있습니다. '
+                 '글자가 잘못 읽혔을 수 있어 최종 판정을 내리지 않았습니다. '
+                 '해당 이름을 확인해 고치시거나 그대로 두겠다고 확인해 주셔야 판정을 진행합니다.')
 GROUP_NAMES = {'향료','퍼퓸','fragrance','parfum','aroma','향','미확인','unknown','기타','etc','...','…'}
 UNKNOWN_NAMES = {'미확인','unknown','기타','etc','...','…'}
 
@@ -41,7 +44,16 @@ def product_key(name: str, url: str = '') -> str:
 
 
 def compare_formula(store, *, product_name, raw_text, allergens, complete=False,
-                    expected_count=None, corrected=None, oliveyoung_link=''):
+                    expected_count=None, corrected=None, oliveyoung_link='',
+                    reading_source='typed', user_review=None):
+    """Compare an ingredient list against the person's registered allergens.
+
+    A name that the verified ingredient dictionary cannot resolve is never
+    silently dropped: it is returned as an unresolved name and, until the person
+    who supplied the list has reviewed those names, no final verdict is issued.
+    Automatic character recognition can mangle an allergen (for example 리모넨 into
+    F|GUl), and a mangled name would otherwise read as 'not found'.
+    """
     parsed = parse_formula(raw_text,corrected=corrected)
     values = parsed['ingredients']
     incomplete = (not complete or not values or parsed['has_group'] or
@@ -71,11 +83,23 @@ def compare_formula(store, *, product_name, raw_text, allergens, complete=False,
         issues.append('등록된 개인 알레르겐 없음')
     normalized = set()
     ambiguous = False
+    unresolved = []
     for value in values:
         canonical, conflict = store.canonical(value)
         ambiguous |= conflict
-        if canonical and norm(value) not in UNKNOWN_NAMES:
+        known = store.known(value)
+        if canonical and known and norm(value) not in UNKNOWN_NAMES:
             normalized.add(canonical)
+        elif not known and norm(value) not in UNKNOWN_NAMES and value not in unresolved:
+            # Unreadable, not merely conflicting: a name the dictionary never carried.
+            # A conflicting name is known and is handled as a synonym conflict below.
+            unresolved.append(value)
+    dictionary = store.dictionary_loaded()
+    if not dictionary:
+        # Without the dictionary every name would look unreadable. Report that
+        # plainly instead, and do not turn it into a reason to withhold: the
+        # exact-name comparison still works, only mangled-name detection is off.
+        unresolved = []
     matches = []
     for original in allergens:
         canonical, conflict = store.canonical(original)
@@ -84,16 +108,30 @@ def compare_formula(store, *, product_name, raw_text, allergens, complete=False,
             matches.append(original)
     if ambiguous:
         issues.append('성분 동의어 충돌')
+    reviewed = bool(user_review and user_review.get('confirmed_at')
+                    and set(user_review.get('reviewed_names') or []) >= set(unresolved))
+    needs_review = bool(unresolved) and not reviewed
+    if unresolved:
+        issues.append('표준 성분명으로 확인되지 않은 이름 %d개' % len(unresolved))
     # These two outputs have separate authority. Retrieval never rewrites this comparison.
     presence = 'MATCH' if matches else ('NO_MATCH' if values and allergens and not ambiguous else 'HOLD')
-    state = 'HOLD' if issues else presence
+    if needs_review:
+        # The person who supplied the list decides what an unreadable name is.
+        # Until then the comparison must not stand as a verdict.
+        presence = 'HOLD'
+    state = 'NEEDS_USER_REVIEW' if needs_review else ('HOLD' if issues else presence)
     identity_url = verified_products[0]['oliveyoung_url'] if len(verified_products)==1 else oliveyoung_link
     return {'status':state,'presence':presence,'product_name':product_name,'product_key':product_key(product_name,identity_url),
             'raw_text':raw_text,**parsed,'formula_digest':digest(values),
             'registered_allergens':list(allergens),'matches':matches,'issues':issues,
             'incomplete_ingredients':incomplete,
+            'unresolved_ingredients':unresolved,'requires_user_review':needs_review,
+            'dictionary_loaded':dictionary,
+            'reading_source':reading_source,'user_review':user_review if reviewed else None,
+            'review_notice':(REVIEW_NOTICE.format(count=len(unresolved)) if needs_review else ''),
             'incomplete_notice':INCOMPLETE_NOTICE.format(count=parsed['confirmed_count']) if incomplete else '',
-            'message':'등록하신 성분과 일치한 성분이 있습니다.' if matches else
+            'message':REVIEW_NOTICE.format(count=len(unresolved)) if needs_review else
+                '등록하신 성분과 일치한 성분이 있습니다.' if matches else
                 ('확인된 범위에서는 등록하신 성분이 발견되지 않았습니다' if values and allergens else '판정을 보류했습니다.'),
             'sale_verification':'verified_catalog' if len(verified_products)==1 else 'unverified',
             'scope':'customer_supplied_ingredient_list'}

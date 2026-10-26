@@ -191,6 +191,22 @@ class EvidenceStore:
             return None, True  # conflicting aliases: never guess
         return (next(iter(options)) if options else key), False
 
+    def known(self, value: str) -> bool:
+        """True when the verified ingredient dictionary carries this name.
+
+        canonical() falls back to the input itself, so it cannot tell a real
+        ingredient name from characters that recognition mangled. This can.
+        """
+        key = norm(value)
+        with self.conn() as db:
+            row = db.execute("SELECT 1 FROM aliases WHERE alias=? OR canonical=? LIMIT 1",
+                             (key, key)).fetchone()
+        return row is not None
+
+    def dictionary_loaded(self) -> bool:
+        with self.conn() as db:
+            return db.execute("SELECT 1 FROM aliases LIMIT 1").fetchone() is not None
+
     def import_product(self, record: dict) -> dict:
         product = verify_product(record)
         checksum = digest(product.get("ingredients", []))
