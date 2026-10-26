@@ -59,6 +59,7 @@ color:#172b45;text-decoration:none;min-height:155px}}
 <a class='card' href='/life/medical'><b>의료</b><p>약물패스포트·치료목적·안전확인</p></a>
 <a class='card' href='/life/legal'><b>법률</b><p>사건 타임라인·증거·기한관리</p></a>
 <a class='card' href='/life/privacy'><b>개인정보</b><p>동의·공유범위·내 정보 사용이력</p></a>
+<a class='card' href='/life/rug'><b>RuG 화장품 알레르겐 대조</b><p>전성분 입력·공식 근거 검색·등록 성분 대조</p></a>
 </div></main></body></html>"""
     return HTMLResponse(
         html,

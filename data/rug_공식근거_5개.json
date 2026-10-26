@@ -1,0 +1,47 @@
+[
+  {
+    "id":"MFDS_2026_56_index",
+    "source_id":"MFDS",
+    "url":"https://www.mfds.go.kr/brd/m_211/view.do?seq=14985",
+    "title":"화장품 사용할 때의 주의사항 및 알레르기 유발성분 표시에 관한 규정(식약처 고시 제2026-56호)",
+    "excerpt":"식약처의 2026년 8월 5일 고시 제2026-56호는 화장품 알레르기 유발성분의 표시 및 사용상 주의사항을 다룹니다. 이 목록은 제품별 전성분의 대체 자료가 아닙니다. 구체적인 조항과 성분별 적용 여부는 고시 원문을 확인해야 합니다.",
+    "verified_on":"2026-10-25",
+    "kind":"legal"
+  },
+  {
+    "id":"KCIA_ingredient_dictionary_index",
+    "source_id":"KCIA",
+    "url":"https://kcia.or.kr/cid/search/ingd_list.php",
+    "title":"대한화장품협회 성분사전: 표준 화장품 성분명",
+    "excerpt":"대한화장품협회 화장품 성분사전은 전성분 표기에 쓰이는 표준 성분명·영문명·구명칭을 제공하는 자료입니다. 사전에 등재됐다는 사실만으로 해당 성분 사용이 허용되거나 특정 제품에 포함된다는 뜻은 아닙니다.",
+    "verified_on":"2026-10-25",
+    "kind":"ingredient"
+  },
+  {
+    "id":"EC_COSING_index",
+    "source_id":"COSING",
+    "url":"https://single-market-economy.ec.europa.eu/sectors/cosmetics/cosmetic-ingredient-database_en",
+    "title":"European Commission CosIng cosmetic ingredient database",
+    "excerpt":"EU 집행위원회의 CosIng 데이터베이스는 화장품 성분과 표시에 사용되는 일반 성분명, CAS 번호, EU 규정 관련 정보를 제공합니다. 등재 자체는 개인 알레르겐 부재를 증명하지 않습니다.",
+    "verified_on":"2026-10-25",
+    "kind":"reference"
+  },
+  {
+    "id":"EU_SCCS_opinions_index",
+    "source_id":"SCCS",
+    "url":"https://health.ec.europa.eu/scientific-committees/scientific-committee-consumer-safety-sccs/sccs-opinions_en",
+    "title":"EU SCCS ingredient safety scientific opinions",
+    "excerpt":"EU 소비자안전과학위원회(SCCS)는 화장품 성분 등 소비재의 안전성 평가 의견을 공개합니다. 과학적 의견은 검토한 성분과 조건의 범위에서 해석해야 하며 제품별 전성분이나 개인 알레르기 안전 보장이 아닙니다.",
+    "verified_on":"2026-10-25",
+    "kind":"scientific"
+  },
+  {
+    "id":"FDA_cosmetic_allergens_index",
+    "source_id":"FDA",
+    "url":"https://www.fda.gov/cosmetics/cosmetic-ingredients/allergens-cosmetics",
+    "title":"US FDA Allergens in Cosmetics",
+    "excerpt":"미국 FDA는 화장품에서 알레르기를 유발할 수 있는 물질의 유형으로 향료, 방부제, 색소 등 여러 종류를 소개합니다. 향료라는 일괄 표기만으로 구성 성분을 모두 확인할 수 없는 경우가 있습니다. 개인별 사용 안전성을 확정할 수는 없습니다.",
+    "verified_on":"2026-10-25",
+    "kind":"reference"
+  }
+]

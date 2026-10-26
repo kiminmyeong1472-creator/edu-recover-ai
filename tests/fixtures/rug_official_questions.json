@@ -1,0 +1,27 @@
+{
+  "scope": "2026-10-26 실제 동기화한 공식 페이지에 대한 검색 검사이며 제품 전성분 검증이 아님",
+  "known": [
+    {"question":"알레르기 유발성분","expected_source":"MFDS","expected_phrase":"알레르기 유발성분"},
+    {"question":"고시번호 제2026","expected_source":"MFDS","expected_phrase":"고시번호 제2026-56호"},
+    {"question":"표준화 명칭","expected_source":"KCIA","expected_phrase":"표준화 명칭을 제공"},
+    {"question":"사용가부 화장품법","expected_source":"KCIA","expected_phrase":"화장품 원료의 사용가부"},
+    {"question":"CosIng INCI","expected_source":"COSING","expected_phrase":"INCI"},
+    {"question":"CosIng legal value","expected_source":"COSING","expected_phrase":"no legal value"},
+    {"question":"preliminary specific dossiers","expected_source":"SCCS","expected_phrase":"specific sets of data (dossiers)"},
+    {"question":"commenting period expired","expected_source":"SCCS","expected_phrase":"commenting period"},
+    {"question":"common allergens classes","expected_source":"FDA","expected_phrase":"Common allergens fall into the five classes"},
+    {"question":"fragrance perfume","expected_source":"FDA","expected_phrase":"perfume"}
+  ],
+  "absent": [
+    "fragrance cures diabetes",
+    "cosmetic labeling predicts earthquakes",
+    "ingredient names guarantee immortality",
+    "standardized nomenclature reverses cancer",
+    "CosIng inventory teleportation",
+    "INCI glossary mindreading",
+    "consumer safety astrology",
+    "scientific opinions perpetual motion",
+    "알레르기 표시 완치보장",
+    "성분 규정 외계인"
+  ]
+}

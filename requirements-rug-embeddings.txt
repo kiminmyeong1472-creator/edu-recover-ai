@@ -1,0 +1,2 @@
+# Optional. Default RuG operation uses BM25 without these dependencies.
+sentence-transformers>=6,<7
