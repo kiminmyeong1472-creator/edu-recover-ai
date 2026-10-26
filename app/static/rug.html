@@ -9,7 +9,15 @@
 <p id="status" role="status" aria-live="polite">불러오는 중입니다.</p>
 <section><h2>1 등록한 알레르겐</h2><label for="allergens">피하려는 성분을 한 줄에 하나씩 입력하십시오.</label>
 <textarea id="allergens" maxlength="8000"></textarea><button id="saveAllergens" type="button">등록 성분 저장</button><p id="registered" class="muted"></p></section>
-<section><h2>2 분석된 전성분 입력</h2>
+<section><h2>2 성분표 사진으로 바로 대조</h2>
+<label for="photoName">제품명</label><input id="photoName" maxlength="200">
+<label for="photoUrl">올리브영 상품 주소 선택 입력</label><input id="photoUrl" type="url" maxlength="2048">
+<p class="inline"><input id="photoConsent" type="checkbox"><label for="photoConsent">사진에서 읽은 전성분과 대조 이력을 내 계정에 암호화 저장하는 데 동의합니다.</label></p>
+<label for="photoShot">성분표 촬영</label><input id="photoShot" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
+<label for="photoPick">저장된 사진 선택</label><input id="photoPick" type="file" accept="image/jpeg,image/png,image/webp">
+<small>한 번 누르면 바로 읽어서 대조까지 진행합니다. 사진은 읽는 즉시 버리고 저장하지 않습니다. 사진은 가려지거나 흐릴 수 있어 읽은 범위 안에서만 대조하며, 최종 판정은 보류로 표시합니다.</small>
+<p id="photoRead" class="muted"></p></section>
+<section><h2>3 분석된 전성분 직접 입력</h2>
 <label for="productName">제품명</label><input id="productName" maxlength="200" required>
 <label for="productUrl">올리브영 상품 주소 선택 입력</label><input id="productUrl" type="url" maxlength="2048">
 <p class="muted">판매 확인 자료가 없으면 확인한 성분의 대조 결과를 표시하고 최종 판정을 보류합니다.</p>
@@ -25,7 +33,7 @@
 <button id="analyze" type="button">등록 성분 대조 및 재검토</button></section>
 <section id="resultArea" hidden><h2>대조 결과</h2><p id="result"></p><p id="matchNames"></p><p id="scopeNotice" class="warning"></p>
 <ul id="issues"></ul><p id="changes"></p><p class="muted">이 결과는 입력하신 목록과 등록 성분을 대조한 결과입니다. 제품의 안전성을 보장하지 않습니다.</p></section>
-<section><h2>3 공식 근거 찾기</h2><p id="retrieval" class="muted"></p>
+<section><h2>4 공식 근거 찾기</h2><p id="retrieval" class="muted"></p>
 <label for="question">확인할 성분명과 내용을 입력하십시오.</label><input id="question" maxlength="240"><button id="search" type="button">근거 검색</button>
 <div id="answer"></div><details><summary>출처별 동기화 상태</summary><ul id="sourceStatus"></ul></details></section>
 <section><h2>내 분석 이력</h2><button id="loadHistory" type="button">이력 새로고침</button><ul id="history"></ul></section>

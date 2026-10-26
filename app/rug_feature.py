@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -16,6 +16,7 @@ from app.platform_core.persistent_domain_store import get_resource, list_resourc
 from app.rug_engine import norm, now_iso, oliveyoung_url
 from app.rug_formula import changes, compare_formula, parse_formula, product_key
 from app.rug_full_rag import RuGFullRAG
+from app.rug_ocr import CONTENT_TYPES, MAX_IMAGE_BYTES, OcrNotInstalled, PhotoUnreadable, read_label
 from app.services.secret_vault import state_root
 
 PROFILE_KIND = 'rug_allergens_v1'
@@ -190,6 +191,48 @@ def analyze_formula(request: Request,payload: AnalyzeRequest):
         return _run_analysis(subject,payload)
     except (ValueError,TypeError) as exc:
         raise HTTPException(422,str(exc)) from None
+
+
+@router.post('/life/api/rug/photo')
+async def analyze_photo(request: Request,photo: UploadFile = File(...),
+                        product_name: str = Form(...),oliveyoung_url: str = Form(''),
+                        explicit_consent: str = Form(...)):
+    """One tap: read the label photo, then run the same rule comparison at once.
+
+    The photo is never stored and never decides the verdict. Because a photo can
+    cut off or blur part of a label, the input is never marked complete, so a
+    partial read ends in HOLD with the confirmed-count notice instead of a
+    false 'not found'.
+    """
+    subject = require_life_user(request)
+    _check_post(request)
+    if explicit_consent != 'true':
+        raise HTTPException(403,'explicit_consent_required')
+    if photo.content_type not in CONTENT_TYPES:
+        raise HTTPException(415,'unsupported_image_type')
+    image = await photo.read(MAX_IMAGE_BYTES + 1)
+    if len(image) > MAX_IMAGE_BYTES:
+        raise HTTPException(413,'image_size_invalid')
+    try:
+        label = read_label(image,photo.content_type)
+    except OcrNotInstalled:
+        raise HTTPException(503,'ocr_not_installed') from None
+    except PhotoUnreadable as exc:
+        raise HTTPException(422,str(exc)) from None
+    finally:
+        del image
+    try:
+        payload = AnalyzeRequest(raw_text='\n'.join(label['ingredients']),product_name=product_name,
+            oliveyoung_url=oliveyoung_url,complete=False,explicit_consent=True)
+        outcome = _run_analysis(subject,payload)
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(422,str(exc)) from None
+    outcome['input_source'] = 'photo'
+    outcome['read_ingredients'] = label['ingredients']
+
+    outcome['ocr_language'] = label['language']
+    outcome['korean_ocr_available'] = label['korean_available']
+    return outcome
 
 
 @router.get('/life/api/rug/rag/status')

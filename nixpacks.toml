@@ -1,0 +1,5 @@
+# Tesseract OCR and its Korean/English language data for the RuG ingredient-label
+# photo path (app/rug_ocr.py). Without the Korean data the label photo of a
+# domestic cosmetic cannot be read.
+[phases.setup]
+aptPkgs = ["...", "tesseract-ocr", "tesseract-ocr-kor", "tesseract-ocr-eng"]

@@ -31,6 +31,36 @@
     const data=await api('history');
     list('history',data.history.map(r=>`${r.product_name} · ${r.checked_at} · ${r.status} · 확인한 성분 ${r.confirmed_count}개`));
   }
+  function showOutcome(data){
+    el('result').textContent=data.message+(data.status==='HOLD'?' · 최종 판정 보류':'');
+    el('matchNames').textContent=data.matches.length?'일치한 등록 성분: '+data.matches.join(', '):'';
+    el('scopeNotice').textContent=data.incomplete_notice;list('issues',data.issues);
+    el('changes').textContent=data.changes?`이전 결과와 재검토했습니다. 추가된 성분: ${data.changes.ingredients_added.join(', ')||'없음'} / 제외된 성분: ${data.changes.ingredients_removed.join(', ')||'없음'} / 새로 일치한 등록 성분: ${data.changes.matches_added.join(', ')||'없음'}`:'처음 저장한 분석입니다.';
+    el('resultArea').hidden=false;
+  }
+  async function sendPhoto(input){
+    const file=input.files[0]; if(!file)return;
+    try{
+      if(!el('photoConsent').checked)throw Error('암호화 저장 동의를 확인하십시오.');
+      if(!el('photoName').value.trim())throw Error('제품명을 입력하십시오.');
+      if(file.size>8*1024*1024)throw Error('8MB 이하 사진을 선택하십시오.');
+      status('사진을 읽고 있습니다.');
+      const form=new FormData();
+      form.append('photo',file);form.append('product_name',el('photoName').value);
+      form.append('oliveyoung_url',el('photoUrl').value);form.append('explicit_consent','true');
+      const response=await fetch('/life/api/rug/photo',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'X-Rug-Consent':'1'},body:form});
+      if(response.status===401){location.assign('/life/auth/login');return;}
+      const data=await response.json();
+      if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'사진을 읽지 못했습니다. 다시 촬영해 주십시오.');
+      el('photoRead').textContent=`사진에서 읽은 성분 ${data.read_ingredients.length}개: `+data.read_ingredients.join(', ');
+      showOutcome(data);
+      status('사진을 읽어 바로 대조했습니다. 읽은 범위 안에서만 판정했습니다.');
+      await loadHistory();
+    }catch(error){status(error.message);}
+    finally{input.value='';}
+  }
+  el('photoShot').addEventListener('change',()=>sendPhoto(el('photoShot')));
+  el('photoPick').addEventListener('change',()=>sendPhoto(el('photoPick')));
   button('saveAllergens', async()=>{
     const data=await api('allergens',{allergens:el('allergens').value.split(/\n/).filter(v=>v.trim())});
     el('registered').textContent='등록한 이름: '+data.allergens.join(', '); status('등록 성분을 저장했습니다.');
@@ -60,11 +90,7 @@
     const data=await api('analyze',{product_name:el('productName').value,oliveyoung_url:el('productUrl').value,
       raw_text:el('formula').value,corrected_ingredients:el('corrected').value.split(/\n/).filter(v=>v.trim()),
       complete:el('complete').checked,expected_count:count===''?null:Number(count),explicit_consent:true});
-    el('result').textContent=data.message+(data.status==='HOLD'?' · 최종 판정 보류':'');
-    el('matchNames').textContent=data.matches.length?'일치한 등록 성분: '+data.matches.join(', '):'';
-    el('scopeNotice').textContent=data.incomplete_notice;list('issues',data.issues);
-    el('changes').textContent=data.changes?`이전 결과와 재검토했습니다. 추가된 성분: ${data.changes.ingredients_added.join(', ')||'없음'} / 제외된 성분: ${data.changes.ingredients_removed.join(', ')||'없음'} / 새로 일치한 등록 성분: ${data.changes.matches_added.join(', ')||'없음'}`:'처음 저장한 분석입니다.';
-    el('resultArea').hidden=false; status('대조 결과와 확인 범위를 표시했습니다.');await loadHistory();
+    showOutcome(data); status('대조 결과와 확인 범위를 표시했습니다.');await loadHistory();
   });
   button('search',async()=>{
     const data=await api('rag/search',{q:el('question').value});el('answer').replaceChildren();
