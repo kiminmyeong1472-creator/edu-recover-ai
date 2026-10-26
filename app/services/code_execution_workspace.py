@@ -92,3 +92,87 @@ async function startRun(){if(busy||!configured)return;try{saveEditor();const see
 async function cancelRun(){if(!currentRun||!busy)return;byId('cancel').disabled=true;try{const data=await request(API+'/runs/'+encodeURIComponent(currentRun)+'/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(renderRun(data)){setBusy(false);return;}textStatus('run-status','실행 중지를 요청했습니다. 종료 상태를 확인하고 있습니다.');schedulePoll();}catch(error){textStatus('run-status',error.message,true);byId('cancel').disabled=false;}}
 byId('mode').addEventListener('change',()=>{byId('authorize').checked=false;updateMode();});byId('model-route').addEventListener('change',()=>{byId('authorize').checked=false;loadModels();});byId('model').addEventListener('change',()=>{byId('authorize').checked=false;updateMode();});byId('file-list').addEventListener('change',()=>{saveEditor();activeFile=Number(byId('file-list').value);renderFiles();});byId('add-file').addEventListener('click',addFile);byId('remove-file').addEventListener('click',removeFile);byId('import-files').addEventListener('change',importFiles);byId('file-path').addEventListener('input',()=>{saveEditor();markEdited();});byId('code').addEventListener('input',()=>{saveEditor();markEdited();});byId('command').addEventListener('input',markEdited);byId('prompt').addEventListener('input',markEdited);byId('load-case').addEventListener('click',loadCase);byId('clear-case').addEventListener('click',clearCase);byId('evaluation-case').addEventListener('change',()=>{const item=cases.get(byId('evaluation-case').value);textStatus('case-description',item?item.description||item.prompt||item.title:'확인 과제를 선택하십시오.');});byId('run').addEventListener('click',startRun);byId('cancel').addEventListener('click',cancelRun);byId('refresh').addEventListener('click',pollRun);byId('view-history').addEventListener('click',viewHistory);byId('reload-history').addEventListener('click',loadHistory);renderFiles();updateMode();loadStatus();loadModels();loadCases().then(loadHistory);
 </script></body></html>'''
+
+
+def code_execution_simple_html() -> str:
+    """One-button owner runner: pick files, press run, read the result."""
+    return _SIMPLE_HTML
+
+
+_SIMPLE_HTML = r'''<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>코드 실행기 | EduRecover</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0c1421;color:#e4eaf5;font:17px/1.6 system-ui,sans-serif}
+main{width:min(720px,calc(100% - 28px));margin:22px auto 60px}h1{font-size:26px;margin:0 0 6px}
+p{margin:6px 0;color:#b8c6da}.box{background:#131f30;border:1px solid #2d3d54;border-radius:14px;padding:18px;margin-top:16px}
+label{display:block;font-weight:700;margin-bottom:8px}input[type=file]{width:100%;font-size:16px;color:#e4eaf5}
+#file-names{margin:10px 0 0;padding-left:20px}#file-names li{margin:4px 0;overflow-wrap:anywhere}
+details{margin-top:14px}summary{cursor:pointer;color:#a5c8ff}
+#command{width:100%;margin-top:8px;background:#0c1421;color:#e4eaf5;border:1px solid #52657f;border-radius:8px;padding:12px;font:15px ui-monospace,Consolas,monospace}
+#run{display:block;width:100%;margin-top:16px;padding:18px;font:700 20px system-ui,sans-serif;color:#fff;background:#2f74e6;border:0;border-radius:12px;cursor:pointer}
+#run:disabled{opacity:.45;cursor:default}#status{margin-top:12px;white-space:pre-wrap}.error{color:#ffb2b2}.good{color:#a0e9ca}
+pre{background:#09111d;border:1px solid #2d3d54;border-radius:8px;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;font-size:14px}
+h2{font-size:18px;margin:14px 0 6px}a{color:#a5c8ff}.small{font-size:14px}[hidden]{display:none!important}
+</style></head><body><main>
+<h1>코드 실행기</h1>
+<p>파일을 고르고 실행 단추만 누르면 됩니다. 운영 서비스와 분리된 임시 환경에서 실행됩니다.</p>
+<div class="box">
+<label for="pick">① 실행할 파일 고르기</label>
+<input id="pick" type="file" multiple accept=".py,.js,.ts,.json,.txt,.md,.html,.css,.csv,.toml,.yaml,.yml,.sh,.sql">
+<ul id="file-names"></ul>
+<details><summary>실행 명령 바꾸기 (보통은 그대로 두세요)</summary>
+<input id="command" autocomplete="off" spellcheck="false" placeholder="파일을 고르면 자동으로 채워집니다"></details>
+<button type="button" id="run" disabled>② 실행</button>
+<p id="status" role="status" aria-live="polite">실행 환경을 확인하고 있습니다.</p>
+</div>
+<div class="box" id="result" hidden>
+<h2 id="result-title">결과</h2>
+<pre id="stdout"></pre>
+<div id="stderr-box" hidden><h2>오류 내용</h2><pre id="stderr"></pre></div>
+</div>
+<p class="small"><a href="/owner/code-workspace/advanced">고급 화면(모델 작업·확인 과제·기록)</a> · <a href="/owner">관리 화면</a></p>
+</main>
+<script>
+(()=>{'use strict';
+const API='/owner/code-workspace',MAX_FILE=128*1024,MAX_TOTAL=512*1024,DONE=new Set(['completed','failed','cancelled','interrupted']);
+const REASONS={ACCESS_DENIED:'레일웨이가 열쇠를 거부함 (열쇠가 틀렸거나 권한 부족)',FEATURE_UNAVAILABLE:'레일웨이 임시 컴퓨터 기능이 꺼져 있음',SERVICE_UNAVAILABLE:'레일웨이에 연결하지 못함',REQUEST_REJECTED:'레일웨이가 요청을 거절함 (환경 번호 등 설정 확인)',START_FAILED:'임시 컴퓨터가 켜지지 않음',START_TIMEOUT:'임시 컴퓨터가 제때 켜지지 않음',ISOLATION_FAILED:'격리 확인 실패',TIMEOUT:'시간 초과',FAILED:'실행 실패'};
+const $=id=>document.getElementById(id);let files=[],ready=false,busy=false,autoCommand=true;
+function say(text,kind){const el=$('status');el.textContent=text;el.className=kind||'';}
+function sync(){$('run').disabled=!ready||busy||(!files.length&&!$('command').value.trim());}
+async function req(path,options){const r=await fetch(path,{credentials:'same-origin',...(options||{})});let d=null;
+ try{d=await r.json();}catch(e){throw new Error('서버 응답을 읽지 못했습니다.');}
+ if(!r.ok){const m=d&&d.detail;throw new Error(typeof m==='string'?m:(m&&m.message)||('요청 실패 ('+r.status+')'));}return d;}
+function quote(name){return /^[A-Za-z0-9_.\/-]+$/.test(name)?name:"'"+name.replace(/'/g,"'\\''")+"'";}
+function defaultCommand(){const main=files.find(f=>f.path.endsWith('.py'))||files.find(f=>f.path.endsWith('.sh'))||files.find(f=>f.path.endsWith('.js'));
+ if(!main)return '';const runner=main.path.endsWith('.py')?'python3':main.path.endsWith('.sh')?'bash':'node';return runner+' '+quote(main.path);}
+async function pick(){busy=true;sync();try{const chosen=Array.from($('pick').files||[]),next=[];let total=0;
+ for(const file of chosen){const path=file.name.replace(/[\\/]/g,'_');if(!path||path==='.'||path==='..')throw new Error('파일 이름을 확인하십시오.');
+  const content=await file.text(),size=new TextEncoder().encode(content).length;
+  if(size>MAX_FILE)throw new Error(path+' 파일이 너무 큽니다 (한 파일 128KB까지).');total+=size;
+  if(next.some(f=>f.path===path))throw new Error('같은 이름의 파일이 두 개입니다: '+path);next.push({path,content});}
+ if(total>MAX_TOTAL)throw new Error('파일 전체가 너무 큽니다 (합계 512KB까지).');files=next;
+ const list=$('file-names');list.replaceChildren(...files.map(f=>{const li=document.createElement('li');li.textContent=f.path;return li;}));
+ if(autoCommand)$('command').value=defaultCommand();say(files.length?'파일 '+files.length+'개 준비됨. 실행을 누르세요.':'파일을 고르세요.');}
+ catch(e){files=[];$('file-names').replaceChildren();say(e.message,'error');}finally{busy=false;sync();}}
+function show(run){const state=run.status,done=DONE.has(state),ok=state==='completed'&&(run.exit_code===0||run.exit_code==null);
+ $('result').hidden=false;$('result-title').textContent=done?(ok?'결과 · 성공':'결과 · 확인 필요'+(run.exit_code!=null?' (종료 코드 '+run.exit_code+')':'')):'결과 · 실행 중';
+ $('stdout').textContent=run.stdout||(done?'(출력 없음)':'실행 중입니다…');const err=run.stderr||'';$('stderr').textContent=err;$('stderr-box').hidden=!err;
+ const why=run.error_code?(REASONS[String(run.error_code).replace('CODE_EXECUTION_','')]||'기타 오류'):'';
+ say((run.message||'')+(why?'\n실패 원인: '+why+' ('+run.error_code+')':''),done?(ok?'good':'error'):'');return done;}
+async function poll(id){for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,2000));
+ try{if(show(await req(API+'/runs/'+encodeURIComponent(id))))return;}catch(e){say('결과를 다시 확인하고 있습니다: '+e.message);}}
+ say('결과 확인 시간이 지났습니다. 고급 화면의 기록에서 확인하십시오.','error');}
+async function run(){if(busy||!ready)return;const command=$('command').value.trim();if(!command){say('실행할 파일을 고르세요.','error');return;}
+ busy=true;sync();say('실행을 요청하고 있습니다.');try{
+ const data=await req(API+'/runs',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({prompt:'',files:files.map(f=>({...f})),command,explicit_authorization:true})});
+ const id=data.id||data.run_id;if(!id)throw new Error('실행 번호를 받지 못했습니다.');if(!show(data))await poll(id);}
+ catch(e){say(e.message,'error');}finally{busy=false;sync();}}
+$('pick').addEventListener('change',pick);$('command').addEventListener('input',()=>{autoCommand=!$('command').value.trim();sync();});
+$('run').addEventListener('click',run);
+req(API+'/status').then(s=>{ready=!!s.configured;say(ready?'준비됨 · 파일을 고르세요.':(s.message||'실행 환경 설정이 필요합니다.'),ready?'':'error');sync();})
+ .catch(e=>say('실행 환경을 확인하지 못했습니다: '+e.message,'error'));
+})();
+</script></body></html>'''
