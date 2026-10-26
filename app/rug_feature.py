@@ -17,6 +17,8 @@ from app.rug_engine import norm, now_iso, oliveyoung_url
 from app.rug_formula import changes, compare_formula, parse_formula, product_key
 from app.rug_full_rag import RuGFullRAG
 from app.rug_ocr import CONTENT_TYPES, MAX_IMAGE_BYTES, OcrNotInstalled, PhotoUnreadable, read_label
+from app.rug_photo import read_photo, store_photo
+from app.rug_tidy import tidy
 from app.services.secret_vault import state_root
 
 PROFILE_KIND = 'rug_allergens_v1'
@@ -117,7 +119,7 @@ class SearchInput(BaseModel):
     q: str = Field(min_length=2,max_length=240)
 
 
-def _run_analysis(subject,payload):
+def _run_analysis(subject,payload,photo=None):
     store = _store()
     # The confirmation time is stamped by the server; a client cannot backdate it.
     review = ({'confirmed_at':now_iso(),'reviewed_names':payload.reviewed_names}
@@ -140,6 +142,7 @@ def _run_analysis(subject,payload):
         outcome['checked_at'] = now_iso()
         outcome['previous_review_id'] = previous['resource_id'] if previous else None
         outcome['changes'] = changes(previous['payload']['analysis'],outcome) if previous else None
+        outcome['photo'] = photo
         # No customer input is written into the public retrieval database.
         put_resource(domain='life',subject_id=subject,kind=HISTORY_KIND,resource_id=outcome['review_id'],payload={'analysis':outcome})
     return outcome
@@ -205,10 +208,11 @@ async def analyze_photo(request: Request,photo: UploadFile = File(...),
                         explicit_consent: str = Form(...)):
     """One tap: read the label photo, then run the same rule comparison at once.
 
-    The photo is never stored and never decides the verdict. Because a photo can
-    cut off or blur part of a label, the input is never marked complete, so a
-    partial read ends in HOLD with the confirmed-count notice instead of a
-    false 'not found'.
+    The photo never decides the verdict. It is kept, encrypted under this
+    account, so that a wrong reading can be traced back to the picture. Because a
+    photo can cut off or blur part of a label, the input is never marked
+    complete, so a partial read ends in HOLD with the confirmed-count notice
+    instead of a false 'not found'.
     """
     subject = require_life_user(request)
     _check_post(request)
@@ -225,20 +229,36 @@ async def analyze_photo(request: Request,photo: UploadFile = File(...),
         raise HTTPException(503,'ocr_not_installed') from None
     except PhotoUnreadable as exc:
         raise HTTPException(422,str(exc)) from None
+    # Tidying only rejoins what recognition saw; names it cannot trace are dropped.
+    cleaned = tidy(label['text'],label['ingredients'])
+    try:
+        kept = store_photo(subject,image,photo.content_type)
     finally:
         del image
     try:
-        payload = AnalyzeRequest(raw_text='\n'.join(label['ingredients']),product_name=product_name,
+        payload = AnalyzeRequest(raw_text='\n'.join(cleaned['ingredients']),product_name=product_name,
             oliveyoung_url=oliveyoung_url,complete=False,reading_source='photo_ocr',explicit_consent=True)
-        outcome = _run_analysis(subject,payload)
+        outcome = _run_analysis(subject,payload,photo=kept)
     except (ValueError,TypeError) as exc:
         raise HTTPException(422,str(exc)) from None
     outcome['input_source'] = 'photo'
     outcome['read_ingredients'] = label['ingredients']
+    outcome['tidied_ingredients'] = cleaned['ingredients']
+    outcome['tidy_applied'] = cleaned['applied']
+    outcome['tidy_dropped'] = cleaned['dropped']
     outcome['ocr_text'] = label['text'][:20000]
     outcome['ocr_language'] = label['language']
     outcome['korean_ocr_available'] = label['korean_available']
     return outcome
+
+
+@router.get('/life/api/rug/photo/{photo_id}')
+def fetch_photo(request: Request,photo_id: str):
+    """Return the stored photo to the account that supplied it, for tracing back."""
+    subject = require_life_user(request)
+    image, kind = read_photo(subject,photo_id)
+    return Response(content=image,media_type=kind,
+                    headers={**SECURE,'Content-Disposition':'inline'})
 
 
 @router.get('/life/api/rug/rag/status')

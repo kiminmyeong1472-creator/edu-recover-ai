@@ -7,7 +7,7 @@ import secrets
 import sqlite3
 import subprocess
 import sys
-from datetime import date,timedelta
+from datetime import date,datetime,timedelta,timezone
 from pathlib import Path
 
 import pytest
@@ -21,6 +21,12 @@ from app.rug_formula import compare_formula, parse_formula
 from app.rug_full_rag import RuGFullRAG, NO_EVIDENCE, extract_html
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _utc_today():
+    # The store validates against UTC. Local dates run ahead of it in Korea
+    # before 09:00, which would make a fixture look like a future date.
+    return datetime.now(timezone.utc).date()
 HEADERS = {'Origin':'https://testserver','X-Rug-Consent':'1'}
 KNOWN = [
     ('fragrance allergens','FDA'),('cosmetic labeling','FDA'),
@@ -43,7 +49,7 @@ def store(tmp_path):
 
 def ingest(store,sid,text,url=None):
     return store.ingest_text(source_id=sid,url=url or SOURCES[sid]['url'],title='SYNTHETIC '+sid,
-        text=text,checked_on=date.today().isoformat(),source_mode='official_page')
+        text=text,checked_on=_utc_today().isoformat(),source_mode='official_page')
 
 
 @pytest.fixture
@@ -60,7 +66,7 @@ def product(name='시험 제품',ingredients=None):
         'oliveyoung_verified':True,'ingredients':ingredients or ['정제수','리모넨'],
         'ingredients_complete':True,'ingredient_source_kind':'oliveyoung',
         'ingredient_source_url':'https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=SYNTHETIC_ONLY',
-        'ingredient_checked_at':date.today().isoformat()}
+        'ingredient_checked_at':_utc_today().isoformat()}
 
 
 @pytest.fixture
@@ -175,7 +181,7 @@ def test_sources_are_shown_together_without_final_choice(store):
 
 def test_summary_is_not_fulltext_or_answer(store,tmp_path):
     seed=tmp_path/'summary.json';seed.write_text(json.dumps([{'source_id':'FDA','url':SOURCES['FDA']['url'],
-        'title':'SYNTHETIC overview','excerpt':'Fragrance allergens synthetic source overview. '*4,'verified_on':date.today().isoformat()}]))
+        'title':'SYNTHETIC overview','excerpt':'Fragrance allergens synthetic source overview. '*4,'verified_on':_utc_today().isoformat()}]))
     store.load_preverified_summaries(seed)
     assert store.coverage()['sources']['FDA']['verified_fulltext_docs']==0
     assert store.grounded_answer('fragrance allergens')['state']=='NO_EVIDENCE'
@@ -240,7 +246,7 @@ def test_official_origin_allowlist(store,url):
 def test_future_date_rejected(store):
     with pytest.raises(ValueError):
         store.ingest_text(source_id='FDA',url=SOURCES['FDA']['url'],title='Synthetic',text='Test '*30,
-            checked_on=(date.today()+timedelta(days=1)).isoformat(),source_mode='official_page')
+            checked_on=(_utc_today()+timedelta(days=1)).isoformat(),source_mode='official_page')
 
 
 def test_no_network_runs_in_search(client,monkeypatch):
@@ -424,3 +430,48 @@ def test_ocr_module_keeps_numeric_locants_and_drops_label_prefix():
     from app.rug_ocr import _split
     assert _split('전성분: 정제수, 글리세린, 1,2-헥산다이올') == ['정제수','글리세린','1,2-헥산다이올']
     assert _split('Ingredients: Water, Limonene') == ['Water','Limonene']
+
+
+OCR_SAMPLE = '전성분: 정제수, 글리세린, 1,2-헥산\n다이올, 리모넨, 향료'
+
+
+def test_tidy_guard_keeps_joined_names_and_drops_invented_ones():
+    from app.rug_tidy import verify_against_text
+    kept, dropped = verify_against_text(
+        ['정제수', '글리세린', '1,2-헥산다이올', '리모넨', '향료'], OCR_SAMPLE)
+    assert '1,2-헥산다이올' in kept and dropped == []
+    kept, dropped = verify_against_text(['정제수', '벤조페논-3', '토코페롤'], OCR_SAMPLE)
+    assert kept == ['정제수'] and dropped == ['벤조페논-3', '토코페롤']
+    assert verify_against_text('not a list', OCR_SAMPLE) == ([], [])
+
+
+def test_tidy_falls_back_when_no_model_is_configured():
+    from app.rug_tidy import tidy
+    result = tidy(OCR_SAMPLE, ['정제수', '글리세린'])
+    assert result['ingredients'] == ['정제수', '글리세린'] and result['applied'] is False
+
+
+def test_stored_photo_is_encrypted_and_bound_to_one_account(tmp_path, monkeypatch):
+    monkeypatch.setenv('EDURECOVER_CLASSROOM_STATE_DIR', str(tmp_path))
+    monkeypatch.delenv('RAILWAY_VOLUME_MOUNT_PATH', raising=False)
+    monkeypatch.setenv('LIFERECOVER_DATA_KEY', secrets.token_hex(32))
+    from fastapi import HTTPException
+    from app.rug_photo import read_photo, store_photo
+    picture = b'\x89PNG\r\n\x1a\n' + secrets.token_bytes(2048)
+
+    record = store_photo('account-A', picture, 'image/png')
+    assert record['sha256'] == hashlib.sha256(picture).hexdigest()
+    assert read_photo('account-A', record['photo_id']) == (picture, 'image/png')
+
+    blobs = list(tmp_path.rglob('*.enc'))
+    assert blobs and blobs[0].read_bytes()[:8] != picture[:8]
+
+    for subject, photo_id in [('account-B', record['photo_id']),
+                              ('account-A', '../../etc/passwd'),
+                              ('account-A', 'rug_photo_' + 'f' * 32)]:
+        with pytest.raises(HTTPException):
+            read_photo(subject, photo_id)
+
+    blobs[0].write_bytes(blobs[0].read_bytes()[:-1] + b'\x00')
+    with pytest.raises(HTTPException):
+        read_photo('account-A', record['photo_id'])
