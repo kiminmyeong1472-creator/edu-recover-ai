@@ -467,6 +467,7 @@ class RailwayCodeSession:
         self.cleanup_status = {"confirmed": False, "status": "not_created"}
         self.tools: dict[str, bool] = {}
         self.phase = "create"
+        self.export_error: str | None = None
 
     def _data(self, query: str, variables: dict, field: str) -> dict:
         data = self._graphql(query, variables)
@@ -806,20 +807,17 @@ class RailwayCodeSession:
             raise CodeExecutionError("CLEANUP_UNCONFIRMED") from None
 
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
-        # When the run already failed, report that first cause; a cleanup
-        # problem is still kept in cleanup_status instead of hiding it.
+        # The command result is what matters. Export or cleanup problems after
+        # it are recorded (export_error / cleanup_status) but never turn a
+        # finished run into a failure or hide the first real cause. A VM whose
+        # destruction is unconfirmed still ends by its 5-minute idle timeout.
         try:
             if self._ready and self._snapshot is None:
                 self.snapshot()
-        except BaseException:
-            if exc_type is None:
-                self._destroy_keep_first()
-                raise
+        except BaseException as error:
+            self.export_error = getattr(error, "code", "CODE_EXECUTION_FAILED")
         finally:
-            if exc_type is not None:
-                self._destroy_keep_first()
-        if exc_type is None:
-            self._destroy()
+            self._destroy_keep_first()
         return False
 
     def _destroy_keep_first(self) -> None:
