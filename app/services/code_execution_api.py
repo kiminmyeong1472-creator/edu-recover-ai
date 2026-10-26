@@ -193,6 +193,9 @@ def _work(request: CodeRunRequest, record: dict, event: threading.Event):
                 record["file_export_state"] = "failed"
         record["elapsed_seconds"] = round(time.monotonic() - started, 3)
         record["cleanup_status"] = getattr(session, "cleanup_status", "not_created")
+        if session is not None and getattr(session, "export_error", None):
+            record["file_export_state"] = "failed"
+            record["file_export_error"] = session.export_error
         record["command_count"] = sum(step["tool"] == "run_command" for step in record["steps"])
         record["execution_state"] = "executed" if record["command_count"] else "not_executed"
         record["checks_state"] = record.get("evaluation", {}).get("status", "not_run")

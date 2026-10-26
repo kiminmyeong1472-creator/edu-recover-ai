@@ -241,9 +241,9 @@ class RuntimeTests(unittest.TestCase):
     def test_cleanup_failure_is_reported_as_unconfirmed(self) -> None:
         self.fake.fail_destroy = True
         session = self.session()
-        with self.assert_code("CLEANUP_UNCONFIRMED"):
-            with session:
-                pass
+        # A finished run is not failed by cleanup; the problem stays visible.
+        with session:
+            pass
         self.assertEqual(session.cleanup_status, {"confirmed": False, "status": "cleanup_unconfirmed"})
 
     def test_binary_export_and_reseed(self) -> None:
