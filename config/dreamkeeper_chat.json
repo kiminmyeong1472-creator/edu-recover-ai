@@ -1,0 +1,10 @@
+{
+  "schema": "edurecover.dreamkeeper_chat.v1",
+  "sentence_support_threshold": 0.6,
+  "max_failures_per_engine": 2,
+  "known_purposes": ["fact", "explain", "summary", "draft"],
+  "allowed_domains": ["education", "patent"],
+  "domain_priority_weight": {"education": 1.0, "patent": 1.0},
+  "max_question_chars": 4000,
+  "max_response_chars": 20000
+}

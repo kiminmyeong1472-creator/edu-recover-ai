@@ -64,6 +64,7 @@ from app.domains.medical.hospital_os_api import router as hospital_os_router
 from app.domains.medical.hospital_access_api import router as hospital_access_router, owner_router as hospital_access_owner_router
 from app.services.open_model_api import router as open_model_router, log_open_model_readiness
 from app.services.code_execution_api import router as code_execution_router
+from app.services.dreamkeeper_chat_api import install_dreamkeeper_chat
 
 
 app = FastAPI(
@@ -103,6 +104,7 @@ app.include_router(hospital_access_router)
 app.include_router(hospital_access_owner_router)
 app.include_router(open_model_router)
 app.include_router(code_execution_router)
+install_dreamkeeper_chat(app)  # DREAMKEEPER_CHAT_ENABLED=1 일 때만 경로 등록
 
 logger = logging.getLogger(__name__)
 
