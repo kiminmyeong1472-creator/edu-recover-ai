@@ -470,7 +470,9 @@ class DreamkeeperChatCore:
         policies = {sid: st for sid, (_, st) in self._items(db, logical, task, "source_policy").items()}
         summary = {UNRESOLVED: [], AFFECTED: [], NOT_DEPENDENT: []}
         for oid, (body, state) in self._items(db, logical, task, "output").items():
-            label, reasons = self.classify(body.get("receipt"), current, policies)
+            # 호스트 재확인 영수증이 있으면 그것이 현재 효력 영수증이다(원래 영수증은 보존).
+            label, reasons = self.classify(state.get("recheck_receipt") or body.get("receipt"),
+                                           current, policies)
             summary[label].append(oid)
             # 한 번 보류된 결과는 호스트 확인 없이 풀지 않는다(보류는 단조).
             hold = state.get("hold", False) or label in HOLD_CLASSES
@@ -1041,33 +1043,11 @@ class DreamkeeperChatCore:
             for qid, (body, state) in self._items(db, logical, task, "quarantine").items():
                 if body.get("type") != "sentence":
                     continue
-                gates = {}
-                gates["domain_allowed"] = state["domain"] in self.config.allowed_domains and \
-                    state["domain"] == domain
-                receipt = state.get("receipt")
-                rs = receipt.get("sources", {}) if isinstance(receipt, dict) else {}
-                gates["eligibility_and_policy_generation"] = bool(rs) and \
-                    receipt.get("policy_generation") == meta["policy_generation"] and \
-                    state["purpose"] == purpose and all(
-                        not self.eligibility(current["sources"].get(sid), policies.get(sid),
-                                             purpose, meta["policy_generation"]) for sid in rs)
-                gates["required_receipts"] = bool(rs) and receipt.get("basis") == "HOST_DELIVERED" \
-                    and all(current["sources"].get(sid, {}).get("fields", {}).get(f, {})
-                            .get("revision") == rev
-                            for sid, ref in rs.items() for f, rev in ref["fields"].items())
-                gates["io_units_and_operation"] = state.get("io_spec") == io_spec
-                rescore = 0.0
-                evaluator = self.resume_evaluators.get(state.get("resume_condition", {}).get("type"))
-                if evaluator is None or not gates["required_receipts"]:
-                    gates["resume_condition"] = False
-                else:
-                    try:
-                        ok, rescore = evaluator(self, body, state, current)
-                        gates["resume_condition"] = ok is True
-                    except Exception:
-                        gates["resume_condition"] = False
+                gates, rescore = self._gate_item(meta, current, policies, body, state,
+                                                 domain=domain, purpose=purpose, io_spec=io_spec)
                 record = {"evaluated_at": time.time(), "gates": gates,
-                          "policy_generation": meta["policy_generation"]}
+                          "policy_generation": meta["policy_generation"], "domain": domain,
+                          "purpose": purpose, "io_spec": io_spec}
                 if all(gates[g] is True for g in GATES):
                     priority = self.priority_fn(state, rescore, self.config)
                     record.update(priority=priority, rescore=rescore)
@@ -1085,6 +1065,36 @@ class DreamkeeperChatCore:
                         {"permitted": [p["quarantine_id"] for p in permitted],
                          "domain": domain, "purpose": purpose, "io_spec": io_spec})
         return permitted
+
+    def _gate_item(self, meta, current, policies, body, state, *, domain, purpose,
+                   io_spec) -> tuple[dict, float]:
+        """격리 후보 하나의 다섯 관문 판정(평가와 채택 직전 재확인에 함께 쓴다)."""
+        gates = {}
+        gates["domain_allowed"] = state["domain"] in self.config.allowed_domains and \
+            state["domain"] == domain
+        receipt = state.get("receipt")
+        rs = receipt.get("sources", {}) if isinstance(receipt, dict) else {}
+        gates["eligibility_and_policy_generation"] = bool(rs) and \
+            receipt.get("policy_generation") == meta["policy_generation"] and \
+            state["purpose"] == purpose and all(
+                not self.eligibility(current["sources"].get(sid), policies.get(sid),
+                                     purpose, meta["policy_generation"]) for sid in rs)
+        gates["required_receipts"] = bool(rs) and receipt.get("basis") == "HOST_DELIVERED" \
+            and all(current["sources"].get(sid, {}).get("fields", {}).get(f, {})
+                    .get("revision") == rev
+                    for sid, ref in rs.items() for f, rev in ref["fields"].items())
+        gates["io_units_and_operation"] = state.get("io_spec") == io_spec
+        rescore = 0.0
+        evaluator = self.resume_evaluators.get(state.get("resume_condition", {}).get("type"))
+        if evaluator is None or not gates["required_receipts"]:
+            gates["resume_condition"] = False
+        else:
+            try:
+                ok, rescore = evaluator(self, body, state, current)
+                gates["resume_condition"] = ok is True
+            except Exception:
+                gates["resume_condition"] = False
+        return gates, rescore
 
     def run_trial(self, logical: str, task: str, quarantine_id: str,
                   trial_fn: Callable[[dict], dict]) -> dict:
@@ -1109,3 +1119,149 @@ class DreamkeeperChatCore:
             self._event(db, logical, task, "QUARANTINE_TRIAL_RECORDED",
                         {"quarantine_id": quarantine_id, "passed": outcome["passed"]})
         return {"quarantine_id": quarantine_id, **outcome, "adoption_status": "NOT_ADOPTED"}
+
+    def adopt_candidate(self, logical: str, task: str, quarantine_id: str, *,
+                        user_confirmed: bool, user_receipt: str) -> dict:
+        """채택은 시험 허가와 별개. 시험을 통과했고, 지금 다시 다섯 관문을 통과하고,
+        사용자 확인값이 명시적으로 참일 때만 채택 상태로 바꾼다(출력에 자동 반영 안 함)."""
+        _text(user_receipt, "user_receipt")
+        if user_confirmed is not True:
+            raise ChatHold("explicit user confirmation required for adoption")
+        with self._tx() as db:
+            meta = self._meta(db, logical, task)
+            found = self._get(db, logical, task, "quarantine", quarantine_id)
+            if found is None:
+                raise ChatHold("candidate missing")
+            body, state = found
+            trials = state.get("trials", [])
+            if state.get("trial_status") != "TRIAL_DONE" or not trials or \
+                    trials[-1].get("passed") is not True:
+                raise ChatHold("candidate has no passed trial")
+            last = state["gate_history"][-1]
+            current = self._engine_state(db, logical, task)
+            policies = {k: v for k, (_, v) in self._items(db, logical, task, "source_policy").items()}
+            gates, _ = self._gate_item(meta, current, policies, body, state, domain=last["domain"],
+                                       purpose=last["purpose"], io_spec=last["io_spec"])
+            if not all(gates[g] is True for g in GATES):
+                state.setdefault("gate_history", []).append(
+                    {"evaluated_at": time.time(), "gates": gates, "stage": "adoption",
+                     "policy_generation": meta["policy_generation"], "domain": last["domain"],
+                     "purpose": last["purpose"], "io_spec": last["io_spec"]})
+                self._update(db, logical, task, "quarantine", quarantine_id, state)
+                self._event(db, logical, task, "ADOPTION_REFUSED",
+                            {"quarantine_id": quarantine_id, "gates": gates})
+                failed = [g for g in GATES if gates[g] is not True]
+                refused = True
+            else:
+                state.update(adoption_status="ADOPTED", adopted_at=time.time(),
+                             adoption_user_receipt=user_receipt)
+                self._update(db, logical, task, "quarantine", quarantine_id, state)
+                self._event(db, logical, task, "CANDIDATE_ADOPTED",
+                            {"quarantine_id": quarantine_id, "user_receipt": user_receipt})
+                refused = False
+        if refused:
+            raise ChatHold("gates no longer pass: " + ", ".join(failed))
+        return {"quarantine_id": quarantine_id, "trial_status": state["trial_status"],
+                "adoption_status": state["adoption_status"]}
+
+    # ------------------------------------- 보류된 결과의 재확인과 풀기
+    def recheck_output(self, logical: str, task: str, output_id: str, *, purpose: str,
+                       sources: dict, user_receipt: str) -> dict:
+        """보류된 결과를 현재 판본 근거로 재확인해 호스트 재확인 영수증을 붙인다.
+
+        - 지정한 원문 항목은 모두 지금 자격이 있어야 한다(유효·허용목적·현재 정책세대).
+        - 결과 문장마다 그 항목들의 현재 값과 일치도를 다시 계산해 모두 임계값 이상.
+        - 원래 영수증(본문)은 바꾸지 않는다. 「의존 미확정」은 이 보완 전에는 풀 수 없다.
+        """
+        _text(user_receipt, "user_receipt"); _text(purpose, "purpose")
+        if not isinstance(sources, dict) or not sources or any(
+                not isinstance(f, list) or not f or len(set(f)) != len(f) for f in sources.values()):
+            raise ValueError("source field selection required")
+        with self._tx() as db:
+            meta = self._meta(db, logical, task)
+            found = self._get(db, logical, task, "output", output_id)
+            if found is None:
+                raise ChatHold("output missing")
+            body, state = found
+            if body.get("purpose") not in (None, purpose):
+                raise ChatHold("purpose differs from output purpose")
+            if purpose not in self.config.known_purposes:
+                raise ChatHold("purpose unknown")
+            current = self._engine_state(db, logical, task)["sources"]
+            policies = {k: v for k, (_, v) in self._items(db, logical, task, "source_policy").items()}
+            problems, refs, evidence = [], {}, []
+            for sid, fields in sorted(sources.items()):
+                issues = self.eligibility(current.get(sid), policies.get(sid), purpose,
+                                          meta["policy_generation"])
+                problems += [f"{sid}: {p}" for p in issues]
+                if issues:
+                    continue
+                for fname in fields:
+                    item = current[sid]["fields"].get(fname)
+                    if item is None:
+                        problems.append(f"{sid}.{fname}: field missing")
+                        continue
+                    refs.setdefault(sid, {"source_revision": current[sid]["revision"],
+                                          "fields": {}})["fields"][fname] = item["revision"]
+                    value = item["value"]
+                    evidence.append(value if isinstance(value, str) else _json(value))
+            sentences = body.get("sentences") or split_sentences(body["text"])
+            scores = [self._score(sentence, evidence) for sentence in sentences]
+            threshold = self.config.sentence_support_threshold
+            if any(score is None or score < threshold for score in scores):
+                problems.append("a sentence is below the support threshold on current evidence")
+            record = {"at": time.time(), "purpose": purpose, "sources": refs, "scores": scores,
+                      "threshold": threshold, "problems": problems, "user_receipt": user_receipt}
+            state.setdefault("rechecks", []).append(record)
+            if problems:
+                self._update(db, logical, task, "output", output_id, state)
+                self._event(db, logical, task, "OUTPUT_RECHECK_FAILED",
+                            {"output_id": output_id, "problems": problems})
+            else:
+                state["recheck_receipt"] = {
+                    "basis": "HOST_RECHECKED", "complete": True, "purpose": purpose,
+                    "policy_generation": meta["policy_generation"], "sources": refs,
+                    "user_receipt": user_receipt}
+                self._update(db, logical, task, "output", output_id, state)
+                self._event(db, logical, task, "OUTPUT_RECHECKED",
+                            {"output_id": output_id, "sources": refs})
+                self._reconcile(db, logical, task, "output rechecked")
+            return {"output_id": output_id, "ok": not problems, "problems": problems,
+                    "scores": scores}
+
+    def release_output(self, logical: str, task: str, output_id: str, *, user_confirmed: bool,
+                       user_receipt: str) -> dict:
+        """재확인 영수증이 현재 판본과 맞고 사용자 확인값이 참일 때만 보류를 푼다."""
+        _text(user_receipt, "user_receipt")
+        if user_confirmed is not True:
+            raise ChatHold("explicit user confirmation required for release")
+        with self._tx() as db:
+            self._meta(db, logical, task)
+            self._reconcile(db, logical, task, "release requested")
+            found = self._get(db, logical, task, "output", output_id)
+            if found is None:
+                raise ChatHold("output missing")
+            body, state = found
+            if not state.get("hold"):
+                raise ChatHold("output is not held")
+            current = self._engine_state(db, logical, task)["sources"]
+            policies = {k: v for k, (_, v) in self._items(db, logical, task, "source_policy").items()}
+            recheck = state.get("recheck_receipt")
+            label, reasons = self.classify(recheck, current, policies)
+            if recheck is None or label != NOT_DEPENDENT:
+                self._event(db, logical, task, "OUTPUT_RELEASE_REFUSED",
+                            {"output_id": output_id, "classification": label,
+                             "reasons": reasons or ["no host recheck receipt"]})
+                refused = reasons or ["no host recheck receipt"]
+            else:
+                state.update(hold=False, status="RELEASED", released_at=time.time(),
+                             release_user_receipt=user_receipt)
+                state.setdefault("history", []).append({"at": time.time(), "trigger": "released",
+                                                        "user_receipt": user_receipt})
+                self._update(db, logical, task, "output", output_id, state)
+                self._event(db, logical, task, "OUTPUT_RELEASED",
+                            {"output_id": output_id, "user_receipt": user_receipt})
+                refused = None
+        if refused:
+            raise ChatHold("release refused: " + "; ".join(refused))
+        return {"output_id": output_id, "status": "RELEASED", "hold": False}

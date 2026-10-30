@@ -18,10 +18,10 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from app.services.dreamkeeper_chat_core import (
-    DEFAULT_CONFIG_PATH, ChatHold, DreamkeeperChatCore, load_config,
+    CLASS_LABELS, DEFAULT_CONFIG_PATH, ChatHold, DreamkeeperChatCore, load_config,
 )
 from app.services.dreamkeeper_engine import DreamkeeperEngine, EngineHold
 from app.services.owner_basic_auth import require_owner
@@ -35,6 +35,7 @@ ROUTE = "/dreamkeeper/chat/turn"
 logger = logging.getLogger(__name__)
 router = APIRouter(include_in_schema=False)
 _runtime_factory: Callable[[], Any] | None = None
+_trial_runner: Callable[[dict], dict] | None = None
 _cores: dict[tuple[str, str, str], DreamkeeperChatCore] = {}
 _cores_lock = threading.Lock()
 
@@ -47,6 +48,12 @@ def configure_chat_runtime(factory: Callable[[], Any] | None) -> None:
     """호스트가 실제 모델 묶음(ChatRuntime)을 만드는 함수를 주입한다. None은 해제."""
     global _runtime_factory
     _runtime_factory = factory
+
+
+def configure_trial_runner(runner: Callable[[dict], dict] | None) -> None:
+    """격리 후보 시험 함수 주입(후보 본문 dict -> {"passed": bool, ...}). None은 해제."""
+    global _trial_runner
+    _trial_runner = runner
 
 
 def reset_chat_cores() -> None:
@@ -120,6 +127,154 @@ def dreamkeeper_chat_turn(body: ChatTurnRequest) -> JSONResponse:
     }
     return JSONResponse(payload, status_code=200 if result["status"] == "OUTPUT" else 409,
                         headers={"Cache-Control": "no-store"})
+
+
+# ------------------------------------------------ 관리 경로(같은 조건·같은 인증)
+_GUARDS = [Depends(_require_enabled), Depends(require_owner)]
+_NO_STORE = {"Cache-Control": "no-store"}
+
+
+class _Base(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    logical_id: str = Field(min_length=1, max_length=200)
+    task_id: str = Field(min_length=1, max_length=200)
+
+
+class SourcePolicyRequest(_Base):
+    source_id: str = Field(min_length=1, max_length=200)
+    allowed_purposes: list[str] = Field(min_length=1, max_length=50)
+    valid: StrictBool
+    user_receipt: str = Field(min_length=1, max_length=500)
+
+
+class PolicyAdvanceRequest(_Base):
+    reason: str = Field(min_length=1, max_length=1000)
+    user_receipt: str = Field(min_length=1, max_length=500)
+
+
+class SourceCorrectRequest(_Base):
+    source_id: str = Field(min_length=1, max_length=200)
+    fields: dict[str, Any] = Field(min_length=1)
+    expected_revision: StrictInt
+    user_receipt: str = Field(min_length=1, max_length=500)
+
+
+class OutputRecheckRequest(_Base):
+    output_id: str = Field(min_length=1, max_length=100)
+    purpose: str = Field(min_length=1, max_length=100)
+    sources: dict[str, list[str]] = Field(min_length=1)
+    user_receipt: str = Field(min_length=1, max_length=500)
+
+
+class ConfirmRequest(_Base):
+    user_confirmed: StrictBool
+    user_receipt: str = Field(min_length=1, max_length=500)
+
+
+class OutputReleaseRequest(ConfirmRequest):
+    output_id: str = Field(min_length=1, max_length=100)
+
+
+class IOSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    input_unit: str = Field(min_length=1, max_length=100)
+    output_unit: str = Field(min_length=1, max_length=100)
+    operation: str = Field(min_length=1, max_length=100)
+
+
+class QuarantineEvaluateRequest(_Base):
+    domain: str = Field(min_length=1, max_length=100)
+    purpose: str = Field(min_length=1, max_length=100)
+    io_spec: IOSpec
+
+
+class QuarantineTrialRequest(_Base):
+    quarantine_id: str = Field(min_length=1, max_length=100)
+
+
+class QuarantineAdoptRequest(ConfirmRequest):
+    quarantine_id: str = Field(min_length=1, max_length=100)
+
+
+def _call(fn: Callable[[], Any]) -> JSONResponse:
+    try:
+        return JSONResponse(fn(), headers=_NO_STORE)
+    except (ChatHold, EngineHold) as exc:
+        return JSONResponse({"status": "HOLD", "hold_reason": str(exc)}, status_code=409,
+                            headers=_NO_STORE)
+    except ValueError as exc:
+        return JSONResponse({"status": "INVALID", "detail": str(exc)}, status_code=422,
+                            headers=_NO_STORE)
+
+
+@router.post("/dreamkeeper/chat/source/policy", dependencies=_GUARDS)
+def dreamkeeper_source_policy(body: SourcePolicyRequest) -> JSONResponse:
+    core = _core()
+    return _call(lambda: core.set_source_policy(
+        body.logical_id, body.task_id, source_id=body.source_id,
+        allowed_purposes=body.allowed_purposes, valid=body.valid, user_receipt=body.user_receipt))
+
+
+@router.post("/dreamkeeper/chat/policy/advance", dependencies=_GUARDS)
+def dreamkeeper_policy_advance(body: PolicyAdvanceRequest) -> JSONResponse:
+    core = _core()
+    return _call(lambda: {"policy_generation": core.advance_policy_generation(
+        body.logical_id, body.task_id, reason=body.reason, user_receipt=body.user_receipt)})
+
+
+@router.post("/dreamkeeper/chat/source/correct", dependencies=_GUARDS)
+def dreamkeeper_source_correct(body: SourceCorrectRequest) -> JSONResponse:
+    core = _core()
+
+    def run():
+        result = core.correct_source(body.logical_id, body.task_id, source_id=body.source_id,
+                                     fields=body.fields, expected_revision=body.expected_revision,
+                                     user_receipt=body.user_receipt)
+        holds = core.load_ledger(body.logical_id, body.task_id)["holds"]
+        return {"source_revision": result["source"]["revision"],
+                "classification": result["classification"],
+                "labels": CLASS_LABELS, "held_outputs": holds["outputs"]}
+    return _call(run)
+
+
+@router.post("/dreamkeeper/chat/output/recheck", dependencies=_GUARDS)
+def dreamkeeper_output_recheck(body: OutputRecheckRequest) -> JSONResponse:
+    core = _core()
+    return _call(lambda: core.recheck_output(
+        body.logical_id, body.task_id, body.output_id, purpose=body.purpose,
+        sources=body.sources, user_receipt=body.user_receipt))
+
+
+@router.post("/dreamkeeper/chat/output/release", dependencies=_GUARDS)
+def dreamkeeper_output_release(body: OutputReleaseRequest) -> JSONResponse:
+    core = _core()
+    return _call(lambda: core.release_output(
+        body.logical_id, body.task_id, body.output_id, user_confirmed=body.user_confirmed,
+        user_receipt=body.user_receipt))
+
+
+@router.post("/dreamkeeper/chat/quarantine/evaluate", dependencies=_GUARDS)
+def dreamkeeper_quarantine_evaluate(body: QuarantineEvaluateRequest) -> JSONResponse:
+    core = _core()
+    return _call(lambda: {"permitted": core.evaluate_quarantine_candidates(
+        body.logical_id, body.task_id, domain=body.domain, purpose=body.purpose,
+        io_spec=body.io_spec.model_dump())})
+
+
+@router.post("/dreamkeeper/chat/quarantine/trial", dependencies=_GUARDS)
+def dreamkeeper_quarantine_trial(body: QuarantineTrialRequest) -> JSONResponse:
+    if _trial_runner is None:
+        raise _hold(503, "dreamkeeper_chat_trial_runner_not_configured")
+    core, runner = _core(), _trial_runner
+    return _call(lambda: core.run_trial(body.logical_id, body.task_id, body.quarantine_id, runner))
+
+
+@router.post("/dreamkeeper/chat/quarantine/adopt", dependencies=_GUARDS)
+def dreamkeeper_quarantine_adopt(body: QuarantineAdoptRequest) -> JSONResponse:
+    core = _core()
+    return _call(lambda: core.adopt_candidate(
+        body.logical_id, body.task_id, body.quarantine_id, user_confirmed=body.user_confirmed,
+        user_receipt=body.user_receipt))
 
 
 def install_dreamkeeper_chat(app: FastAPI) -> bool:
