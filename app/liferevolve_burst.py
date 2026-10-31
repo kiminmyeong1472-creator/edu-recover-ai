@@ -25,7 +25,9 @@ Rules (추가기재안 청구항 18~27):
 - revoking an approval records that the recipient's copies must be deleted, and the
   recipient's deletion confirmation is recorded too
 - every event is appended to a hash chain (each record carries the previous record's
-  SHA-256), so any later change, deletion or reordering of a record is detectable
+  SHA-256), so any later change, deletion or reordering of a record is detectable;
+  each record is also sealed with a server key, the table refuses UPDATE and DELETE,
+  and the user can keep receipts (index, hash) that expose even a full rebuild
 """
 from __future__ import annotations
 
@@ -42,6 +44,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.platform_core.life_auth import require_life_user
 from app.platform_core.persistent_domain_store import get_resource, resource_transaction
+from app.liferevolve_ledger import seal, seal_ok
 from app.liferevolve_screen import CACHE_HEADERS, MAX_BODY_BYTES, _mutation_allowed, _store, _validated_image
 
 router = APIRouter(tags=["liferevolve-burst"])
@@ -71,7 +74,7 @@ def record_hash(prev: str, idx: int, event: str, body: dict, at: str) -> str:
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()
 
 
-def verify_chain(records: list[dict]) -> dict:
+def verify_chain(records: list[dict], receipts: list[dict] | None = None) -> dict:
     prev = GENESIS
     for i, r in enumerate(records):
         if r["idx"] != i:
@@ -80,7 +83,13 @@ def verify_chain(records: list[dict]) -> dict:
             return {"intact": False, "broken_at": i, "reason": "PREV_MISMATCH"}
         if record_hash(prev, i, r["event"], r["body"], r["at"]) != r["hash"]:
             return {"intact": False, "broken_at": i, "reason": "HASH_MISMATCH"}
+        if "seal" in r and not seal_ok(r["hash"], r["seal"]):
+            return {"intact": False, "broken_at": i, "reason": "SEAL_INVALID"}
         prev = r["hash"]
+    by_idx = {r["idx"]: r["hash"] for r in records}
+    for rc in receipts or []:
+        if by_idx.get(rc.get("idx")) != rc.get("hash"):
+            return {"intact": False, "broken_at": rc.get("idx"), "reason": "RECEIPT_MISMATCH"}
     return {"intact": True, "length": len(records), "head_hash": prev}
 
 
@@ -137,7 +146,12 @@ def _tables(conn) -> None:
         grant_id TEXT NOT NULL, delivered_at TEXT NOT NULL, PRIMARY KEY (burst_id, seq, recipient))""")
     conn.execute("""CREATE TABLE IF NOT EXISTS liferevolve_burst_ledger (
         burst_id TEXT NOT NULL, idx INTEGER NOT NULL, event TEXT NOT NULL, body TEXT NOT NULL,
-        at TEXT NOT NULL, prev_hash TEXT NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (burst_id, idx))""")
+        at TEXT NOT NULL, prev_hash TEXT NOT NULL, hash TEXT NOT NULL, seal TEXT NOT NULL,
+        PRIMARY KEY (burst_id, idx))""")
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS liferevolve_burst_ledger_no_update BEFORE UPDATE ON liferevolve_burst_ledger
+        BEGIN SELECT RAISE(ABORT, 'ledger_append_only'); END""")
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS liferevolve_burst_ledger_no_delete BEFORE DELETE ON liferevolve_burst_ledger
+        BEGIN SELECT RAISE(ABORT, 'ledger_append_only'); END""")
 
 
 def _log(conn, bid: str, event: str, body: dict) -> str:
@@ -145,15 +159,15 @@ def _log(conn, bid: str, event: str, body: dict) -> str:
     idx, prev = (last["idx"] + 1, last["hash"]) if last else (0, GENESIS)
     at = _now().isoformat()
     h = record_hash(prev, idx, event, body, at)
-    conn.execute("INSERT INTO liferevolve_burst_ledger VALUES(?,?,?,?,?,?,?)",
-                 (bid, idx, event, json.dumps(body, ensure_ascii=False, sort_keys=True), at, prev, h))
+    conn.execute("INSERT INTO liferevolve_burst_ledger VALUES(?,?,?,?,?,?,?,?)",
+                 (bid, idx, event, json.dumps(body, ensure_ascii=False, sort_keys=True), at, prev, h, seal(h)))
     return h
 
 
 def _ledger(conn, bid: str) -> list[dict]:
     rows = conn.execute("SELECT * FROM liferevolve_burst_ledger WHERE burst_id=? ORDER BY idx", (bid,)).fetchall()
     return [{"idx": r["idx"], "event": r["event"], "body": json.loads(r["body"]), "at": r["at"],
-             "prev_hash": r["prev_hash"], "hash": r["hash"]} for r in rows]
+             "prev_hash": r["prev_hash"], "hash": r["hash"], "seal": r["seal"]} for r in rows]
 
 
 def _burst(conn, account: str, bid: str):
@@ -377,7 +391,25 @@ def ledger(bid: str, request: Request):
         _tables(conn)
         _burst(conn, account, bid)
         recs = _ledger(conn, bid)
-    return JSONResponse({"records": recs, "verification": verify_chain(recs)}, headers=CACHE_HEADERS)
+    v = verify_chain(recs)
+    receipt = {"idx": recs[-1]["idx"], "hash": recs[-1]["hash"]} if recs else None
+    return JSONResponse({"records": recs, "verification": v, "receipt": receipt}, headers=CACHE_HEADERS)
+
+
+@router.post("/life/api/burst/{bid}/ledger/verify")
+async def ledger_verify(bid: str, request: Request):
+    """Check the chain against receipts the user kept earlier (kept outside this server)."""
+    account = require_life_user(request)
+    _mutation_allowed(request)
+    data = await _json(request)
+    receipts = data.get("receipts", [])
+    if not isinstance(receipts, list) or not all(isinstance(r, dict) for r in receipts):
+        raise HTTPException(status_code=422, detail="burst_invalid_receipts")
+    with resource_transaction("life") as conn:
+        _tables(conn)
+        _burst(conn, account, bid)
+        recs = _ledger(conn, bid)
+    return JSONResponse({"verification": verify_chain(recs, receipts)}, headers=CACHE_HEADERS)
 
 
 

@@ -101,13 +101,23 @@ def test_protected_screen_never_stored_and_chain_detects_tampering(monkeypatch, 
     assert events[:4] == ["OPENED", "FRAME", "PROTECTED_BLOCKED", "PROTECTED_BLOCKED"]
     assert "GRANTED" in events and "DELIVERED" in events and events[-1] == "RECOGNITION_CHECK"
     assert led["verification"]["intact"] is True
-    # Someone edits a stored record afterwards → the chain shows exactly where.
+    # The table itself refuses edits and deletions.
     db = sqlite3.connect(tmp_path / "liferecover" / "life.sqlite3")
+    for q in ("UPDATE liferevolve_burst_ledger SET event='X' WHERE idx=1", "DELETE FROM liferevolve_burst_ledger WHERE idx=1"):
+        try:
+            db.execute(q)
+            raise AssertionError("ledger accepted " + q)
+        except sqlite3.DatabaseError as e:
+            assert "ledger_append_only" in str(e)
+    # An attacker with raw database access removes the guards and edits a record.
+    db.execute("DROP TRIGGER liferevolve_burst_ledger_no_update")
+    db.execute("DROP TRIGGER liferevolve_burst_ledger_no_delete")
     db.execute("UPDATE liferevolve_burst_ledger SET body=? WHERE burst_id=? AND idx=2", ('{"by":"server","seq":2,"tap_ms":9}', bid))
     db.commit(); db.close()
     v = c.get(f"/life/api/burst/{bid}/ledger").json()["verification"]
     assert v == {"intact": False, "broken_at": 2, "reason": "HASH_MISMATCH"}
     db = sqlite3.connect(tmp_path / "liferecover" / "life.sqlite3")
+    db.execute("DROP TRIGGER IF EXISTS liferevolve_burst_ledger_no_delete")  # the server put the guard back
     db.execute("DELETE FROM liferevolve_burst_ledger WHERE burst_id=? AND idx=1", (bid,))
     db.commit(); db.close()
     assert c.get(f"/life/api/burst/{bid}/ledger").json()["verification"]["reason"] == "INDEX_GAP"
@@ -153,6 +163,7 @@ def test_training_provenance_and_answer_binding(monkeypatch, tmp_path):
     # Erasing the training record afterwards is detected; no proof is given from a broken chain.
     idx = ev.index("TRAINING_USE")
     db = sqlite3.connect(tmp_path / "liferecover" / "life.sqlite3")
+    db.execute("DROP TRIGGER liferevolve_burst_ledger_no_update")
     db.execute("UPDATE liferevolve_burst_ledger SET event='TRAINING_REFUSED' WHERE burst_id=? AND idx=?", (bid, idx))
     db.commit(); db.close()
     assert c.get(f"/life/api/burst/{bid}/training-proof", params={"sha256": s1}).json()["verdict"] == "CHAIN_BROKEN"
@@ -175,3 +186,31 @@ def test_no_inference_outside_users_choice(monkeypatch, tmp_path):
     led = c.get(f"/life/api/burst/{bid}/ledger").json()
     assert "INFERENCE_VIOLATION" in [r["event"] for r in led["records"]] and led["verification"]["intact"]
     assert "보험 약관" not in str(led["records"])
+
+
+def test_rebuilt_chain_without_key_and_receipt(monkeypatch, tmp_path):
+    import json
+    import sqlite3
+    c = client_for(monkeypatch, tmp_path)
+    bid = c.post("/life/api/burst", json={"tap_ms": 1000}, headers=HEADERS).json()["burst"]["burst_id"]
+    c.post(f"/life/api/burst/{bid}/frames", json=frame(1, 1000), headers=HEADERS)
+    led = c.get(f"/life/api/burst/{bid}/ledger").json()
+    receipt = led["receipt"]
+    assert c.post(f"/life/api/burst/{bid}/ledger/verify", json={"receipts": [receipt]}, headers=HEADERS).json()["verification"]["intact"]
+    # Attacker rewrites record 1 and recomputes every hash correctly, but has no server key.
+    recs = led["records"]
+    recs[1]["body"]["sha256"] = "e" * 64
+    prev = burst.GENESIS
+    db = sqlite3.connect(tmp_path / "liferecover" / "life.sqlite3")
+    db.execute("DROP TRIGGER liferevolve_burst_ledger_no_update")
+    for r in recs:
+        h = burst.record_hash(prev, r["idx"], r["event"], r["body"], r["at"])
+        db.execute("UPDATE liferevolve_burst_ledger SET body=?, prev_hash=?, hash=? WHERE burst_id=? AND idx=?",
+                   (json.dumps(r["body"], ensure_ascii=False, sort_keys=True), prev, h, bid, r["idx"]))
+        prev = h
+    db.commit(); db.close()
+    assert c.get(f"/life/api/burst/{bid}/ledger").json()["verification"]["reason"] == "SEAL_INVALID"
+    # Even someone holding the key is caught by the receipt the user kept.
+    monkeypatch.setattr(burst, "seal_ok", lambda h, v: True)
+    v = c.post(f"/life/api/burst/{bid}/ledger/verify", json={"receipts": [receipt]}, headers=HEADERS).json()["verification"]
+    assert v["reason"] == "RECEIPT_MISMATCH"
