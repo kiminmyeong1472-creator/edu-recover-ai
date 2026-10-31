@@ -1,0 +1,63 @@
+name: edurecover-vllm-monitoring
+
+services:
+  configure:
+    image: python:3.13-alpine
+    command: ["python", "-B", "/opt/monitoring/configure.py"]
+    environment:
+      VLLM_METRICS_URL: ${VLLM_METRICS_URL:-http://host.docker.internal:8000/metrics}
+    network_mode: none
+    read_only: true
+    volumes:
+      - ./configure.py:/opt/monitoring/configure.py:ro
+      - prometheus_config:/generated
+      - grafana_credentials:/credentials
+    restart: "no"
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    depends_on:
+      configure:
+        condition: service_completed_successfully
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=1GB
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - prometheus_config:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    user: "472:472"
+    depends_on:
+      configure:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_started
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /credentials/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/vllm.json
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - grafana_credentials:/credentials:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+
+volumes:
+  prometheus_config:
+  prometheus_data:
+  grafana_credentials:
+  grafana_data:
