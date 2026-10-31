@@ -36,6 +36,16 @@ public class PolicyTest {
         rejects(()->ImageBuffers.packRgba(ByteBuffer.wrap(new byte[30]),2,2,4,7),"row stride too small");
         ByteBuffer offset=ByteBuffer.wrap(new byte[]{99,1,2,3,4});offset.position(1);
         check(Arrays.equals(ImageBuffers.packRgba(offset,1,1,4,4).array(),new byte[]{1,2,3,4}),"plane start position");
+        BurstGesture g=new BurstGesture();
+        check(g.onTap(0,100,100,false)==BurstGesture.Action.NONE,"first tap waits");
+        check(g.onTap(300,120,110,false)==BurstGesture.Action.OPEN&&g.seq()==1,"double tap opens with frame 1");
+        check(g.onTap(380,0,0,false)==BurstGesture.Action.DUPLICATE,"tap within 120ms dropped");
+        check(g.onTap(900,0,0,false)==BurstGesture.Action.FRAME&&g.seq()==2,"single tap adds frame 2");
+        check(g.tick(7000)==BurstGesture.Action.CLOSE&&!g.isOpen(),"5s idle closes");
+        BurstGesture far=new BurstGesture();far.onTap(0,0,0,false);
+        check(far.onTap(300,200,0,false)==BurstGesture.Action.NONE&&!far.isOpen(),"distant taps do not open");
+        BurstGesture lp=new BurstGesture();lp.onTap(0,0,0,false);lp.onTap(200,0,0,false);
+        check(lp.onTap(1000,0,0,true)==BurstGesture.Action.CLOSE,"long press closes");
         System.out.println("PASS "+count+" meaningful assertions");
     }
 }

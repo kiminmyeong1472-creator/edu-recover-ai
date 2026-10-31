@@ -30,12 +30,12 @@ def run(*cmd):
     if cmd[0]=='javac' and not shutil.which('javac'):cmd=['java','-m','jdk.compiler/com.sun.tools.javac.Main']+cmd[1:]
     if cmd[0]=='jar' and not shutil.which('jar'):cmd=['java','-m','jdk.jartool/sun.tools.jar.Main']+cmd[1:]
     print('+',*cmd,flush=True);subprocess.run(cmd,check=True,cwd=ROOT)
-run('javac','-d',build/'test-classes',java/'kr/edurecover/liferevolve/CapturePolicy.java',java/'kr/edurecover/liferevolve/ImageBuffers.java',ROOT/'tests/PolicyTest.java')
+run('javac','-d',build/'test-classes',java/'kr/edurecover/liferevolve/CapturePolicy.java',java/'kr/edurecover/liferevolve/ImageBuffers.java',java/'kr/edurecover/liferevolve/BurstGesture.java',ROOT/'tests/PolicyTest.java')
 run('java','-cp',build/'test-classes','kr.edurecover.liferevolve.PolicyTest')
 config=build/'gen/kr/edurecover/liferevolve/BuildConfig.java';config.parent.mkdir(parents=True,exist_ok=True)
 config.write_text('package kr.edurecover.liferevolve; public final class BuildConfig { public static final String PLATFORM_ORIGIN = '+json.dumps(origin)+'; public static final String VERSION_NAME = "0.3.0"; }\n')
 run(platform_tools/'aapt2','compile','--dir',res,'-o',build/'resources.zip')
-run(platform_tools/'aapt2','link','-o',build/'base.apk','--manifest',ROOT/'app/src/main/AndroidManifest.xml','-I',android,'--java',build/'gen','--min-sdk-version','34','--target-sdk-version','35','--version-code','1','--version-name','0.3.0',build/'resources.zip')
+run(platform_tools/'aapt2','link','-o',build/'base.apk','--manifest',ROOT/'app/src/main/AndroidManifest.xml','-I',android,'--java',build/'gen','--min-sdk-version','34','--target-sdk-version','35','--version-code','2','--version-name','0.4.0',build/'resources.zip')
 sources=list(java.rglob('*.java'))+list((build/'gen').rglob('*.java'))
 run('javac','-source','17','-target','17','-encoding','UTF-8','-classpath',android,'-d',build/'classes',*sources)
 run('jar','cf',build/'classes.jar','-C',build/'classes','.')

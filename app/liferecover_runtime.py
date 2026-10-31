@@ -17,12 +17,14 @@ from app.platform_core.persistent_domain_store import (
     storage_status,
 )
 from app.services.owner_basic_auth import require_owner
+from app.liferevolve_burst import router as burst_router
 from app.liferevolve_screen import router as screen_router, page_html, PAGE_HEADERS, non_screen_life_resources
 from app.liferevolve_release import router as release_router
 
 
 router = APIRouter(tags=["life-recover-runtime"])
 router.include_router(screen_router)
+router.include_router(burst_router)
 router.include_router(release_router)
 
 

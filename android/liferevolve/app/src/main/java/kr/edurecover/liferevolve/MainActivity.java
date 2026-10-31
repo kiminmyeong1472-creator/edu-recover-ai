@@ -15,6 +15,7 @@ import android.widget.*;
 public final class MainActivity extends Activity {
     static final int REQUEST_CAPTURE=100, REQUEST_PICK=101, REQUEST_NOTIFICATIONS=102;
     private WebView web; private TextView status; private ValueCallback<Uri[]> fileCallback;
+    private boolean tapMode=false;
     private boolean starting=false,waitingForStop=false; private LinearLayout root;
     private final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){status.setText(CaptureService.status(c));if(waitingForStop&&!CaptureService.running&&!CaptureService.stopping){waitingForStop=false;openGallery(false);}}};
     @Override public void onCreate(Bundle state){
@@ -22,7 +23,11 @@ public final class MainActivity extends Activity {
         root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(255,247,235));root.setPadding(10,0,10,0);
         root.setOnApplyWindowInsetsListener((view,insets)->{android.graphics.Insets b=insets.getInsets(WindowInsets.Type.systemBars());view.setPadding(b.left+10,b.top,b.right+10,b.bottom);return insets;});
         LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.addView(button("화면 취득 시작",v->startCapture()),new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1));
+        bar.addView(button("화면 취득 시작",v->{tapMode=false;startCapture();}),new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1));
+        bar.addView(button("연속 모드",v->{
+            if(!android.provider.Settings.canDrawOverlays(this)){toast("‘다른 앱 위에 표시’를 허용한 뒤 다시 누르십시오.");
+                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));return;}
+            tapMode=true;startCapture();}),new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1));
         bar.addView(button("종료·결과",v->{if(CaptureService.running||CaptureService.stopping){waitingForStop=true;status.setText("취득 종료 요청 · 마지막 화면 보관을 정리 중입니다.");requestStop();}else openGallery(false);}),new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1));
         bar.addView(button("플랫폼",v->web.loadUrl(BuildConfig.PLATFORM_ORIGIN+"/life")),new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1));
         root.addView(bar);status=new TextView(this);status.setTextSize(12);status.setPadding(8,3,8,8);root.addView(status);
@@ -81,7 +86,7 @@ public final class MainActivity extends Activity {
         super.onActivityResult(request,result,data);
         if(request==REQUEST_CAPTURE){starting=false;
             if(result==RESULT_OK&&data!=null){status.setText("공유 허용 완료 · 첫 영상 수신 전입니다.");
-                try{startForegroundService(new Intent(this,CaptureService.class).putExtra("resultCode",result).putExtra("permission",data));
+                try{startForegroundService(new Intent(this,CaptureService.class).putExtra("resultCode",result).putExtra("permission",data).putExtra("tapMode",tapMode));
                     toast("허용한 앱으로 이동해 천천히 스크롤하십시오. 돌아와 ‘종료·결과’를 선택하십시오.");
                 }catch(RuntimeException ex){status.setText("화면 취득 시작 실패: "+ex.getClass().getSimpleName());}
             }else status.setText("화면 공유를 허용하지 않아 시작하지 않았습니다.");

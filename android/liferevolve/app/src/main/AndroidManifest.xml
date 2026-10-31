@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="35"/>
     <application android:label="생활의 혁명" android:icon="@drawable/companion" android:theme="@style/AppTheme" android:usesCleartextTraffic="false" android:allowBackup="false" android:fullBackupContent="false" android:supportsRtl="true" android:resizeableActivity="true">
         <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden">
