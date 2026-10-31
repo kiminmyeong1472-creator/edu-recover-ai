@@ -25,6 +25,17 @@ public final class CapturePolicy {
         } catch (Exception ex) { return false; }
     }
     private static int effectivePort(URI uri) { return uri.getPort() == -1 ? 443 : uri.getPort(); }
+    /** 캡처 방지 화면(FLAG_SECURE)은 운영체제가 화면 공유에 검은 화면으로 줍니다.
+     *  뚫으려 하지 않고, 표본 화소가 모두 이만큼 어두우면 보내지 않습니다. */
+    public static final int PROTECTED_MAX_LEVEL = 8;
+    public static boolean looksProtected(int[] argb) {
+        if (argb == null || argb.length == 0) return true;
+        for (int p : argb) {
+            int r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
+            if (Math.max(r, Math.max(g, b)) > PROTECTED_MAX_LEVEL) return false;
+        }
+        return true;
+    }
     public static boolean validFrameName(String name) {
         return name != null && name.matches("[0-9]{13}-[a-f0-9]{8}\\.png");
     }

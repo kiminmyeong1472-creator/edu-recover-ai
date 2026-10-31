@@ -29,6 +29,13 @@ final class BurstUploader {
         return r.optBoolean("accepted") ? r.optString("sha256") : null;
     }
 
+    /** 캡처 방지 화면: 그림은 보내지 않고 「막힘」 사실만 기록합니다. */
+    void protectedScreen(String burstId, int seq, long tapMs) throws IOException {
+        JSONObject body = json("tap_ms", tapMs);
+        try { body.put("seq", seq).put("protected", true); } catch (org.json.JSONException e) { throw new IOException(e); }
+        post("/life/api/burst/" + burstId + "/frames", body);
+    }
+
     void close(String burstId) throws IOException { post("/life/api/burst/" + burstId + "/close", new JSONObject()); }
 
     private static JSONObject json(String k, long v) {

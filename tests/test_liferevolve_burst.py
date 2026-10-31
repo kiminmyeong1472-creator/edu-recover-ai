@@ -69,3 +69,45 @@ def test_idle_close_and_header_and_owner(monkeypatch, tmp_path):
     assert got["status"] == "CLOSED" and got["close_reason"] == "IDLE"
     other = client_for(monkeypatch, tmp_path, username="other-user")
     assert other.get(f"/life/api/burst/{bid}").status_code == 404
+
+
+def black_png():
+    import io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new("RGB", (60, 120), "#000000").save(out, format="PNG")
+    return out.getvalue()
+
+
+def test_protected_screen_never_stored_and_chain_detects_tampering(monkeypatch, tmp_path):
+    import sqlite3
+    c = client_for(monkeypatch, tmp_path)
+    bid = c.post("/life/api/burst", json={"tap_ms": 1000}, headers=HEADERS).json()["burst"]["burst_id"]
+    ok = c.post(f"/life/api/burst/{bid}/frames", json=frame(1, 1000), headers=HEADERS).json()
+    sha = ok["sha256"]
+    blocked = c.post(f"/life/api/burst/{bid}/frames", json={**payload(black_png()), "seq": 2, "tap_ms": 1600}, headers=HEADERS).json()
+    assert blocked["accepted"] is False and blocked["reason"] == "PROTECTED_SCREEN"
+    dev = c.post(f"/life/api/burst/{bid}/frames", json={"seq": 3, "tap_ms": 2200, "protected": True}, headers=HEADERS).json()
+    assert dev["reason"] == "PROTECTED_SCREEN"
+    b = dev["burst"]
+    assert b["protected_sequences"] == [2, 3] and b["missing_sequences"] == [] and len(b["frames"]) == 1
+    assert len(c.get("/life/api/screens").json()["screens"]) == 1  # black frame never stored
+    c.post(f"/life/api/burst/{bid}/grants", json={"recipient": "ai", "purpose": "도움", "minutes": 5}, headers=HEADERS)
+    c.post(f"/life/api/burst/{bid}/deliver", json={"recipient": "ai", "seqs": [1]}, headers=HEADERS)
+    st = c.post(f"/life/api/burst/{bid}/recognition-check", json={"sha256": sha}, headers=HEADERS).json()["status"]
+    assert st == "PROTECTED_SCREEN"
+    led = c.get(f"/life/api/burst/{bid}/ledger").json()
+    events = [r["event"] for r in led["records"]]
+    assert events[:4] == ["OPENED", "FRAME", "PROTECTED_BLOCKED", "PROTECTED_BLOCKED"]
+    assert "GRANTED" in events and "DELIVERED" in events and events[-1] == "RECOGNITION_CHECK"
+    assert led["verification"]["intact"] is True
+    # Someone edits a stored record afterwards → the chain shows exactly where.
+    db = sqlite3.connect(tmp_path / "liferecover" / "life.sqlite3")
+    db.execute("UPDATE liferevolve_burst_ledger SET body=? WHERE burst_id=? AND idx=2", ('{"by":"server","seq":2,"tap_ms":9}', bid))
+    db.commit(); db.close()
+    v = c.get(f"/life/api/burst/{bid}/ledger").json()["verification"]
+    assert v == {"intact": False, "broken_at": 2, "reason": "HASH_MISMATCH"}
+    db = sqlite3.connect(tmp_path / "liferecover" / "life.sqlite3")
+    db.execute("DELETE FROM liferevolve_burst_ledger WHERE burst_id=? AND idx=1", (bid,))
+    db.commit(); db.close()
+    assert c.get(f"/life/api/burst/{bid}/ledger").json()["verification"]["reason"] == "INDEX_GAP"

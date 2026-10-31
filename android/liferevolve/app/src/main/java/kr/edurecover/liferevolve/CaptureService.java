@@ -73,7 +73,7 @@ public final class CaptureService extends Service {
             projection.registerCallback(new MediaProjection.Callback(){
                 @Override public void onStop(){finish("운영체제가 화면 공유를 종료했습니다. 저장한 화면은 보관함에 있습니다.");}
                 @Override public void onCapturedContentResize(int w,int h){resize(w,h);}
-                @Override public void onCapturedContentVisibilityChanged(boolean visible){if(!visible)publish("공유 대상이 보이지 않습니다. 영상의 현재성·문서 전체 확보율은 판정하지 않습니다.");}
+                @Override public void onCapturedContentVisibilityChanged(boolean visible){contentVisible=visible;if(!visible)publish("공유 대상이 보이지 않습니다. 영상의 현재성·문서 전체 확보율은 판정하지 않습니다.");}
             },worker);
             reader=newReader(width,height);
             if(tapMode)main.post(this::showOverlay);
@@ -125,6 +125,13 @@ public final class CaptureService extends Service {
         if(latest==null||latest.getWidth()!=w||latest.getHeight()!=h){if(latest!=null)latest.recycle();latest=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);}
         latest.copyPixelsFromBuffer(packed);latestAt=at;
     }
+    private volatile boolean contentVisible=true;
+    /** 화면 전체에서 고르게 64×64 점을 뽑아 모두 검으면 캡처 방지 화면으로 봅니다. */
+    private static boolean isProtected(Bitmap bmp){
+        int n=64,w=bmp.getWidth(),h=bmp.getHeight();int[] s=new int[n*n];
+        for(int j=0;j<n;j++)for(int i=0;i<n;i++)s[j*n+i]=bmp.getPixel(Math.min(w-1,i*w/n+w/(2*n)),Math.min(h-1,j*h/n+h/(2*n)));
+        return CapturePolicy.looksProtected(s);
+    }
     private void showOverlay(){
         if(overlay!=null||finished)return;
         if(!android.provider.Settings.canDrawOverlays(this)){publish("다른 앱 위에 표시 권한이 없어 연속 단추를 띄우지 못했습니다.");return;}
@@ -172,6 +179,10 @@ public final class CaptureService extends Service {
             main.post(()->{if(v!=null)v.setVisibility(View.VISIBLE);});
             if(latest==null){publish(seq+"번 화면이 아직 없습니다. 빠진 번호로 남습니다.");return;}
             if(latestAt<hiddenAt)publish(seq+"번: 화면 변화가 없어 직전 화면으로 올립니다.");
+            if(!contentVisible||isProtected(latest)){
+                net.submit(()->{String id=burstId;try{if(id!=null)uploader.protectedScreen(id,seq,tapMs);}catch(Exception ignored){}});
+                publish(seq+"번: 캡처가 막힌 화면이라 보내지 않았습니다. 막힌 사실만 기록합니다.");return;
+            }
             ByteArrayOutputStream out=new ByteArrayOutputStream();latest.compress(Bitmap.CompressFormat.PNG,100,out);
             byte[] png=out.toByteArray();
             net.submit(()->{

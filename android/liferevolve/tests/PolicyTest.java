@@ -46,6 +46,9 @@ public class PolicyTest {
         check(far.onTap(300,200,0,false)==BurstGesture.Action.NONE&&!far.isOpen(),"distant taps do not open");
         BurstGesture lp=new BurstGesture();lp.onTap(0,0,0,false);lp.onTap(200,0,0,false);
         check(lp.onTap(1000,0,0,true)==BurstGesture.Action.CLOSE,"long press closes");
+        check(CapturePolicy.looksProtected(new int[]{0xff000000,0xff050505,0xff080808}),"all-black protected screen blocked");
+        check(!CapturePolicy.looksProtected(new int[]{0xff000000,0xffad4f32}),"ordinary screen allowed");
+        check(CapturePolicy.looksProtected(new int[0]),"no sample counts as blocked");
         System.out.println("PASS "+count+" meaningful assertions");
     }
 }
