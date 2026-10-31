@@ -18,6 +18,10 @@ Rules (추가기재안 청구항 18~27):
   hash the chain shows whether, by which model and under which approval it was learned
 - answer binding: each AI answer is hashed and bound to the frame hashes it cites;
   a citation counts as grounded only if that frame was really delivered to the AI
+- no inference outside the user's choice (privacy): a capture-protected frame, or a
+  frame the user never released to the AI, is outside what the user chose to give.
+  Deliveries tell the AI which sequence numbers it must not guess at; an answer that
+  says it describes such a frame is withheld and the violation is recorded
 - revoking an approval records that the recipient's copies must be deleted, and the
   recipient's deletion confirmation is recorded too
 - every event is appended to a hash chain (each record carries the previous record's
@@ -339,8 +343,9 @@ async def deliver(bid: str, request: Request):
                 continue
             conn.execute("INSERT OR IGNORE INTO liferevolve_burst_delivery VALUES(?,?,?,?,?)", (bid, s, recipient, g["grant_id"], _now().isoformat()))
             sent.append(s)
-        _log(conn, bid, "DELIVERED", {"recipient": recipient, "grant_id": g["grant_id"], "delivered": sent, "missing": missing})
-    return JSONResponse({"recipient": recipient, "delivered": sent, "missing": missing}, headers=CACHE_HEADERS)
+        banned = _off_limits(conn, bid, recipient)
+        _log(conn, bid, "DELIVERED", {"recipient": recipient, "grant_id": g["grant_id"], "delivered": sent, "missing": missing, "do_not_infer": banned})
+    return JSONResponse({"recipient": recipient, "delivered": sent, "missing": missing, "do_not_infer": banned}, headers=CACHE_HEADERS)
 
 
 @router.post("/life/api/burst/{bid}/recognition-check")
@@ -374,6 +379,15 @@ def ledger(bid: str, request: Request):
         recs = _ledger(conn, bid)
     return JSONResponse({"records": recs, "verification": verify_chain(recs)}, headers=CACHE_HEADERS)
 
+
+
+def _off_limits(conn, bid: str, recipient: str = "ai") -> list[int]:
+    """Sequence numbers the recipient must not describe or guess at: capture-protected
+    taps and frames that exist but were not released to this recipient."""
+    protected = {r["body"]["seq"] for r in _ledger(conn, bid) if r["event"] == "PROTECTED_BLOCKED"}
+    stored = {r["seq"] for r in conn.execute("SELECT seq FROM liferevolve_burst_frame WHERE burst_id=?", (bid,))}
+    released = {r["seq"] for r in conn.execute("SELECT seq FROM liferevolve_burst_delivery WHERE burst_id=? AND recipient=?", (bid, recipient))}
+    return sorted(protected | (stored - released))
 
 
 def _frames_by_seq(conn, bid: str) -> dict:
@@ -433,8 +447,9 @@ async def bind_answer(bid: str, request: Request):
     account = require_life_user(request)
     _mutation_allowed(request)
     data = await _json(request)
-    text, cited = data.get("answer"), data.get("cited_sha256")
-    if not isinstance(text, str) or not text.strip() or not isinstance(cited, list) or not all(isinstance(c, str) for c in cited):
+    text, cited, about = data.get("answer"), data.get("cited_sha256"), data.get("about_seqs", [])
+    if not isinstance(text, str) or not text.strip() or not isinstance(cited, list) or not all(isinstance(c, str) for c in cited) \
+            or not isinstance(about, list) or not all(isinstance(x, int) for x in about):
         raise HTTPException(status_code=422, detail="burst_invalid_answer")
     answer_sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
     with resource_transaction("life") as conn:
@@ -451,8 +466,16 @@ async def bind_answer(bid: str, request: Request):
             else:
                 result.append({"sha256": c, "seq": frames[c], "status": "GROUNDED"})
         overall = "GROUNDED" if result and all(r["status"] == "GROUNDED" for r in result) else ("NO_EVIDENCE" if not result else "UNGROUNDED")
-        h = _log(conn, bid, "ANSWER_BOUND", {"answer_sha256": answer_sha, "citations": result, "overall": overall})
-    return JSONResponse({"answer_sha256": answer_sha, "citations": result, "overall": overall, "record_hash": h}, headers=CACHE_HEADERS)
+        protected = {r["body"]["seq"] for r in _ledger(conn, bid) if r["event"] == "PROTECTED_BLOCKED"}
+        banned = set(_off_limits(conn, bid, "ai"))
+        violations = [{"seq": x, "kind": "PROTECTED_SCREEN" if x in protected else "NOT_CHOSEN_BY_USER"} for x in about if x in banned]
+        withheld = bool(violations)
+        if withheld:
+            # The answer is not shown; the attempt is recorded so it can be shown later.
+            _log(conn, bid, "INFERENCE_VIOLATION", {"answer_sha256": answer_sha, "violations": violations})
+        h = _log(conn, bid, "ANSWER_BOUND", {"answer_sha256": answer_sha, "citations": result, "overall": overall, "withheld": withheld})
+    return JSONResponse({"answer_sha256": answer_sha, "citations": result, "overall": overall,
+                         "withheld": withheld, "violations": violations, "record_hash": h}, headers=CACHE_HEADERS)
 
 
 @router.post("/life/api/burst/{bid}/grants/{gid}/deletion-confirmed")

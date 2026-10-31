@@ -156,3 +156,22 @@ def test_training_provenance_and_answer_binding(monkeypatch, tmp_path):
     db.execute("UPDATE liferevolve_burst_ledger SET event='TRAINING_REFUSED' WHERE burst_id=? AND idx=?", (bid, idx))
     db.commit(); db.close()
     assert c.get(f"/life/api/burst/{bid}/training-proof", params={"sha256": s1}).json()["verdict"] == "CHAIN_BROKEN"
+
+
+def test_no_inference_outside_users_choice(monkeypatch, tmp_path):
+    c = client_for(monkeypatch, tmp_path)
+    bid = c.post("/life/api/burst", json={"tap_ms": 1000}, headers=HEADERS).json()["burst"]["burst_id"]
+    s1 = c.post(f"/life/api/burst/{bid}/frames", json=frame(1, 1000), headers=HEADERS).json()["sha256"]
+    c.post(f"/life/api/burst/{bid}/frames", json={"seq": 2, "tap_ms": 1600, "protected": True}, headers=HEADERS)
+    c.post(f"/life/api/burst/{bid}/frames", json={**payload(image_bytes(size=(61, 120))), "seq": 3, "tap_ms": 2200}, headers=HEADERS)
+    c.post(f"/life/api/burst/{bid}/grants", json={"recipient": "ai", "purpose": "풀이", "minutes": 5}, headers=HEADERS)
+    d = c.post(f"/life/api/burst/{bid}/deliver", json={"recipient": "ai", "seqs": [1]}, headers=HEADERS).json()
+    assert d["do_not_infer"] == [2, 3]  # 2 protected, 3 not chosen for the AI
+    ok = c.post(f"/life/api/burst/{bid}/answers", json={"answer": "1번 화면은 문제지입니다.", "cited_sha256": [s1], "about_seqs": [1]}, headers=HEADERS).json()
+    assert ok["withheld"] is False
+    bad = c.post(f"/life/api/burst/{bid}/answers", json={"answer": "앞뒤로 보아 2번은 보험 약관, 3번은 계좌 화면입니다.", "cited_sha256": [s1], "about_seqs": [2, 3]}, headers=HEADERS).json()
+    assert bad["withheld"] is True
+    assert bad["violations"] == [{"seq": 2, "kind": "PROTECTED_SCREEN"}, {"seq": 3, "kind": "NOT_CHOSEN_BY_USER"}]
+    led = c.get(f"/life/api/burst/{bid}/ledger").json()
+    assert "INFERENCE_VIOLATION" in [r["event"] for r in led["records"]] and led["verification"]["intact"]
+    assert "보험 약관" not in str(led["records"])
