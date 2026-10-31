@@ -12,6 +12,14 @@ Rules (추가기재안 청구항 18~27):
   no frame / not sent to AI / past screen (hash mismatch or older than 3s) / current
 - a screen the source app protects from capture (Android shows it to screen sharing as
   a black frame) is never stored or sent; only the fact "protected, blocked" is recorded
+- learning provenance: a frame may be used to train or tune a model only under a
+  separate "train" approval (an "ai" approval to look is not an approval to learn);
+  every use names the model and data set and goes into the chain, so for any frame
+  hash the chain shows whether, by which model and under which approval it was learned
+- answer binding: each AI answer is hashed and bound to the frame hashes it cites;
+  a citation counts as grounded only if that frame was really delivered to the AI
+- revoking an approval records that the recipient's copies must be deleted, and the
+  recipient's deletion confirmation is recorded too
 - every event is appended to a hash chain (each record carries the previous record's
   SHA-256), so any later change, deletion or reordering of a record is detectable
 """
@@ -40,6 +48,7 @@ IDLE_CLOSE_MS = 5000
 CURRENT_MS = 3000
 MAX_BURST_FRAMES = 24
 RECIPIENTS = {"ai", "room", "chat"}
+GRANT_RECIPIENTS = RECIPIENTS | {"train"}
 PROTECTED_MAX_LEVEL = 8  # every pixel this dark → treated as a capture-protected screen
 GENESIS = "0" * 64
 
@@ -273,7 +282,7 @@ async def grant(bid: str, request: Request):
     _mutation_allowed(request)
     data = await _json(request)
     recipient, purpose, minutes = data.get("recipient"), data.get("purpose"), data.get("minutes", 10)
-    if recipient not in RECIPIENTS or not isinstance(purpose, str) or not purpose.strip() or not isinstance(minutes, int) or not 1 <= minutes <= 120:
+    if recipient not in GRANT_RECIPIENTS or not isinstance(purpose, str) or not purpose.strip() or not isinstance(minutes, int) or not 1 <= minutes <= 120:
         raise HTTPException(status_code=422, detail="burst_invalid_grant")
     gid = "grt_" + uuid.uuid4().hex
     expires = (_now() + timedelta(minutes=minutes)).isoformat()
@@ -292,10 +301,11 @@ def revoke(bid: str, gid: str, request: Request):
     with resource_transaction("life") as conn:
         _tables(conn)
         _burst(conn, account, bid)
-        cur = conn.execute("UPDATE liferevolve_burst_grant SET revoked_at=? WHERE grant_id=? AND burst_id=? AND revoked_at IS NULL", (_now().isoformat(), gid, bid))
-        if cur.rowcount == 0:
+        g = conn.execute("SELECT recipient FROM liferevolve_burst_grant WHERE grant_id=? AND burst_id=? AND revoked_at IS NULL", (gid, bid)).fetchone()
+        if g is None:
             raise HTTPException(status_code=404, detail="grant_not_found")
-        _log(conn, bid, "REVOKED", {"grant_id": gid})
+        conn.execute("UPDATE liferevolve_burst_grant SET revoked_at=? WHERE grant_id=?", (_now().isoformat(), gid))
+        _log(conn, bid, "REVOKED", {"grant_id": gid, "recipient": g["recipient"], "copies": "DELETION_REQUIRED"})
     return JSONResponse(None, status_code=204, headers=CACHE_HEADERS)
 
 
@@ -318,7 +328,9 @@ async def deliver(bid: str, request: Request):
         g = _active_grant(conn, bid, recipient)
         if g is None:
             _log(conn, bid, "DELIVERY_REFUSED", {"recipient": recipient, "seqs": seqs})
-            raise HTTPException(status_code=403, detail="burst_recipient_not_approved")
+    if g is None:  # raised after the transaction so the refusal record is kept
+        raise HTTPException(status_code=403, detail="burst_recipient_not_approved")
+    with resource_transaction("life") as conn:
         have = {r["seq"] for r in conn.execute("SELECT seq FROM liferevolve_burst_frame WHERE burst_id=?", (bid,))}
         sent, missing = [], []
         for s in seqs:
@@ -361,3 +373,98 @@ def ledger(bid: str, request: Request):
         _burst(conn, account, bid)
         recs = _ledger(conn, bid)
     return JSONResponse({"records": recs, "verification": verify_chain(recs)}, headers=CACHE_HEADERS)
+
+
+
+def _frames_by_seq(conn, bid: str) -> dict:
+    return {r["seq"]: r["sha256"] for r in conn.execute("SELECT seq, sha256 FROM liferevolve_burst_frame WHERE burst_id=?", (bid,))}
+
+
+@router.post("/life/api/burst/{bid}/training-use")
+async def training_use(bid: str, request: Request):
+    """Record that a model is about to learn from frames. Refused without a "train" approval."""
+    account = require_life_user(request)
+    _mutation_allowed(request)
+    data = await _json(request)
+    seqs, model_id, dataset_id = data.get("seqs"), data.get("model_id"), data.get("dataset_id")
+    if not isinstance(seqs, list) or not seqs or not all(isinstance(x, int) for x in seqs) \
+            or not isinstance(model_id, str) or not model_id.strip() or not isinstance(dataset_id, str) or not dataset_id.strip():
+        raise HTTPException(status_code=422, detail="burst_invalid_training_use")
+    with resource_transaction("life") as conn:
+        _tables(conn)
+        _burst(conn, account, bid)
+        g = _active_grant(conn, bid, "train")
+        if g is None:
+            _log(conn, bid, "TRAINING_REFUSED", {"model_id": model_id[:120], "seqs": seqs, "reason": "NO_TRAIN_APPROVAL"})
+    if g is None:  # raised after the transaction so the refusal record is kept
+        raise HTTPException(status_code=403, detail="burst_training_not_approved")
+    with resource_transaction("life") as conn:
+        frames = _frames_by_seq(conn, bid)
+        used = [{"seq": x, "sha256": frames[x]} for x in seqs if x in frames]
+        skipped = [x for x in seqs if x not in frames]  # missing or capture-protected: never learned
+        _log(conn, bid, "TRAINING_USE", {"grant_id": g["grant_id"], "model_id": model_id[:120], "dataset_id": dataset_id[:120], "frames": used, "skipped": skipped})
+    return JSONResponse({"used": used, "skipped": skipped, "grant_id": g["grant_id"]}, headers=CACHE_HEADERS)
+
+
+@router.get("/life/api/burst/{bid}/training-proof")
+def training_proof(bid: str, sha256: str, request: Request):
+    """For one frame hash: was it learned, by which model, under which approval — or provably not."""
+    account = require_life_user(request)
+    with resource_transaction("life") as conn:
+        _tables(conn)
+        _burst(conn, account, bid)
+        recs = _ledger(conn, bid)
+    chain = verify_chain(recs)
+    uses = [{"idx": r["idx"], "at": r["at"], "model_id": r["body"]["model_id"], "dataset_id": r["body"]["dataset_id"], "grant_id": r["body"]["grant_id"]}
+            for r in recs if r["event"] == "TRAINING_USE" and any(f["sha256"] == sha256 for f in r["body"]["frames"])]
+    known = any(r["event"] == "FRAME" and r["body"]["sha256"] == sha256 for r in recs)
+    if not chain["intact"]:
+        verdict = "CHAIN_BROKEN"  # nothing can be proven from a broken record
+    elif not known:
+        verdict = "UNKNOWN_FRAME"
+    else:
+        verdict = "USED_FOR_TRAINING" if uses else "NOT_USED_FOR_TRAINING"
+    return JSONResponse({"sha256": sha256, "verdict": verdict, "uses": uses, "chain": chain}, headers=CACHE_HEADERS)
+
+
+@router.post("/life/api/burst/{bid}/answers")
+async def bind_answer(bid: str, request: Request):
+    """Bind an AI answer to the frames it says it is based on. Only the answer's hash is kept."""
+    account = require_life_user(request)
+    _mutation_allowed(request)
+    data = await _json(request)
+    text, cited = data.get("answer"), data.get("cited_sha256")
+    if not isinstance(text, str) or not text.strip() or not isinstance(cited, list) or not all(isinstance(c, str) for c in cited):
+        raise HTTPException(status_code=422, detail="burst_invalid_answer")
+    answer_sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    with resource_transaction("life") as conn:
+        _tables(conn)
+        _burst(conn, account, bid)
+        frames = {sha: seq for seq, sha in _frames_by_seq(conn, bid).items()}
+        delivered = {r["seq"] for r in conn.execute("SELECT seq FROM liferevolve_burst_delivery WHERE burst_id=? AND recipient='ai'", (bid,))}
+        result = []
+        for c in cited:
+            if c not in frames:
+                result.append({"sha256": c, "status": "UNKNOWN_FRAME"})
+            elif frames[c] not in delivered:
+                result.append({"sha256": c, "seq": frames[c], "status": "NOT_DELIVERED_TO_AI"})
+            else:
+                result.append({"sha256": c, "seq": frames[c], "status": "GROUNDED"})
+        overall = "GROUNDED" if result and all(r["status"] == "GROUNDED" for r in result) else ("NO_EVIDENCE" if not result else "UNGROUNDED")
+        h = _log(conn, bid, "ANSWER_BOUND", {"answer_sha256": answer_sha, "citations": result, "overall": overall})
+    return JSONResponse({"answer_sha256": answer_sha, "citations": result, "overall": overall, "record_hash": h}, headers=CACHE_HEADERS)
+
+
+@router.post("/life/api/burst/{bid}/grants/{gid}/deletion-confirmed")
+async def deletion_confirmed(bid: str, gid: str, request: Request):
+    """The recipient reports that its copies under a revoked approval were deleted."""
+    account = require_life_user(request)
+    _mutation_allowed(request)
+    with resource_transaction("life") as conn:
+        _tables(conn)
+        _burst(conn, account, bid)
+        g = conn.execute("SELECT recipient, revoked_at FROM liferevolve_burst_grant WHERE grant_id=? AND burst_id=?", (gid, bid)).fetchone()
+        if g is None or g["revoked_at"] is None:
+            raise HTTPException(status_code=409, detail="grant_not_revoked")
+        _log(conn, bid, "DELETION_CONFIRMED", {"grant_id": gid, "recipient": g["recipient"]})
+    return JSONResponse({"grant_id": gid, "status": "DELETION_CONFIRMED"}, headers=CACHE_HEADERS)

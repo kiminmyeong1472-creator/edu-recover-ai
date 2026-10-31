@@ -111,3 +111,48 @@ def test_protected_screen_never_stored_and_chain_detects_tampering(monkeypatch, 
     db.execute("DELETE FROM liferevolve_burst_ledger WHERE burst_id=? AND idx=1", (bid,))
     db.commit(); db.close()
     assert c.get(f"/life/api/burst/{bid}/ledger").json()["verification"]["reason"] == "INDEX_GAP"
+
+
+def test_training_provenance_and_answer_binding(monkeypatch, tmp_path):
+    import sqlite3
+    c = client_for(monkeypatch, tmp_path)
+    bid = c.post("/life/api/burst", json={"tap_ms": 1000}, headers=HEADERS).json()["burst"]["burst_id"]
+    s1 = c.post(f"/life/api/burst/{bid}/frames", json=frame(1, 1000), headers=HEADERS).json()["sha256"]
+    s2 = c.post(f"/life/api/burst/{bid}/frames", json={**payload(image_bytes(size=(61, 120))), "seq": 2, "tap_ms": 1600}, headers=HEADERS).json()["sha256"]
+    assert s1 != s2
+    c.post(f"/life/api/burst/{bid}/frames", json={"seq": 3, "tap_ms": 2200, "protected": True}, headers=HEADERS)
+    use = {"seqs": [1, 3], "model_id": "튜닝모델-1", "dataset_id": "자료-10월"}
+    # Looking (ai) is not learning (train).
+    c.post(f"/life/api/burst/{bid}/grants", json={"recipient": "ai", "purpose": "풀이", "minutes": 5}, headers=HEADERS)
+    assert c.post(f"/life/api/burst/{bid}/training-use", json=use, headers=HEADERS).status_code == 403
+    tg = c.post(f"/life/api/burst/{bid}/grants", json={"recipient": "train", "purpose": "개인 맞춤 학습", "minutes": 5}, headers=HEADERS).json()
+    u = c.post(f"/life/api/burst/{bid}/training-use", json=use, headers=HEADERS).json()
+    assert [f["seq"] for f in u["used"]] == [1] and u["skipped"] == [3]  # protected frame never learned
+    p1 = c.get(f"/life/api/burst/{bid}/training-proof", params={"sha256": s1}).json()
+    assert p1["verdict"] == "USED_FOR_TRAINING" and p1["uses"][0]["model_id"] == "튜닝모델-1"
+    assert c.get(f"/life/api/burst/{bid}/training-proof", params={"sha256": s2}).json()["verdict"] == "NOT_USED_FOR_TRAINING"
+    assert c.get(f"/life/api/burst/{bid}/training-proof", params={"sha256": "f" * 64}).json()["verdict"] == "UNKNOWN_FRAME"
+    # Answer binding: only frames really delivered to the AI count as evidence.
+    c.post(f"/life/api/burst/{bid}/deliver", json={"recipient": "ai", "seqs": [1]}, headers=HEADERS)
+    a = c.post(f"/life/api/burst/{bid}/answers", json={"answer": "정답은 3번입니다.", "cited_sha256": [s1]}, headers=HEADERS).json()
+    assert a["overall"] == "GROUNDED"
+    b = c.post(f"/life/api/burst/{bid}/answers", json={"answer": "화면에 4번이 보입니다.", "cited_sha256": [s1, s2, "0" * 64]}, headers=HEADERS).json()
+    assert [x["status"] for x in b["citations"]] == ["GROUNDED", "NOT_DELIVERED_TO_AI", "UNKNOWN_FRAME"] and b["overall"] == "UNGROUNDED"
+    assert c.post(f"/life/api/burst/{bid}/answers", json={"answer": "그냥 압니다.", "cited_sha256": []}, headers=HEADERS).json()["overall"] == "NO_EVIDENCE"
+    # Revoking learning approval: further learning refused, deletion required then confirmed.
+    gid = tg["grant_id"]
+    assert c.post(f"/life/api/burst/{bid}/grants/{gid}/deletion-confirmed", headers=HEADERS).status_code == 409
+    c.delete(f"/life/api/burst/{bid}/grants/{gid}", headers=HEADERS)
+    assert c.post(f"/life/api/burst/{bid}/training-use", json=use, headers=HEADERS).status_code == 403
+    assert c.post(f"/life/api/burst/{bid}/grants/{gid}/deletion-confirmed", headers=HEADERS).status_code == 200
+    led = c.get(f"/life/api/burst/{bid}/ledger").json()
+    ev = [r["event"] for r in led["records"]]
+    for e in ["TRAINING_REFUSED", "TRAINING_USE", "ANSWER_BOUND", "REVOKED", "DELETION_CONFIRMED"]:
+        assert e in ev
+    assert led["verification"]["intact"] and "정답은" not in str(led["records"])  # answer text not kept, only hash
+    # Erasing the training record afterwards is detected; no proof is given from a broken chain.
+    idx = ev.index("TRAINING_USE")
+    db = sqlite3.connect(tmp_path / "liferecover" / "life.sqlite3")
+    db.execute("UPDATE liferevolve_burst_ledger SET event='TRAINING_REFUSED' WHERE burst_id=? AND idx=?", (bid, idx))
+    db.commit(); db.close()
+    assert c.get(f"/life/api/burst/{bid}/training-proof", params={"sha256": s1}).json()["verdict"] == "CHAIN_BROKEN"
