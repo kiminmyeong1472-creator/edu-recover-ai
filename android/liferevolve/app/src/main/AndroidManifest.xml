@@ -1,0 +1,15 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="kr.edurecover.liferevolve">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="35"/>
+    <application android:label="생활의 혁명" android:icon="@drawable/companion" android:theme="@style/AppTheme" android:usesCleartextTraffic="false" android:allowBackup="false" android:fullBackupContent="false" android:supportsRtl="true" android:resizeableActivity="true">
+        <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+        <activity android:name=".GalleryActivity" android:exported="false" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"/>
+        <service android:name=".CaptureService" android:exported="false" android:foregroundServiceType="mediaProjection"/>
+        <provider android:name=".FrameProvider" android:authorities="kr.edurecover.liferevolve.frames" android:exported="false" android:grantUriPermissions="true"/>
+    </application>
+</manifest>
