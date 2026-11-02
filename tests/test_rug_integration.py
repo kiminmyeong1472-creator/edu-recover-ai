@@ -335,7 +335,8 @@ def test_ui_takes_label_photo_and_text_but_never_a_receipt():
 def test_main_includes_rug_once():
     text=(ROOT/'app/main.py').read_text()
     assert text.count('app.include_router(rug_router)')==1
-    assert (ROOT/'app/liferecover_runtime.py').read_text().count("href='/life/rug'")==1
+    # 생활 홈 화면은 정적 쪽(home.html)으로 옮겨졌으므로 그 안의 RuG 진입 칸을 센다.
+    assert (ROOT/'app/liferevolve_static/home.html').read_text(encoding='utf-8').count('href="/life/rug"')==1
 
 
 def test_index_tables_have_no_graph_entities(store):
